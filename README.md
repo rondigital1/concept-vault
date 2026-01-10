@@ -7,7 +7,6 @@ AI-powered knowledge curation and distillation system with strong observability.
 - TypeScript
 - Next.js (App Router)
 - Postgres + pgvector
-- Drizzle ORM
 
 ## Setup
 

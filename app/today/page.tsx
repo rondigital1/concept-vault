@@ -18,7 +18,7 @@ export default async function TodayPage(props: PageProps) {
       <TodayClient />
       <main className="min-h-screen pb-64 relative overflow-hidden">
         {/* Ambient Background Glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[500px] bg-white/[0.02] blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[500px] bg-white/2 blur-[120px] rounded-full pointer-events-none" />
 
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 flex flex-col items-center justify-center min-h-[70vh] gap-20 relative z-10">
           {/* Header */}

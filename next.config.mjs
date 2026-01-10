@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['postgres', 'drizzle-orm', 'pgvector'],
-    instrumentationHook: true,
-  },
+  serverExternalPackages: ['postgres', 'pgvector'],
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Prevent bundling of Node.js built-in modules used by postgres
