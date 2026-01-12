@@ -23,8 +23,33 @@
     color: inherit;
     text-decoration: none;
   }
+
+  /* Improved focus states for accessibility */
+  :focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
+  }
+
+  /* Better details/summary styling */
+  summary {
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  summary::before {
+    content: '▸ ';
+    display: inline;
+  }
+
+  details[open] > summary::before {
+    content: '▾ ';
+  }
 }
 
+/* Slide-in animation for toasts */
 @keyframes slide-in-right {
   from {
     transform: translateX(100%);
@@ -40,6 +65,20 @@
   animation: slide-in-right 0.3s ease-out;
 }
 
+/* Pulse animation for running status */
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-status-pulse {
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
 /* 3D Roman Numerals Background Canvas */
 @media (prefers-reduced-motion: no-preference) {
   .roman-numerals-canvas {
@@ -47,5 +86,14 @@
     inset: 0;
     z-index: 0;
     pointer-events: none;
+  }
+}
+
+/* Smooth transitions for interactive elements */
+@layer utilities {
+  .transition-default {
+    transition-property: color, background-color, border-color, opacity, transform;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
   }
 }

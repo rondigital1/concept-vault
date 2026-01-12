@@ -149,6 +149,34 @@ CREATE TABLE IF NOT EXISTS related_documents (
   score REAL,
   PRIMARY KEY (document_id, related_document_id)
 );
+
+-- Agent-produced artifacts (review / approval inbox)
+CREATE TABLE IF NOT EXISTS artifacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id UUID REFERENCES runs(id) ON DELETE SET NULL,
+  agent TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  day TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content JSONB NOT NULL,
+  source_refs JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL CHECK (
+    status IN ('proposed','approved','rejected','superseded')
+  ),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_at TIMESTAMPTZ
+);
+
+-- Fast inbox queries (Today dashboard)
+CREATE INDEX IF NOT EXISTS artifacts_day_status_idx
+  ON artifacts(day, status);
+CREATE UNIQUE INDEX IF NOT EXISTS artifacts_one_active_per_kind
+  ON artifacts(agent, kind, day)
+  WHERE status = 'approved';
+CREATE INDEX IF NOT EXISTS artifacts_run_id_idx
+  ON artifacts(run_id);
+CREATE INDEX IF NOT EXISTS artifacts_agent_kind_idx
+  ON artifacts(agent, kind);
 `;
 
 export type SchemaInitResult = {
