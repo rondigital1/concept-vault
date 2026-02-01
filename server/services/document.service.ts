@@ -1,5 +1,6 @@
 import { sql } from '@/db';
-import { callLLM } from '@/server/llm/modelGateway';
+import { createExtractionModel } from '@/server/langchain/models';
+import { HumanMessage } from '@langchain/core/messages';
 
 /**
  * Minimal DB shape for the SQL-first `documents` table.
@@ -188,8 +189,9 @@ Return only valid JSON. Example:
 
   let raw = '';
   try {
-    const response = await callLLM([{ role: 'user', content: prompt }]);
-    raw = response.content ?? '';
+    const model = createExtractionModel({ temperature: 0.3 });
+    const response = await model.invoke([new HumanMessage(prompt)]);
+    raw = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
   } catch {
     return [];
   }
@@ -220,8 +222,10 @@ ${tags.join(', ')}
 Return ONLY the category string.
 `;
 
-  const response = await callLLM([{ role: 'user', content: prompt }]);
-  const raw = (response.content ?? '').toLowerCase().trim();
+  const model = createExtractionModel({ temperature: 0.2 });
+  const response = await model.invoke([new HumanMessage(prompt)]);
+  const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+  const raw = content.toLowerCase().trim();
 
   const chosen = allow.find((c) => c === raw);
   return chosen ?? 'other';
@@ -259,4 +263,19 @@ export async function setDocumentTags(
     SET tags = ${sql.array(tags)}
     WHERE id = ${documentId}
   `;
+}
+
+export async function updateDocumentTitle(
+  documentId: string,
+  title: string
+): Promise<void> {
+  await sql`
+    UPDATE documents
+    SET title = ${title}
+    WHERE id = ${documentId}
+  `;
+}
+
+export async function deleteDocument(documentId: string): Promise<void> {
+  await sql`DELETE FROM documents WHERE id = ${documentId}`;
 }

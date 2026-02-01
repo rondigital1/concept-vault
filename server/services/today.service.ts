@@ -484,8 +484,9 @@ async function generateTodayContent(
     };
   }
 
-  // Import LLM gateway
-  const { callLLM } = await import('@/server/llm/modelGateway');
+  // Import LangChain model
+  const { createExtractionModel } = await import('@/server/langchain/models');
+  const { HumanMessage } = await import('@langchain/core/messages');
 
   // Build prompt with strict instructions
   const docsText = sourceDocs
@@ -526,17 +527,16 @@ Generate the JSON now:`;
 
   try {
     const startTime = Date.now();
-    const response = await callLLM([{ role: 'user', content: prompt }], {
-      temperature: 0.3,
-      maxTokens: 800,
-    });
+    const model = createExtractionModel({ temperature: 0.3, maxTokens: 800 });
+    const response = await model.invoke([new HumanMessage(prompt)]);
     const duration = Date.now() - startTime;
 
     console.log(`[TodayService] LLM call completed in ${duration}ms`);
     // TODO: Log to llm_calls table for observability
 
     // Parse and validate JSON
-    const raw = response.content.trim();
+    const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+    const raw = content.trim();
     let parsed: any;
 
     try {
