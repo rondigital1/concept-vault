@@ -14,7 +14,7 @@ export const SCHEMA_SQL = `
 -- Core: runs + steps (append-only observability)
 CREATE TABLE IF NOT EXISTS runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  kind TEXT NOT NULL CHECK (kind IN ('distill','curate')),
+  kind TEXT NOT NULL CHECK (kind IN ('distill','curate','webScout')),
   status TEXT NOT NULL CHECK (status IN ('running','ok','error','partial')),
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ended_at TIMESTAMPTZ,
@@ -177,6 +177,28 @@ CREATE INDEX IF NOT EXISTS artifacts_run_id_idx
   ON artifacts(run_id);
 CREATE INDEX IF NOT EXISTS artifacts_agent_kind_idx
   ON artifacts(agent, kind);
+
+-- Chat sessions metadata
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS chat_sessions_updated_idx
+  ON chat_sessions(updated_at DESC);
+
+-- Chat history for LangChain memory
+CREATE TABLE IF NOT EXISTS chat_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+  message JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS chat_history_session_idx
+  ON chat_history(session_id, created_at);
 `;
 
 export type SchemaInitResult = {
@@ -200,8 +222,16 @@ export async function ensureSchema(sqlClient: {
     let message = 'Unknown error';
     if (error instanceof Error) {
       // Check for common connection issues
-      if (error.message.includes('AggregateError') || error.message.includes('ECONNREFUSED')) {
-        message = `Database connection failed (${error.message}). Is your Docker daemon or PostgreSQL server running?`;
+      if (
+        error.message.includes('AggregateError') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('connection refused')
+      ) {
+        message = `Database connection failed. 
+Troubleshooting:
+1. Is Docker Desktop running? If so, run 'docker compose up -d'.
+2. If using Homebrew Postgres, is it started? Run 'brew services list'.
+3. Check your DATABASE_URL in .env (current: ${process.env.DATABASE_URL})`;
       } else {
         message = error.message;
       }
