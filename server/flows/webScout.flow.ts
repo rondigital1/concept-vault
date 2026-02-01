@@ -1,34 +1,40 @@
+/**
+ * WebScout Flow
+ *
+ * Orchestrates the webScout agent (LangGraph) with run tracing.
+ * Creates a run, executes the agent, and records all steps.
+ */
+
 import { createRun, appendStep, finishRun } from '@/server/observability/runTrace.store';
 import { RunStep } from '@/server/observability/runTrace.types';
-import { distillerGraph, DistillerInput, DistillerOutput } from '@/server/agents/distiller.graph';
+import { webScoutGraph, WebScoutInput, WebScoutOutput } from '@/server/agents/webScout.graph';
 
-export interface DistillFlowResult {
+export interface WebScoutFlowResult {
   runId: string;
-  output: DistillerOutput;
+  output: WebScoutOutput;
 }
 
 /**
- * Distill Flow
+ * WebScout Flow
  *
- * Orchestrates the distiller agent (LangGraph) with run tracing.
- * Creates a run, executes the agent, and records all steps.
+ * Orchestrates the webScout agent (LangGraph) with run tracing.
  */
-export async function distillFlow(input: DistillerInput): Promise<DistillFlowResult> {
-  const runId = await createRun('distill');
+export async function webScoutFlow(input: WebScoutInput): Promise<WebScoutFlowResult> {
+  const runId = await createRun('webScout');
 
   try {
     // Start flow step
     const flowStep: RunStep = {
       timestamp: new Date().toISOString(),
       type: 'flow',
-      name: 'distill',
+      name: 'webScout',
       status: 'running',
       input,
     };
     await appendStep(runId, flowStep);
 
-    // Execute distiller agent (LangGraph), passing runId for artifact association
-    const result = await distillerGraph(
+    // Execute webScout agent (LangGraph), passing runId for artifact association
+    const result = await webScoutGraph(
       input,
       async (agentStep) => {
         await appendStep(runId, agentStep);
@@ -40,7 +46,7 @@ export async function distillFlow(input: DistillerInput): Promise<DistillFlowRes
     const completeStep: RunStep = {
       timestamp: new Date().toISOString(),
       type: 'flow',
-      name: 'distill',
+      name: 'webScout',
       status: 'ok',
       output: result,
     };
@@ -50,14 +56,14 @@ export async function distillFlow(input: DistillerInput): Promise<DistillFlowRes
 
     return {
       runId,
-      output: { ...result, runId },
+      output: result,
     };
   } catch (error) {
     // Record error step
     const errorStep: RunStep = {
       timestamp: new Date().toISOString(),
       type: 'flow',
-      name: 'distill',
+      name: 'webScout',
       status: 'error',
       error: error instanceof Error ? { message: error.message } : { message: String(error) },
     };

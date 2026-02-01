@@ -1,6 +1,6 @@
 import { createRun, appendStep, finishRun } from '@/server/observability/runTrace.store';
 import { RunStep } from '@/server/observability/runTrace.types';
-import { curatorAgent, CuratorInput } from '@/server/agents/curator.agent';
+import { curatorGraph, CuratorInput } from '@/server/agents/curator.graph';
 
 export async function curateFlow(input: CuratorInput): Promise<string> {
   const runId = await createRun('curate');
@@ -15,8 +15,8 @@ export async function curateFlow(input: CuratorInput): Promise<string> {
     };
     await appendStep(runId, step);
 
-    // Execute curator agent
-    const result = await curatorAgent(input, async (agentStep) => {
+    // Execute curator agent (LangGraph)
+    const result = await curatorGraph(input, async (agentStep) => {
       await appendStep(runId, agentStep);
     });
 

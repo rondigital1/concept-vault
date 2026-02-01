@@ -1,5 +1,5 @@
 export type RunStatus = 'running' | 'ok' | 'error' | 'partial';
-export type RunKind = 'distill' | 'curate';
+export type RunKind = 'distill' | 'curate' | 'webScout';
 
 export interface RunStep {
   timestamp: string;
