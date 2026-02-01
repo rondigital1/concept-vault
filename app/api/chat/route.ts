@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { callLLM, LLMMessage } from '@/server/llm/modelGateway';
+import { createChatModel } from '@/server/langchain/models';
+import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import { localKbTool } from '@/server/tools/localKb.tool';
 
 export const runtime = 'nodejs';
@@ -43,10 +44,10 @@ export async function POST(request: Request) {
 
     // Convert chat history to LLM format (last 10 messages for context)
     const recentHistory = history.slice(-10);
-    const llmMessages: LLMMessage[] = [
-      {
-        role: 'system',
-        content: `You are a helpful knowledge assistant for a personal knowledge vault called Concept Vault. You help users explore and understand their stored documents and concepts.
+    const model = createChatModel({ temperature: 0.7, maxTokens: 1000 });
+
+    const messages = [
+      new SystemMessage(`You are a helpful knowledge assistant for a personal knowledge vault called Concept Vault. You help users explore and understand their stored documents and concepts.
 
 Your responses should be:
 - Clear and concise
@@ -54,36 +55,27 @@ Your responses should be:
 - Based on the knowledge base when relevant
 - Conversational but professional
 
-When you don't have specific information from the knowledge base, you can still help the user think through their questions or provide general guidance.${contextText}`,
-      },
-      ...recentHistory.map(
-        (msg): LLMMessage => ({
-          role: msg.role,
-          content: msg.content,
-        })
+When you don't have specific information from the knowledge base, you can still help the user think through their questions or provide general guidance.${contextText}`),
+      ...recentHistory.map((msg) =>
+        msg.role === 'user' ? new HumanMessage(msg.content) : new AIMessage(msg.content)
       ),
-      {
-        role: 'user',
-        content: message,
-      },
+      new HumanMessage(message),
     ];
 
     // Call the LLM
-    const response = await callLLM(llmMessages, {
-      temperature: 0.7,
-      maxTokens: 1000,
-    });
+    const response = await model.invoke(messages);
+    const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
 
     return NextResponse.json({
-      message: response.content,
-      usage: response.usage,
+      message: content,
+      usage: response.usage_metadata,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Chat API error:', error);
 
-    const message = error?.message ?? 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'CHAT_API_FAILED', message },
+      { error: 'CHAT_API_FAILED', message: errorMessage },
       { status: 500 }
     );
   }
