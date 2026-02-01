@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 interface SaveToLibraryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (title: string) => void;
+  onSave: (title: string, content: string) => void;
   defaultText: string;
   defaultTitle: string;
 }
@@ -30,8 +30,8 @@ export function SaveToLibraryModal({ isOpen, onClose, onSave, defaultText, defau
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (title.trim()) {
-      onSave(title.trim());
+    if (title.trim() && defaultText.trim()) {
+      onSave(title.trim(), defaultText);
       onClose();
     }
   };
