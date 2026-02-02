@@ -1,11 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeSanitize from 'rehype-sanitize';
 import { Badge } from '@/app/components/Badge';
 import {
   deleteDocumentAction,
@@ -24,6 +22,10 @@ type Document = {
 type DocumentClientProps = {
   document: Document;
 };
+
+const DocumentMarkdown = dynamic(() => import('./DocumentMarkdown'), {
+  loading: () => <div className="animate-pulse h-4 bg-stone-200 rounded" />,
+});
 
 function getSourceDisplay(source: string): { display: string; url: string | null } {
   try {
@@ -203,55 +205,7 @@ export function DocumentClient({ document: initialDocument }: DocumentClientProp
 
           {/* Content */}
           <div className="prose prose-invert prose-zinc prose-lg max-w-none">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeSanitize]}
-              components={{
-                h1: ({ node, ...props }) => (
-                  <h1 className="text-4xl font-bold text-white mb-6 mt-8" {...props} />
-                ),
-                h2: ({ node, ...props }) => (
-                  <h2 className="text-3xl font-bold text-white mb-4 mt-6" {...props} />
-                ),
-                h3: ({ node, ...props }) => (
-                  <h3 className="text-2xl font-semibold text-white mb-3 mt-5" {...props} />
-                ),
-                p: ({ node, ...props }) => (
-                  <p className="text-zinc-300 leading-relaxed mb-4" {...props} />
-                ),
-                ul: ({ node, ...props }) => (
-                  <ul className="list-disc list-inside text-zinc-300 mb-4 space-y-2" {...props} />
-                ),
-                ol: ({ node, ...props }) => (
-                  <ol className="list-decimal list-inside text-zinc-300 mb-4 space-y-2" {...props} />
-                ),
-                li: ({ node, ...props }) => (
-                  <li className="text-zinc-300" {...props} />
-                ),
-                a: ({ node, ...props }) => (
-                  <a
-                    className="text-[#d97757] hover:text-[#c66849] underline transition-colors"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    {...props}
-                  />
-                ),
-                code: ({ node, inline, ...props }: any) =>
-                  inline ? (
-                    <code className="px-1.5 py-0.5 bg-white/10 text-zinc-200 rounded text-sm font-mono" {...props} />
-                  ) : (
-                    <code className="block px-4 py-3 bg-white/5 text-zinc-200 rounded-lg text-sm font-mono overflow-x-auto" {...props} />
-                  ),
-                blockquote: ({ node, ...props }) => (
-                  <blockquote className="border-l-4 border-[#d97757] pl-4 italic text-zinc-400 my-4" {...props} />
-                ),
-                hr: ({ node, ...props }) => (
-                  <hr className="border-white/10 my-8" {...props} />
-                ),
-              }}
-            >
-              {document.content}
-            </ReactMarkdown>
+            <DocumentMarkdown content={document.content} />
           </div>
         </article>
       </div>
