@@ -8,7 +8,14 @@
     "start": "next start",
     "lint": "next lint",
     "db:reset": "bash scripts/db-reset.sh",
-    "db:init": "tsx scripts/init-schema.ts"
+    "db:init": "tsx scripts/init-schema.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:agents": "vitest run tests/agents",
+    "test:setup": "bash scripts/test-db-setup.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
