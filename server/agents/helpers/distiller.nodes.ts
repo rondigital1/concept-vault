@@ -3,7 +3,8 @@
  */
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { createExtractionModel, createGenerationModel } from '@/server/langchain/models';
-import { ConceptExtractionSchema, FlashcardGenerationSchema } from '@/server/langchain/schemas';
+import { ConceptExtractionSchema } from '@/server/langchain/schemas/concept.schema';
+import { FlashcardGenerationSchema } from '@/server/langchain/schemas/flashcard.schema';
 import {
   DocumentRow,
   ConceptInput,

@@ -11,7 +11,7 @@
 import { StateGraph, Annotation, END } from '@langchain/langgraph';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { createExtractionModel } from '@/server/langchain/models';
-import { TagExtractionSchema, CategorizationSchema } from '@/server/langchain/schemas';
+import { CategorizationSchema, TagExtractionSchema } from '@/server/langchain/schemas/tags.schema';
 import { createRunStepCallback } from '@/server/langchain/callbacks/runStepAdapter';
 import { RunStep } from '@/server/observability/runTrace.types';
 import {

@@ -3,7 +3,7 @@
  */
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { createExtractionModel } from '@/server/langchain/models';
-import { DerivedQueriesSchema, WebScoreResultsSchema } from '@/server/langchain/schemas';
+import { DerivedQueriesSchema, WebScoreResultsSchema } from '@/server/langchain/schemas/webScore.schema';
 import { executeTavilySearch } from '@/server/langchain/tools/tavily.tool';
 import { TavilySearchResult } from '@/server/tools/tavily.tool';
 import {
