@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { LoadingSpinner } from '@/app/components/LoadingSpinner';
 import { toast, ToastContainer } from '@/app/components/Toast';
 import { ingestContent } from './actions';
 
@@ -320,7 +321,7 @@ export default function IngestPage() {
                   >
                     {isLoading ? (
                       <span className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                        <LoadingSpinner className="h-4 w-4 border-white/40 border-t-white" />
                         Uploading...
                       </span>
                     ) : (
@@ -388,7 +389,7 @@ export default function IngestPage() {
                   >
                     {isLoading ? (
                       <span className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                        <LoadingSpinner className="h-4 w-4 border-white/40 border-t-white" />
                         Ingesting...
                       </span>
                     ) : (
@@ -457,7 +458,7 @@ export default function IngestPage() {
                   >
                     {isLoading ? (
                       <span className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                        <LoadingSpinner className="h-4 w-4 border-white/40 border-t-white" />
                         Ingesting...
                       </span>
                     ) : (
