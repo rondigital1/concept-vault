@@ -100,8 +100,8 @@ export async function insertWebProposalArtifact(input: ArtifactInput): Promise<s
       ${input.kind},
       ${input.day},
       ${input.title},
-      ${JSON.stringify(input.content)}::jsonb,
-      ${JSON.stringify(input.sourceRefs)}::jsonb,
+      ${sql.json(input.content)},
+      ${sql.json(input.sourceRefs)},
       'proposed'
     )
     RETURNING id

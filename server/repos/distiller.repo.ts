@@ -103,7 +103,7 @@ export async function insertConcept(
       ${concept.label},
       ${concept.type},
       ${concept.summary},
-      ${JSON.stringify(concept.evidence)}::jsonb,
+      ${sql.json(concept.evidence)},
       '{}'
     )
     RETURNING id
@@ -151,8 +151,8 @@ export async function insertArtifact(input: ArtifactInput): Promise<string> {
       ${input.kind},
       ${input.day},
       ${input.title},
-      ${JSON.stringify(input.content)}::jsonb,
-      ${JSON.stringify(input.sourceRefs)}::jsonb,
+      ${sql.json(input.content)},
+      ${sql.json(input.sourceRefs)},
       'proposed'
     )
     RETURNING id
