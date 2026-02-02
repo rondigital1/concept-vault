@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import {
   listSessionsAction,
   deleteSessionAction,
@@ -22,21 +22,11 @@ export function ChatHistorySidebar({
   onNewChat,
 }: ChatHistorySidebarProps) {
   const router = useRouter();
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const loadSessions = useCallback(async () => {
-    setIsLoading(true);
-    const data = await listSessionsAction();
-    setSessions(data);
-    setIsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (isOpen) {
-      loadSessions();
-    }
-  }, [isOpen, loadSessions]);
+  const { data, isLoading, mutate } = useSWR<SessionSummary[]>(
+    isOpen ? 'chat-sessions' : null,
+    () => listSessionsAction()
+  );
+  const sessions = data ?? [];
 
   const handleSelectSession = (sessionId: string) => {
     router.push(`/chat?session=${sessionId}`);
@@ -52,12 +42,17 @@ export function ChatHistorySidebar({
     );
     if (!confirmed) return;
 
+    const nextSessions = sessions.filter((s) => s.id !== sessionId);
+    await mutate(nextSessions, { revalidate: false });
+
     const result = await deleteSessionAction(sessionId);
     if (result.success) {
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       if (currentSessionId === sessionId) {
         onNewChat();
       }
+      mutate();
+    } else {
+      mutate();
     }
   };
 
