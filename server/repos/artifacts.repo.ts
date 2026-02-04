@@ -7,6 +7,9 @@
 
 import { sql } from '@/db';
 
+// Type accepted by sql.json() (postgres JSONValue); used to assert Record<string, unknown> from API/agents.
+type JsonParam = Parameters<typeof sql.json>[0];
+
 // ---------- Types ----------
 
 export interface ArtifactRow {
@@ -47,8 +50,8 @@ export async function insertArtifact(input: ArtifactInput): Promise<string> {
       ${input.kind},
       ${input.day},
       ${input.title},
-      ${sql.json(input.content)},
-      ${sql.json(input.sourceRefs)},
+      ${sql.json(input.content as JsonParam)},
+      ${sql.json(input.sourceRefs as JsonParam)},
       'proposed'
     )
     RETURNING id

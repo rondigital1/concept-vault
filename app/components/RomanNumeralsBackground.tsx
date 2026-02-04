@@ -1,7 +1,7 @@
 'use client';
 
 import { Canvas, useFrame } from '@react-three/fiber';
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useMemo, useEffect, useState } from 'react';
 import * as THREE from 'three';
 
 // Hook to detect reduced motion preference
@@ -9,6 +9,20 @@ function usePrefersReducedMotion() {
   if (typeof window === 'undefined') return false;
   const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   return mediaQuery.matches;
+}
+
+// TODO: Figure out a long-term solution for 3D background CPU/GPU heat and battery use
+// (e.g. static/canvas fallback, lower framerate cap, or replace with CSS-only background)
+
+// Pause animation when tab is hidden to reduce CPU/GPU heat and battery use
+function usePageVisible() {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const handler = () => setVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+  return visible;
 }
 
 // 3D Roman Numeral using tubes for depth
@@ -165,6 +179,7 @@ function Scene() {
 // Main component
 export default function RomanNumeralsBackground() {
   const prefersReducedMotion = usePrefersReducedMotion();
+  const pageVisible = usePageVisible();
   const glRef = useRef<THREE.WebGLRenderer | null>(null);
 
   useEffect(() => {
@@ -192,7 +207,7 @@ export default function RomanNumeralsBackground() {
           preserveDrawingBuffer: false
         }}
         dpr={[1, 1.5]}
-        frameloop="always"
+        frameloop={pageVisible ? 'always' : 'never'}
         onCreated={({ gl }) => {
           glRef.current = gl;
           gl.setClearColor(0x000000, 0);

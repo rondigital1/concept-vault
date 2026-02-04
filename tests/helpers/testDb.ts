@@ -12,6 +12,8 @@
 import { sql } from '@/db';
 import { SCHEMA_SQL } from '@/db/schema';
 
+type JsonParam = Parameters<typeof sql.json>[0];
+
 /**
  * Initialize the test database schema.
  * Safe to call multiple times.
@@ -120,8 +122,8 @@ export async function insertTestArtifact(params: {
       ${kind},
       ${day},
       ${title},
-      ${sql.json(content)},
-      ${sql.json(sourceRefs)},
+      ${sql.json(content as JsonParam)},
+      ${sql.json(sourceRefs as JsonParam)},
       ${status}
     )
     RETURNING id
