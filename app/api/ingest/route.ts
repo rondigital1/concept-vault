@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { client, ensureSchema } from "@/db";
 import { ingestDocument } from "@/server/services/ingest.service";
+import { extractDocumentFromUrl, isHttpUrl } from "@/server/services/urlExtract.service";
 
 export const runtime = "nodejs";
 
 type IngestRequest = {
   title?: string;
   source?: string;
-  content: string;
+  content?: string;
 };
 
 function badRequest(message: string) {
@@ -25,11 +26,30 @@ export async function POST(request: Request) {
       return badRequest("Invalid JSON body");
     }
 
+    const source =
+      typeof body.source === "string" && body.source.trim()
+        ? body.source.trim().slice(0, 500)
+        : "manual";
     const rawContent = typeof body.content === "string" ? body.content : "";
-    const content = rawContent.trim();
+    let content = rawContent.trim();
+    let extractedTitle: string | undefined;
+
+    const shouldExtractFromUrl = isHttpUrl(source) && content.length < 50;
+
+    if (shouldExtractFromUrl) {
+      try {
+        const extraction = await extractDocumentFromUrl(source);
+        content = extraction.content;
+        extractedTitle = extraction.title;
+      } catch (error: any) {
+        if (!content) {
+          return badRequest(error?.message ?? "Failed to extract content from URL");
+        }
+      }
+    }
 
     if (!content) {
-      return badRequest("content is required");
+      return badRequest("content is required for non-URL sources");
     }
     if (content.length < 50) {
       return badRequest("content is too short (min 50 chars)");
@@ -38,12 +58,9 @@ export async function POST(request: Request) {
     const title =
       typeof body.title === "string" && body.title.trim()
         ? body.title.trim().slice(0, 200)
+        : extractedTitle
+          ? extractedTitle.slice(0, 200)
         : deriveTitleFromContent(content);
-
-    const source =
-      typeof body.source === "string" && body.source.trim()
-        ? body.source.trim().slice(0, 500)
-        : "manual";
 
     const result = await ingestDocument({ title, source, content });
 

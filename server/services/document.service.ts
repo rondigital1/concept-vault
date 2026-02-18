@@ -130,6 +130,33 @@ export async function getAllDocuments(): Promise<DocumentRow[]> {
 }
 
 /**
+ * Picks a document for curation from most recent imports.
+ * Prioritizes untagged documents, then falls back to the latest document.
+ */
+export async function getDocumentIdForCuration(): Promise<string | null> {
+  const untagged = await sql<Array<{ id: string }>>`
+    SELECT id
+    FROM documents
+    WHERE cardinality(tags) = 0
+    ORDER BY imported_at DESC
+    LIMIT 1
+  `;
+
+  if (untagged[0]?.id) {
+    return untagged[0].id;
+  }
+
+  const latest = await sql<Array<{ id: string }>>`
+    SELECT id
+    FROM documents
+    ORDER BY imported_at DESC
+    LIMIT 1
+  `;
+
+  return latest[0]?.id ?? null;
+}
+
+/**
  * MVP v1: Extract stable topic tags.
  *
  * IMPORTANT:
