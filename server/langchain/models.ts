@@ -44,11 +44,15 @@ function createOpenAIModel(
     throw new Error('OPENAI_API_KEY is not configured');
   }
 
+  const nativeFetch =
+    typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined;
+
   return new ChatOpenAI({
     model: options.model ?? appConfig.modelName,
     temperature: options.temperature ?? DEFAULT_TEMPERATURE,
     maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
     apiKey: appConfig.openaiApiKey,
+    configuration: nativeFetch ? { fetch: nativeFetch } : undefined,
     callbacks,
   });
 }
