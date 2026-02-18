@@ -156,3 +156,36 @@ export interface LlmCall {
   error: unknown; // JSONB
   created_at: Date;
 }
+
+/**
+ * Saved topic profile used by the end-to-end topic runner workflow
+ */
+export interface SavedTopic {
+  id: string;
+  name: string;
+  goal: string;
+  focus_tags: string[];
+  max_docs_per_run: number;
+  min_quality_results: number;
+  min_relevance_score: number;
+  max_iterations: number;
+  max_queries: number;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type SourceWatchKind = 'website' | 'blog' | 'newsletter' | 'source';
+
+export interface SourceWatchItem {
+  id: string;
+  url: string;
+  domain: string;
+  label: string;
+  kind: SourceWatchKind;
+  is_active: boolean;
+  check_interval_hours: number;
+  last_checked_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}

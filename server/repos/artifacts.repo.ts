@@ -24,6 +24,7 @@ export interface ArtifactRow {
   status: 'proposed' | 'approved' | 'rejected' | 'superseded';
   created_at: string;
   reviewed_at: string | null;
+  read_at: string | null;
 }
 
 export interface ArtifactInput {
@@ -130,7 +131,7 @@ export async function rejectArtifact(artifactId: string): Promise<boolean> {
  */
 export async function getArtifactById(artifactId: string): Promise<ArtifactRow | null> {
   const rows = await sql<Array<ArtifactRow>>`
-    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at
+    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
     WHERE id = ${artifactId}
   `;
@@ -142,7 +143,7 @@ export async function getArtifactById(artifactId: string): Promise<ArtifactRow |
  */
 export async function listInboxArtifacts(day: string): Promise<ArtifactRow[]> {
   const rows = await sql<ArtifactRow[]>`
-    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at
+    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
     WHERE day = ${day} AND status = 'proposed'
     ORDER BY created_at ASC
@@ -155,7 +156,7 @@ export async function listInboxArtifacts(day: string): Promise<ArtifactRow[]> {
  */
 export async function listActiveArtifacts(day: string): Promise<ArtifactRow[]> {
   const rows = await sql<ArtifactRow[]>`
-    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at
+    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
     WHERE day = ${day} AND status = 'approved'
     ORDER BY created_at ASC
@@ -168,7 +169,7 @@ export async function listActiveArtifacts(day: string): Promise<ArtifactRow[]> {
  */
 export async function listArtifactsByDay(day: string): Promise<ArtifactRow[]> {
   const rows = await sql<ArtifactRow[]>`
-    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at
+    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
     WHERE day = ${day}
     ORDER BY created_at ASC
@@ -185,14 +186,14 @@ export async function listArtifactsByAgentAndKind(
   options?: { day?: string; status?: string }
 ): Promise<ArtifactRow[]> {
   let query = sql<ArtifactRow[]>`
-    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at
+    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
     WHERE agent = ${agent} AND kind = ${kind}
   `;
 
   if (options?.day) {
     query = sql<ArtifactRow[]>`
-      SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at
+      SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
       FROM artifacts
       WHERE agent = ${agent} AND kind = ${kind} AND day = ${options.day}
       ${options.status ? sql`AND status = ${options.status}` : sql``}
@@ -200,7 +201,7 @@ export async function listArtifactsByAgentAndKind(
     `;
   } else if (options?.status) {
     query = sql<ArtifactRow[]>`
-      SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at
+      SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
       FROM artifacts
       WHERE agent = ${agent} AND kind = ${kind} AND status = ${options.status}
       ORDER BY created_at ASC

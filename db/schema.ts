@@ -21,6 +21,17 @@ CREATE TABLE IF NOT EXISTS runs (
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
+-- Migration guard: keep runs.kind constraint aligned on existing databases.
+-- CREATE TABLE IF NOT EXISTS does not update existing CHECK constraints.
+UPDATE runs
+SET kind = 'webScout'
+WHERE kind IN ('web-scout', 'web_scout');
+
+ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_kind_check;
+ALTER TABLE runs
+  ADD CONSTRAINT runs_kind_check
+  CHECK (kind IN ('distill','curate','webScout','research'));
+
 CREATE TABLE IF NOT EXISTS run_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -150,6 +161,44 @@ CREATE TABLE IF NOT EXISTS related_documents (
   PRIMARY KEY (document_id, related_document_id)
 );
 
+-- Saved topic profiles for end-to-end agent workflows
+CREATE TABLE IF NOT EXISTS saved_topics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  goal TEXT NOT NULL,
+  focus_tags TEXT[] NOT NULL DEFAULT '{}',
+  max_docs_per_run INTEGER NOT NULL DEFAULT 5 CHECK (max_docs_per_run BETWEEN 1 AND 20),
+  min_quality_results INTEGER NOT NULL DEFAULT 3 CHECK (min_quality_results BETWEEN 1 AND 20),
+  min_relevance_score REAL NOT NULL DEFAULT 0.8 CHECK (min_relevance_score >= 0 AND min_relevance_score <= 1),
+  max_iterations INTEGER NOT NULL DEFAULT 5 CHECK (max_iterations BETWEEN 1 AND 20),
+  max_queries INTEGER NOT NULL DEFAULT 10 CHECK (max_queries BETWEEN 1 AND 50),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS saved_topics_active_idx
+  ON saved_topics(is_active, updated_at DESC);
+
+-- User-managed source watchlist for periodic web scouting
+CREATE TABLE IF NOT EXISTS source_watchlist (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  url TEXT NOT NULL UNIQUE,
+  domain TEXT NOT NULL,
+  label TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('website','blog','newsletter','source')),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  check_interval_hours INTEGER NOT NULL DEFAULT 24 CHECK (check_interval_hours BETWEEN 1 AND 168),
+  last_checked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS source_watchlist_active_idx
+  ON source_watchlist(is_active, updated_at DESC);
+CREATE INDEX IF NOT EXISTS source_watchlist_due_idx
+  ON source_watchlist(is_active, last_checked_at);
+
 -- Agent-produced artifacts (review / approval inbox)
 CREATE TABLE IF NOT EXISTS artifacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -166,6 +215,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   reviewed_at TIMESTAMPTZ
 );
+
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
 
 -- Fast inbox queries (Today dashboard)
 CREATE INDEX IF NOT EXISTS artifacts_day_status_idx
@@ -206,6 +257,48 @@ export type SchemaInitResult = {
   error?: string;
 };
 
+type SqlClient = {
+  unsafe: (sql: string) => Promise<any>;
+};
+
+const SCHEMA_INIT_LOCK_KEY = 924_761_201;
+const SCHEMA_INIT_MAX_ATTEMPTS = 3;
+const SCHEMA_INIT_RETRY_BASE_MS = 150;
+
+let schemaInitialized = false;
+let schemaInitInFlight: Promise<SchemaInitResult> | null = null;
+
+function getPostgresErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
+
+function isDeadlockError(error: unknown): boolean {
+  const code = getPostgresErrorCode(error);
+  if (code === '40P01') return true;
+
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes('deadlock detected');
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runSchemaSql(sqlClient: SqlClient): Promise<void> {
+  await sqlClient.unsafe(`SELECT pg_advisory_lock(${SCHEMA_INIT_LOCK_KEY})`);
+  try {
+    await sqlClient.unsafe(SCHEMA_SQL);
+  } finally {
+    try {
+      await sqlClient.unsafe(`SELECT pg_advisory_unlock(${SCHEMA_INIT_LOCK_KEY})`);
+    } catch (unlockError) {
+      console.error('Failed to release schema advisory lock:', unlockError);
+    }
+  }
+}
+
 /**
  * Initialize database schema.
  * Safe to call multiple times (uses IF NOT EXISTS).
@@ -214,37 +307,62 @@ export type SchemaInitResult = {
 export async function ensureSchema(sqlClient: {
   unsafe: (sql: string) => Promise<any>;
 }): Promise<SchemaInitResult> {
-  try {
-    // Execute the schema SQL
-    await sqlClient.unsafe(SCHEMA_SQL);
+  if (schemaInitialized) {
     return { ok: true };
-  } catch (error) {
-    let message = 'Unknown error';
-    if (error instanceof Error) {
-      // Check for common connection issues
-      if (
-        error.message.includes('AggregateError') ||
-        error.message.includes('ECONNREFUSED') ||
-        error.message.includes('connection refused')
-      ) {
-        message = `Database connection failed. 
+  }
+
+  if (schemaInitInFlight) {
+    return schemaInitInFlight;
+  }
+
+  schemaInitInFlight = (async () => {
+    try {
+      for (let attempt = 1; attempt <= SCHEMA_INIT_MAX_ATTEMPTS; attempt++) {
+        try {
+          await runSchemaSql(sqlClient);
+          schemaInitialized = true;
+          return { ok: true };
+        } catch (error) {
+          if (isDeadlockError(error) && attempt < SCHEMA_INIT_MAX_ATTEMPTS) {
+            const delayMs = SCHEMA_INIT_RETRY_BASE_MS * attempt;
+            await sleep(delayMs);
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      return { ok: false, error: 'Schema initialization failed after retries' };
+    } catch (error) {
+      let message = 'Unknown error';
+      if (error instanceof Error) {
+        // Check for common connection issues
+        if (
+          error.message.includes('AggregateError') ||
+          error.message.includes('ECONNREFUSED') ||
+          error.message.includes('connection refused')
+        ) {
+          message = `Database connection failed. 
 Troubleshooting:
 1. Is Docker Desktop running? If so, run 'docker compose up -d'.
 2. If using Homebrew Postgres, is it started? Run 'brew services list'.
 3. Check your DATABASE_URL in .env (current: ${process.env.DATABASE_URL})`;
-      } else {
-        message = error.message;
-      }
+        } else {
+          message = error.message;
+        }
 
-      if (error.stack) {
-        console.error('Schema initialization error stack:', error.stack);
+        if (error.stack) {
+          console.error('Schema initialization error stack:', error.stack);
+        }
+      } else {
+        message = typeof error === 'string' ? error : JSON.stringify(error);
       }
-    } else if (typeof error === 'string') {
-      message = error;
-    } else {
-      message = JSON.stringify(error);
+      console.error('Schema initialization failed:', message);
+      return { ok: false, error: message };
+    } finally {
+      schemaInitInFlight = null;
     }
-    console.error('Schema initialization failed:', message);
-    return { ok: false, error: message };
-  }
+  })();
+
+  return schemaInitInFlight;
 }
