@@ -9,6 +9,10 @@ import { getSessionAction } from '../../actions/chatHistoryActions';
 import { WELCOME_MESSAGE } from '../types';
 import type { Message } from '../types';
 
+type SubmitOptions = {
+  failedMessageId?: string;
+};
+
 type UseChatSessionResult = {
   sessionId: string | null;
   message: string;
@@ -20,11 +24,20 @@ type UseChatSessionResult = {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   messagesEndRef: RefObject<HTMLDivElement | null>;
   setMessage: Dispatch<SetStateAction<string>>;
-  handleSubmit: (e?: FormEvent, overrideMessage?: string) => Promise<void>;
+  handleSubmit: (e?: FormEvent, overrideMessage?: string, options?: SubmitOptions) => Promise<void>;
   handleKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  retryFailedMessage: (failedMessageId: string) => Promise<void>;
   refreshSuggestions: () => Promise<void>;
   handleNewChat: () => void;
 };
+
+function createMessageId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return Date.now().toString();
+}
 
 export function useChatSession(): UseChatSessionResult {
   const router = useRouter();
@@ -146,25 +159,63 @@ export function useChatSession(): UseChatSessionResult {
   }, [message]);
 
   const handleSubmit = useCallback(
-    async (e?: FormEvent, overrideMessage?: string) => {
+    async (e?: FormEvent, overrideMessage?: string, options?: SubmitOptions) => {
       e?.preventDefault();
-      const messageToSend = overrideMessage || message;
+      const messageToSend = overrideMessage ?? message;
+      const normalizedMessage = messageToSend.trim();
 
-      if (!messageToSend.trim() || isLoading) {
+      if (!normalizedMessage || isLoading) {
         return;
       }
 
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        role: 'user',
-        content: messageToSend.trim(),
-        timestamp: new Date(),
-      };
+      let shouldAppendUserMessage = true;
+      let userMessageId: string | null = null;
 
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => m.id !== 'welcome');
-        return [...filtered, userMessage];
-      });
+      if (options?.failedMessageId) {
+        const failedIndex = messages.findIndex(
+          (msg) => msg.id === options.failedMessageId && msg.status === 'failed',
+        );
+
+        if (failedIndex >= 0) {
+          const failedMessage = messages[failedIndex];
+          const userMessageById =
+            failedMessage.failedUserMessageId != null
+              ? messages.find(
+                (msg) => msg.id === failedMessage.failedUserMessageId && msg.role === 'user',
+              )
+              : null;
+          const userMessageBeforeFailure =
+            failedIndex > 0 && messages[failedIndex - 1]?.role === 'user'
+              ? messages[failedIndex - 1]
+              : null;
+          const associatedUserMessage = userMessageById ?? userMessageBeforeFailure;
+
+          if (associatedUserMessage && associatedUserMessage.content === normalizedMessage) {
+            shouldAppendUserMessage = false;
+            userMessageId = associatedUserMessage.id;
+          }
+
+          setMessages((prev) => prev.filter((msg) => msg.id !== options.failedMessageId));
+        }
+      }
+
+      if (shouldAppendUserMessage) {
+        userMessageId = createMessageId();
+        const userMessage: Message = {
+          id: userMessageId,
+          role: 'user',
+          content: normalizedMessage,
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => m.id !== 'welcome');
+          return [...filtered, userMessage];
+        });
+      } else if (!userMessageId) {
+        userMessageId = createMessageId();
+      }
+
       setMessage('');
       setIsLoading(true);
       setIsTyping(true);
@@ -175,8 +226,9 @@ export function useChatSession(): UseChatSessionResult {
 
       try {
         const response = await chatAction({
-          message: userMessage.content,
+          message: normalizedMessage,
           sessionId: sessionId,
+          reuseLastUserMessage: !shouldAppendUserMessage,
         });
         setIsTyping(false);
 
@@ -186,7 +238,7 @@ export function useChatSession(): UseChatSessionResult {
         }
 
         const assistantMessage: Message = {
-          id: Date.now().toString(),
+          id: createMessageId(),
           role: 'assistant',
           content: response.content,
           suggestedReplies: response.suggestedReplies,
@@ -198,9 +250,12 @@ export function useChatSession(): UseChatSessionResult {
         setIsTyping(false);
 
         const errorMessage: Message = {
-          id: Date.now().toString(),
+          id: createMessageId(),
           role: 'assistant',
           content: 'Sorry, I encountered an error processing your request. Please try again.',
+          status: 'failed',
+          failedRequestContent: normalizedMessage,
+          failedUserMessageId: userMessageId,
           timestamp: new Date(),
         };
 
@@ -210,7 +265,22 @@ export function useChatSession(): UseChatSessionResult {
         setIsTyping(false);
       }
     },
-    [isLoading, message, router, sessionId],
+    [isLoading, message, messages, router, sessionId],
+  );
+
+  const retryFailedMessage = useCallback(
+    async (failedMessageId: string) => {
+      const failedMessage = messages.find(
+        (msg) => msg.id === failedMessageId && msg.status === 'failed',
+      );
+      const retryText = failedMessage?.failedRequestContent?.trim();
+      if (!retryText || isLoading) {
+        return;
+      }
+
+      await handleSubmit(undefined, retryText, { failedMessageId });
+    },
+    [handleSubmit, isLoading, messages],
   );
 
   const handleKeyDown = useCallback(
@@ -236,6 +306,7 @@ export function useChatSession(): UseChatSessionResult {
     setMessage,
     handleSubmit,
     handleKeyDown,
+    retryFailedMessage,
     refreshSuggestions,
     handleNewChat,
   };

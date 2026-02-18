@@ -17,15 +17,19 @@ function getSourceDisplay(source: string): string {
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+
   const now = new Date();
-  const diffTime = Math.abs(now.getTime() - date.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfImportedDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((startOfToday.getTime() - startOfImportedDay.getTime()) / (1000 * 60 * 60 * 24));
 
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+  if (diffDays > 1 && diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays >= 7 && diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  if (diffDays >= 30 && diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+  if (diffDays < 0 && diffDays >= -1) return 'Today';
 
   return date.toLocaleDateString('en-US', {
     month: 'short',
@@ -97,17 +101,17 @@ export default async function LibraryPage() {
             description="Import your first document to get started"
           />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch">
             {documents.map((doc) => (
-              <Link key={doc.id} href={`/library/${doc.id}`} className="group">
-                <Card className="h-full aspect-square flex flex-col p-5 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] cursor-pointer">
-                  <div className="flex-1 flex flex-col gap-3">
-                    <h3 className="text-base font-semibold text-white leading-tight line-clamp-3 group-hover:text-[#d97757] transition-colors">
+              <Link key={doc.id} href={`/library/${doc.id}`} className="group block h-full min-w-0">
+                <Card className="h-full aspect-square overflow-hidden flex flex-col p-5 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] cursor-pointer">
+                  <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+                    <h3 className="text-base font-semibold text-white leading-tight line-clamp-3 break-words group-hover:text-[#d97757] transition-colors">
                       {doc.title}
                     </h3>
 
                     {doc.tags && doc.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-1.5 max-h-16 overflow-hidden">
                         {doc.tags.slice(0, 3).map((tag: string) => (
                           <Badge key={tag} variant="secondary" className="text-xs">
                             {tag}

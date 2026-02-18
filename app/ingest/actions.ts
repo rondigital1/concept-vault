@@ -2,6 +2,7 @@
 
 import { client, ensureSchema } from '@/db';
 import { ingestDocument } from '@/server/services/ingest.service';
+import { extractDocumentFromUrl, isHttpUrl } from '@/server/services/urlExtract.service';
 
 export type IngestResult =
   | { success: true; documentId: string; created: boolean }
@@ -10,12 +11,28 @@ export type IngestResult =
 export async function ingestContent(formData: {
   title?: string;
   source?: string;
-  content: string;
+  content?: string;
 }): Promise<IngestResult> {
   try {
     await ensureSchema(client);
 
-    const content = formData.content.trim();
+    const rawSource = formData.source?.trim();
+    const source = rawSource || 'manual';
+    const providedContent = formData.content?.trim() || '';
+    let content = providedContent;
+    let extractedTitle: string | undefined;
+
+    const shouldExtractFromUrl = isHttpUrl(rawSource) && content.length < 50;
+
+    if (shouldExtractFromUrl) {
+      const extraction = await extractDocumentFromUrl(rawSource);
+      content = extraction.content;
+      extractedTitle = extraction.title;
+    } else if (!content) {
+      if (!isHttpUrl(rawSource)) {
+        return { success: false, error: 'Content is required for non-URL sources' };
+      }
+    }
 
     // Validation
     if (!content) {
@@ -27,8 +44,7 @@ export async function ingestContent(formData: {
     }
 
     // Derive title from content if not provided
-    const title = formData.title?.trim() || deriveTitle(content);
-    const source = formData.source?.trim() || 'manual';
+    const title = formData.title?.trim() || extractedTitle || deriveTitle(content);
 
     // Call the ingest service
     const result = await ingestDocument({ title, source, content });

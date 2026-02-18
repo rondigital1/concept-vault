@@ -38,13 +38,16 @@ function getSourceDisplay(source: string): { display: string; url: string | null
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+
+  return date.toLocaleString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZoneName: 'short',
   });
 }
 

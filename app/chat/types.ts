@@ -4,6 +4,9 @@ export type Message = {
   content: string;
   timestamp: Date;
   suggestedReplies?: string[];
+  status?: 'failed';
+  failedRequestContent?: string;
+  failedUserMessageId?: string;
 };
 
 export const WELCOME_MESSAGE: Message = {

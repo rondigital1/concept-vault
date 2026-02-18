@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getTodayView } from '@/server/services/today.service';
+import { listSavedTopics, type SavedTopicRow } from '@/server/repos/savedTopics.repo';
 import { TodayClient } from './TodayClient';
 import { TodayBackground } from './TodayBackground';
 
@@ -125,6 +126,13 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
 
 export default async function TodayPage() {
   const today = (await getTodayView()) as TodayData;
+  let savedTopics: SavedTopicRow[] = [];
+
+  try {
+    savedTopics = await listSavedTopics({ activeOnly: true });
+  } catch (error) {
+    console.error('Failed to load saved topics for Today page:', error);
+  }
 
   const runs = today.runs ?? [];
   const inbox = today.inbox ?? [];
@@ -214,22 +222,169 @@ export default async function TodayPage() {
                     </span>
                   </button>
                 </form>
-                <form action="/api/runs/web-scout" method="POST">
+                <form action="/api/runs/distill-curate" method="POST">
+                  <button
+                    type="submit"
+                    className="group relative px-6 py-3 bg-emerald-400 text-black font-semibold rounded-xl border border-emerald-300 transition-all duration-200 hover:bg-emerald-300 hover:border-emerald-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-emerald-200/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
+                  >
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h10" />
+                      </svg>
+                      Distill + Curate
+                    </span>
+                    <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                      A
+                    </span>
+                  </button>
+                </form>
+                <Link
+                  href="/web-scout"
+                  className="group relative px-6 py-3 bg-zinc-800 text-white font-semibold rounded-xl border border-zinc-700 transition-all duration-200 hover:bg-zinc-700 hover:border-zinc-600 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-zinc-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Web Scout
+                  </span>
+                  <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    W
+                  </span>
+                </Link>
+                <form action="/api/research" method="POST">
                   <button
                     type="submit"
                     className="group relative px-6 py-3 bg-zinc-800 text-white font-semibold rounded-xl border border-zinc-700 transition-all duration-200 hover:bg-zinc-700 hover:border-zinc-600 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-zinc-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
                   >
                     <span className="flex items-center gap-2">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      Web Scout
+                      Research
                     </span>
                     <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      W
+                      G
                     </span>
                   </button>
                 </form>
+              </div>
+            </Card>
+          </section>
+
+          {/* Topic Controls */}
+          <section className="mb-8" id="topic-management">
+            <Card className="p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <SectionHeader title="Topic Report Setup" count={savedTopics.length} />
+                <p className="text-xs text-zinc-500">
+                  Save topics once, then select them for report runs.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="text-sm font-semibold text-white mb-3">Select Saved Topics</h3>
+                  {savedTopics.length === 0 ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                      <p className="text-sm text-zinc-400">
+                        No saved topics yet. Create one using the form on the right.
+                      </p>
+                    </div>
+                  ) : (
+                    <form action="/api/runs/topic-report" method="POST" className="space-y-4">
+                      <p className="text-xs text-zinc-500">
+                        Select one or more topics. Leave all unchecked to run all active topics.
+                      </p>
+                      <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                        {savedTopics.map((topic) => (
+                          <label
+                            key={topic.id}
+                            className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5 hover:border-zinc-700 transition-colors cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              name="topicIds"
+                              value={topic.id}
+                              className="mt-1 h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-blue-400 focus:ring-blue-400/60"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-white truncate">{topic.name}</p>
+                              <p className="text-xs text-zinc-400 line-clamp-2">{topic.goal}</p>
+                              {topic.focus_tags.length > 0 && (
+                                <p className="text-[11px] text-zinc-500 mt-1 truncate">
+                                  Tags: {topic.focus_tags.join(', ')}
+                                </p>
+                              )}
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        type="submit"
+                        className="group relative px-6 py-3 bg-blue-400 text-black font-semibold rounded-xl border border-blue-300 transition-all duration-200 hover:bg-blue-300 hover:border-blue-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-200/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
+                      >
+                        <span className="flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4V7m4 10V5a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2z" />
+                          </svg>
+                          Run Topic Report
+                        </span>
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-white mb-3">Add Topic</h3>
+                  <form action="/api/topics" method="POST" className="space-y-3">
+                    <div>
+                      <label htmlFor="topic-name" className="block text-xs text-zinc-400 mb-1.5">
+                        Topic Name
+                      </label>
+                      <input
+                        id="topic-name"
+                        name="name"
+                        required
+                        maxLength={80}
+                        placeholder="e.g. Multi-agent systems"
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-400/40"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="topic-goal" className="block text-xs text-zinc-400 mb-1.5">
+                        Learning Goal
+                      </label>
+                      <textarea
+                        id="topic-goal"
+                        name="goal"
+                        required
+                        maxLength={500}
+                        rows={4}
+                        placeholder="What should the agent focus on learning and finding?"
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-400/40"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="topic-focus-tags" className="block text-xs text-zinc-400 mb-1.5">
+                        Focus Tags (optional)
+                      </label>
+                      <input
+                        id="topic-focus-tags"
+                        name="focusTags"
+                        maxLength={240}
+                        placeholder="llms, retrieval, langgraph"
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-400/40"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="px-4 py-2.5 bg-zinc-100 text-black text-sm font-semibold rounded-lg hover:bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
+                    >
+                      Save Topic
+                    </button>
+                  </form>
+                </div>
               </div>
             </Card>
           </section>

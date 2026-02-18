@@ -148,50 +148,76 @@ export function ChatHistorySidebar({
           </div>
         ) : (
           <div className="p-2 space-y-1">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => handleSelectSession(session.id)}
-                className={`group flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                  currentSessionId === session.id
-                    ? 'bg-stone-100'
-                    : 'hover:bg-stone-50'
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-stone-800 truncate">
-                    {session.title}
-                  </div>
-                  {session.preview && (
-                    <div className="text-xs text-stone-500 truncate mt-0.5">
-                      {session.preview}
-                    </div>
-                  )}
-                  <div className="text-xs text-stone-400 mt-1">
-                    {formatDate(session.updatedAt)}
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => handleDeleteSession(e, session.id)}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
-                  title="Delete conversation"
+            {sessions.map((session) => {
+              const isActive = currentSessionId === session.id;
+
+              return (
+                <div
+                  key={session.id}
+                  onClick={() => handleSelectSession(session.id)}
+                  className={`group flex items-start gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+                    isActive
+                      ? 'border-stone-900 bg-stone-900 shadow-sm'
+                      : 'border-transparent hover:bg-stone-50'
+                  }`}
                 >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                  <div
+                    className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+                      isActive ? 'bg-[#d97757]' : 'bg-transparent'
+                    }`}
+                  />
+
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className={`text-sm font-semibold truncate ${
+                        isActive ? 'text-white' : 'text-stone-800'
+                      }`}
+                    >
+                      {session.title}
+                    </div>
+                    {session.preview && (
+                      <div
+                        className={`text-xs truncate mt-0.5 ${
+                          isActive ? 'text-stone-200' : 'text-stone-500'
+                        }`}
+                      >
+                        {session.preview}
+                      </div>
+                    )}
+                    <div
+                      className={`text-xs mt-1 ${
+                        isActive ? 'text-stone-300' : 'text-stone-400'
+                      }`}
+                    >
+                      {formatDate(session.updatedAt)}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteSession(e, session.id)}
+                    className={`p-1 rounded transition-all ${
+                      isActive
+                        ? 'opacity-100 text-stone-300 hover:text-white hover:bg-white/10'
+                        : 'opacity-0 group-hover:opacity-100 text-stone-400 hover:text-red-500 hover:bg-red-50'
+                    }`}
+                    title="Delete conversation"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                </button>
-              </div>
-            ))}
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

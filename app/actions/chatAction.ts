@@ -8,6 +8,7 @@ import * as chatHistoryService from '@/server/services/chatHistory.service';
 export interface ChatActionInput {
   message: string;
   sessionId: string | null;
+  reuseLastUserMessage?: boolean;
 }
 
 export interface ChatResponse {
@@ -24,15 +25,22 @@ export async function chatAction(input: ChatActionInput): Promise<ChatResponse> 
     const session = await chatHistoryService.getOrCreateSession(input.sessionId);
     const isNewSession = !input.sessionId;
 
-    // Persist user message
-    await chatHistoryService.persistMessage(session.id, 'user', input.message);
-
-    // Load history from database
     const sessionData = await chatHistoryService.getSessionWithMessages(session.id);
     const history = sessionData?.messages ?? [];
+    const lastMessage = history[history.length - 1];
+    const canReuseLastUserMessage =
+      input.reuseLastUserMessage === true &&
+      lastMessage?.role === 'user' &&
+      lastMessage.content === input.message;
+
+    if (!canReuseLastUserMessage) {
+      await chatHistoryService.persistMessage(session.id, 'user', input.message);
+      history.push({ role: 'user', content: input.message });
+    }
 
     // Build LLM messages (exclude the just-added user message since we'll add it explicitly)
-    const historyWithoutLast = history.slice(0, -1);
+    const historyWithoutLast =
+      history[history.length - 1]?.role === 'user' ? history.slice(0, -1) : history;
 
     const systemPrompt = `You are a helpful knowledge assistant.
 After your response, please provide 2-4 brief suggested follow-up replies for the user to continue the conversation.

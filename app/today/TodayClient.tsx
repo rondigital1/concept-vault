@@ -78,20 +78,52 @@ export function TodayClient() {
     },
     {
       key: 'w',
-      description: 'Run Web Scout',
+      description: 'Open Web Scout run page',
+      action: () => {
+        router.push('/web-scout');
+      },
+    },
+    {
+      key: 'a',
+      description: 'Run Distill + Curate',
       action: async () => {
-        toast.info('Starting Web Scout run...');
+        toast.info('Starting Distill + Curate automation...');
         try {
-          const res = await fetch('/api/runs/web-scout', { method: 'POST' });
+          const res = await fetch('/api/runs/distill-curate', { method: 'POST' });
           if (res.ok) {
-            toast.success('Web Scout run started!');
+            toast.success('Distill + Curate automation completed');
             router.refresh();
           } else {
-            toast.error('Web Scout run failed');
+            toast.error('Distill + Curate automation failed');
           }
         } catch {
-          toast.error('Failed to start Web Scout');
+          toast.error('Failed to start Distill + Curate automation');
         }
+      },
+    },
+    {
+      key: 'g',
+      description: 'Generate Research report',
+      action: async () => {
+        toast.info('Starting Research...');
+        try {
+          const res = await fetch('/api/research', { method: 'POST' });
+          if (res.ok) {
+            toast.success('Research started!');
+            router.refresh();
+          } else {
+            toast.error('Research failed');
+          }
+        } catch {
+          toast.error('Failed to start Research');
+        }
+      },
+    },
+    {
+      key: 'p',
+      description: 'Go to Reports',
+      action: () => {
+        router.push('/reports');
       },
     },
     {

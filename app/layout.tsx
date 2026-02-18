@@ -39,6 +39,12 @@ export default function RootLayout({
                 LLM Chat
               </a>
               <a
+                href="/reports"
+                className="rounded-full px-4 py-2 text-sm font-medium text-zinc-400 transition-all hover:bg-white/10 hover:text-white"
+              >
+                Reports
+              </a>
+              <a
                 href="/library"
                 className="rounded-full px-4 py-2 text-sm font-medium text-zinc-400 transition-all hover:bg-white/10 hover:text-white"
               >

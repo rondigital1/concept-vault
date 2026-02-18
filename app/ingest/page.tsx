@@ -113,14 +113,33 @@ export default function IngestPage() {
   const handleTextSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!content.trim()) {
-      toast.error('Content is required');
-      return;
-    }
+    if (mode === 'url') {
+      const trimmedSource = source.trim();
+      if (!trimmedSource) {
+        toast.error('URL is required');
+        return;
+      }
 
-    if (content.trim().length < 50) {
-      toast.error('Content must be at least 50 characters');
-      return;
+      try {
+        const parsed = new URL(trimmedSource);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          toast.error('URL must use http or https');
+          return;
+        }
+      } catch {
+        toast.error('Please enter a valid URL');
+        return;
+      }
+    } else {
+      if (!content.trim()) {
+        toast.error('Content is required');
+        return;
+      }
+
+      if (content.trim().length < 50) {
+        toast.error('Content must be at least 50 characters');
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -129,7 +148,7 @@ export default function IngestPage() {
       const result = await ingestContent({
         title: title.trim() || undefined,
         source: source.trim() || undefined,
-        content: content.trim(),
+        content: mode === 'url' ? undefined : content.trim(),
       });
 
       if (!result.success) {
@@ -419,39 +438,24 @@ export default function IngestPage() {
                   />
                 </div>
 
-                {/* Content Input */}
-                <div>
-                  <label htmlFor="content" className="block text-sm font-medium text-white mb-2">
-                    Content <span className="text-red-400">*</span>
-                  </label>
-                  <textarea
-                    id="content"
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder="Paste URL above or add additional notes here..."
-                    rows={16}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent font-mono text-sm resize-y"
-                    required
-                  />
-                  <p className="mt-2 text-xs text-zinc-500 flex items-center justify-between">
-                    <span>
-                      {content.length} characters {content.length < 50 && `(${50 - content.length} more needed)`}
-                    </span>
-                    <span className="text-zinc-600">
-                      Markdown supported
-                    </span>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm text-zinc-300">
+                    Article content will be extracted automatically from the URL.
+                  </p>
+                  <p className="mt-2 text-xs text-zinc-500">
+                    This supports pages like blogs and X.com posts.
                   </p>
                 </div>
 
                 {/* Submit Button */}
                 <div className="flex items-center justify-between pt-4 border-t border-white/5">
                   <div className="text-sm text-zinc-500">
-                    Tags will be automatically extracted
+                    We will fetch and ingest the page content for you
                   </div>
                   <button
                     type="submit"
-                    disabled={isLoading || !content.trim() || content.trim().length < 50}
-                    className={`px-6 py-3 rounded-lg font-medium transition-all ${isLoading || !content.trim() || content.trim().length < 50
+                    disabled={isLoading || !source.trim()}
+                    className={`px-6 py-3 rounded-lg font-medium transition-all ${isLoading || !source.trim()
                       ? 'bg-white/5 text-zinc-500 cursor-not-allowed'
                       : 'bg-[#d97757] text-white hover:bg-[#c66849] shadow-lg hover:shadow-xl hover:scale-[1.02]'
                       }`}
