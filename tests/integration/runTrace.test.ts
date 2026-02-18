@@ -140,6 +140,36 @@ describe('Run Tracing (Observability)', () => {
       expect(trace!.steps[0].output).toEqual(outputData);
     });
 
+    it('should sanitize null bytes in step payloads before JSONB insert', async () => {
+      const runId = await createRun('distill');
+
+      await appendStep(runId, {
+        timestamp: new Date().toISOString(),
+        type: 'flow',
+        name: 'step\u0000_name',
+        status: 'ok',
+        input: {
+          text: 'hello\u0000world',
+          nested: { note: '\u0000trim-me' },
+          list: ['a\u0000b', null, 1],
+        },
+        output: {
+          message: 'done\u0000',
+        },
+        error: { message: 'bad\u0000news' },
+      });
+
+      const trace = await getRunTrace(runId);
+      expect(trace!.steps[0].name).toBe('step_name');
+      expect(trace!.steps[0].input).toEqual({
+        text: 'helloworld',
+        nested: { note: 'trim-me' },
+        list: ['ab', null, 1],
+      });
+      expect(trace!.steps[0].output).toEqual({ message: 'done' });
+      expect(trace!.steps[0].error).toEqual({ message: 'badnews' });
+    });
+
     it('should store error information', async () => {
       const runId = await createRun('distill');
 

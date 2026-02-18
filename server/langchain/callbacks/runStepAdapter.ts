@@ -34,7 +34,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     this.onStep = options.onStep;
   }
 
-  private emit(step: Partial<RunStep> & { name: string; status: RunStep['status'] }): void {
+  private async emit(step: Partial<RunStep> & { name: string; status: RunStep['status'] }): Promise<void> {
     if (!this.onStep) return;
 
     const fullStep: RunStep = {
@@ -43,7 +43,11 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
       ...step,
     };
 
-    this.onStep(fullStep);
+    try {
+      await this.onStep(fullStep);
+    } catch (error) {
+      console.error('[RunStepCallbackHandler] Failed to emit run step', error);
+    }
   }
 
   async handleLLMStart(
@@ -54,7 +58,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     const startTime = nowIso();
     this.stepStartTimes.set(runId, startTime);
 
-    this.emit({
+    await this.emit({
       name: llm.id?.[llm.id.length - 1] ?? 'llm_call',
       type: 'llm',
       status: 'running',
@@ -70,7 +74,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     // Extract token usage if available
     const tokenEstimate = output.llmOutput?.tokenUsage?.totalTokens;
 
-    this.emit({
+    await this.emit({
       name: 'llm_call',
       type: 'llm',
       status: 'ok',
@@ -89,7 +93,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     const startTime = this.stepStartTimes.get(runId);
     const endTime = nowIso();
 
-    this.emit({
+    await this.emit({
       name: 'llm_call',
       type: 'llm',
       status: 'error',
@@ -109,7 +113,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     const startTime = nowIso();
     this.stepStartTimes.set(runId, startTime);
 
-    this.emit({
+    await this.emit({
       name: tool.id?.[tool.id.length - 1] ?? 'tool_call',
       type: 'tool',
       status: 'running',
@@ -122,7 +126,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     const startTime = this.stepStartTimes.get(runId);
     const endTime = nowIso();
 
-    this.emit({
+    await this.emit({
       name: 'tool_call',
       type: 'tool',
       status: 'ok',
@@ -138,7 +142,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     const startTime = this.stepStartTimes.get(runId);
     const endTime = nowIso();
 
-    this.emit({
+    await this.emit({
       name: 'tool_call',
       type: 'tool',
       status: 'error',
@@ -158,7 +162,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     const startTime = nowIso();
     this.stepStartTimes.set(runId, startTime);
 
-    this.emit({
+    await this.emit({
       name: chain.id?.[chain.id.length - 1] ?? 'chain',
       type: 'agent',
       status: 'running',
@@ -174,7 +178,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     const startTime = this.stepStartTimes.get(runId);
     const endTime = nowIso();
 
-    this.emit({
+    await this.emit({
       name: 'chain',
       type: 'agent',
       status: 'ok',
@@ -190,7 +194,7 @@ export class RunStepCallbackHandler extends BaseCallbackHandler {
     const startTime = this.stepStartTimes.get(runId);
     const endTime = nowIso();
 
-    this.emit({
+    await this.emit({
       name: 'chain',
       type: 'agent',
       status: 'error',

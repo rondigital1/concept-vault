@@ -1,6 +1,89 @@
 import { sql } from '@/db';
 import { RunTrace, RunStep, RunKind, RunStatus } from './runTrace.types';
 
+type JsonParam = Parameters<typeof sql.json>[0];
+
+function sanitizeText(value: string): string {
+  return value.includes('\u0000') ? value.replace(/\u0000/g, '') : value;
+}
+
+function sanitizeJsonValue(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (value === null || value === undefined) return value;
+
+  if (typeof value === 'string') return sanitizeText(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'function' || typeof value === 'symbol') return undefined;
+
+  if (value instanceof Date) {
+    return sanitizeText(value.toISOString());
+  }
+
+  if (value instanceof Error) {
+    const serialized: Record<string, unknown> = {
+      name: sanitizeText(value.name),
+      message: sanitizeText(value.message),
+    };
+    if (value.stack) serialized.stack = sanitizeText(value.stack);
+
+    for (const [key, entry] of Object.entries(value)) {
+      const cleaned = sanitizeJsonValue(entry, seen);
+      if (cleaned !== undefined) {
+        serialized[sanitizeText(key)] = cleaned;
+      }
+    }
+
+    return serialized;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => {
+      const cleaned = sanitizeJsonValue(entry, seen);
+      return cleaned === undefined ? null : cleaned;
+    });
+  }
+
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (seen.has(obj)) return '[Circular]';
+    seen.add(obj);
+
+    if (value instanceof Map) {
+      const serialized: Record<string, unknown> = {};
+      for (const [key, entry] of value.entries()) {
+        const cleaned = sanitizeJsonValue(entry, seen);
+        if (cleaned !== undefined) {
+          serialized[sanitizeText(String(key))] = cleaned;
+        }
+      }
+      return serialized;
+    }
+
+    if (value instanceof Set) {
+      return Array.from(value.values()).map((entry) => {
+        const cleaned = sanitizeJsonValue(entry, seen);
+        return cleaned === undefined ? null : cleaned;
+      });
+    }
+
+    const serialized: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(obj)) {
+      const cleaned = sanitizeJsonValue(entry, seen);
+      if (cleaned !== undefined) {
+        serialized[sanitizeText(key)] = cleaned;
+      }
+    }
+    return serialized;
+  }
+
+  return value;
+}
+
+function sanitizeJsonForDb(value: unknown): unknown {
+  const cleaned = sanitizeJsonValue(value);
+  return cleaned === undefined ? null : cleaned;
+}
+
 // Best-effort mapping because your RunStep shape may evolve.
 function toDbStep(step: RunStep) {
   const s: any = step;
@@ -32,6 +115,14 @@ export async function createRun(kind: RunKind): Promise<string> {
 
 export async function appendStep(runId: string, step: RunStep): Promise<void> {
   const dbStep = toDbStep(step);
+  const input = dbStep.input !== null ? sanitizeJsonForDb(dbStep.input) : null;
+  const output = dbStep.output !== null ? sanitizeJsonForDb(dbStep.output) : null;
+  const error = dbStep.error !== null ? sanitizeJsonForDb(dbStep.error) : null;
+  const stepName = sanitizeText(String(dbStep.stepName));
+  const toolName = dbStep.toolName ? sanitizeText(String(dbStep.toolName)) : null;
+  const status = sanitizeText(String(dbStep.status));
+  const startedAt = sanitizeText(String(dbStep.startedAt));
+  const endedAt = dbStep.endedAt ? sanitizeText(String(dbStep.endedAt)) : null;
 
   // Ensure the run exists (cheap guard).
   const run = await sql<Array<{ id: string }>>`
@@ -54,14 +145,14 @@ export async function appendStep(runId: string, step: RunStep): Promise<void> {
       retry_count
     ) VALUES (
       ${runId},
-      ${dbStep.stepName},
-      ${dbStep.toolName ?? null},
-      ${dbStep.status},
-      ${dbStep.startedAt},
-      ${dbStep.endedAt},
-      ${dbStep.input !== null ? sql.json(dbStep.input) : null},
-      ${dbStep.output !== null ? sql.json(dbStep.output) : null},
-      ${dbStep.error !== null ? sql.json(dbStep.error) : null},
+      ${stepName},
+      ${toolName},
+      ${status},
+      ${startedAt},
+      ${endedAt},
+      ${input !== null ? sql.json(input as JsonParam) : null},
+      ${output !== null ? sql.json(output as JsonParam) : null},
+      ${error !== null ? sql.json(error as JsonParam) : null},
       ${dbStep.tokenEstimate},
       ${dbStep.retryCount}
     )
