@@ -1,251 +1,207 @@
 /**
- * Node implementations for the WebScout agent.
+ * Node implementations for the WebScout ReAct agent.
+ *
+ * setup         – Build initial messages (system prompt + goal + vault context)
+ * agent         – Invoke LLM with tools bound
+ * executeTools  – Run tool calls, track structured state
+ * finalize      – Convert quality results to proposals and save artifacts
  */
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { createExtractionModel } from '@/server/langchain/models';
-import { DerivedQueriesSchema, WebScoreResultsSchema } from '@/server/langchain/schemas/webScore.schema';
-import { executeTavilySearch } from '@/server/langchain/tools/tavily.tool';
-import { TavilySearchResult } from '@/server/tools/tavily.tool';
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
+import { StructuredToolInterface } from '@langchain/core/tools';
+import { createChatModel } from '@/server/langchain/models';
 import {
-  DocumentRow,
   getRecentDocumentsForQuery,
   getDocumentsByTags,
-  filterExistingUrls,
   insertWebProposalArtifact,
 } from '@/server/repos/webScout.repo';
-import { WebScoutProposal, ScoredResult, WebScoutStateType } from './webScout.types';
+import { checkoutDueSources } from '@/server/services/sourceWatch.service';
+import { webScoutTools } from '@/server/langchain/tools/webScout.tools';
+import { ScoredResult, WebScoutProposal, WebScoutStateType } from './webScout.types';
 
-export async function prepareQueries(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
-  if (state.mode === 'explicit-query') {
-    if (!state.explicitQuery) {
-      return { error: 'Query is required for explicit-query mode', queries: [] };
+// ---------- setup ----------
+
+export async function setup(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
+  let vaultContext = '';
+  let watchSourceDomains: string[] = [];
+  let watchSourceLines = '';
+
+  if (state.mode === 'derive-from-vault') {
+    const docs = state.focusTags?.length
+      ? await getDocumentsByTags(state.focusTags, 5)
+      : await getRecentDocumentsForQuery(5);
+
+    if (docs.length > 0) {
+      vaultContext = docs
+        .map(d => `- "${d.title}" (tags: ${d.tags.join(', ') || 'none'})\n  ${d.content.slice(0, 300)}`)
+        .join('\n');
     }
-    return { queries: [state.explicitQuery], vaultDocuments: [] };
   }
-
-  // Derive queries from vault documents
-  let vaultDocuments: DocumentRow[];
-
-  if (state.focusTags && state.focusTags.length > 0) {
-    vaultDocuments = await getDocumentsByTags(state.focusTags, state.deriveLimit);
-  } else {
-    vaultDocuments = await getRecentDocumentsForQuery(state.deriveLimit);
-  }
-
-  if (vaultDocuments.length === 0) {
-    return { queries: [], vaultDocuments: [], error: null };
-  }
-
-  const docSummaries = vaultDocuments
-    .map((doc, i) => {
-      const truncatedContent = doc.content.slice(0, 1500);
-      return `Document ${i + 1}: "${doc.title}"\nTags: ${doc.tags.join(', ') || 'none'}\nExcerpt: ${truncatedContent}`;
-    })
-    .join('\n\n---\n\n');
-
-  const model = createExtractionModel({ temperature: 0.4 }).withStructuredOutput(
-    DerivedQueriesSchema
-  );
 
   try {
-    const result = await model.invoke([
-      new SystemMessage(`You are analyzing a user's knowledge vault to suggest web searches that would find related content.
-
-Based on the documents, suggest 3-5 search queries that would find:
-1. Deeper dives into topics the user is learning
-2. Related concepts that complement their knowledge
-3. Recent developments or updates in these areas
-4. Practical applications or tutorials
-
-Queries should be specific and actionable. Avoid overly broad searches.
-Priority 1 is highest, 5 is lowest.`),
-      new HumanMessage(`DOCUMENTS IN VAULT:\n${docSummaries}`),
-    ]);
-
-    const queries = result.queries
-      .sort((a: { priority: number }, b: { priority: number }) => a.priority - b.priority)
-      .slice(0, 5)
-      .map((q: { query: string }) => q.query);
-
-    return { queries, vaultDocuments };
+    const dueSources = await checkoutDueSources(8);
+    if (dueSources.length > 0) {
+      watchSourceDomains = dueSources.map((source) => source.domain);
+      watchSourceLines = dueSources
+        .map((source) => `- ${source.domain} (${source.kind}; every ${source.checkIntervalHours}h)`)
+        .join('\n');
+    }
   } catch {
-    return { queries: [], vaultDocuments };
-  }
-}
-
-export async function executeSearches(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
-  if (state.queries.length === 0) {
-    return { allResults: [], queriesUsed: [] };
+    // Watchlist errors should not block scouting.
   }
 
-  const allResults: Array<TavilySearchResult & { sourceQuery: string }> = [];
-  const queriesUsed: string[] = [];
-  let queriesExecuted = 0;
-  let urlsFetched = 0;
+  const vaultSection = vaultContext
+    ? `\nVAULT CONTEXT (user's existing documents):\n${vaultContext}\n\nUse this context to avoid suggesting resources the user already has and to find complementary material.`
+    : '';
+  const watchSourceSection = watchSourceLines
+    ? `\nPERIODIC SOURCE WATCHLIST (check these first when relevant):\n${watchSourceLines}\n`
+    : '';
 
-  for (const query of state.queries) {
-    try {
-      const resultsPerQuery = Math.ceil(state.maxResults / state.queries.length) + 5;
-      const response = await executeTavilySearch(query, resultsPerQuery, 'basic');
+  const systemPrompt = `You are a web research agent finding high-quality learning resources.
 
-      queriesUsed.push(query);
-      queriesExecuted++;
-      urlsFetched += response.results.length;
+GOAL: ${state.goal}
+${vaultSection}
+${watchSourceSection}
+TOOLS:
+- searchWeb: Search the web. Start here.
+- checkVaultDuplicate: Check which URLs are already in the user's vault. Call after searching.
+- evaluateResult: Score a result for relevance. Call on promising new URLs.
+- refineQuery: Get a better query when results are insufficient.
 
-      for (const result of response.results) {
-        allResults.push({ ...result, sourceQuery: query });
-      }
-    } catch {
-      // Continue with other queries
-    }
-  }
+STRATEGY:
+1. Search for resources related to the goal
+2. Check found URLs against the vault to avoid duplicates
+3. Evaluate promising new results for quality and relevance
+4. If you have fewer than ${state.minQualityResults} quality results (score >= ${state.minRelevanceScore}), refine your query and search again
+5. When satisfied, respond with a summary of what you found WITHOUT calling any tools
+6. If watchlist sources are present, prioritize queries constrained to those domains first (for example, include site:domain in your query)
+
+QUALITY BAR: Find at least ${state.minQualityResults} results with relevance >= ${state.minRelevanceScore}.
+IMPORTANT: When calling evaluateResult, always pass the goal parameter as "${state.goal}".`;
+
+  const baseHumanMessage = state.mode === 'derive-from-vault'
+    ? `Find high-quality web resources that complement the user's vault. Goal: ${state.goal}`
+    : `Find high-quality web resources about: ${state.goal}`;
+  const watchSourceHint = watchSourceDomains.length > 0
+    ? `Start by checking recent interesting resources from these watched domains: ${watchSourceDomains.join(', ')}.`
+    : '';
+  const humanMessage = watchSourceHint
+    ? `${baseHumanMessage}\n${watchSourceHint}`
+    : baseHumanMessage;
 
   return {
-    allResults,
-    queriesUsed,
-    counts: {
-      queriesExecuted,
-      urlsFetched,
-      urlsFiltered: 0,
-      proposalsCreated: 0,
-    },
+    messages: [new SystemMessage(systemPrompt), new HumanMessage(humanMessage)],
+    vaultContext,
+    watchSourceDomains,
   };
 }
 
-export async function deduplicateUrls(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
-  if (state.allResults.length === 0) {
-    return { dedupedResults: [] };
-  }
+// ---------- agent ----------
 
-  const allUrls = state.allResults.map((r) => r.url);
-  const newUrls = await filterExistingUrls(allUrls);
-  const newUrlSet = new Set(newUrls);
-  const dedupedResults = state.allResults.filter((r) => newUrlSet.has(r.url));
-  const urlsFiltered = state.allResults.length - dedupedResults.length;
+export async function agent(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
+  const model = createChatModel({ temperature: 0.3 }).bindTools!(webScoutTools);
+  const response = await model.invoke(state.messages);
 
   return {
-    dedupedResults,
-    counts: {
-      ...state.counts,
-      urlsFiltered,
-    },
+    messages: [...state.messages, response],
+    iteration: state.iteration + 1,
   };
 }
 
-export async function scoreResults(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
-  if (state.dedupedResults.length === 0) {
-    return { scoredResults: [] };
+// ---------- executeTools ----------
+
+export async function executeTools(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
+  const lastMessage = state.messages[state.messages.length - 1];
+  if (!(lastMessage instanceof AIMessage) || !lastMessage.tool_calls?.length) {
+    return {};
   }
 
-  const vaultContext =
-    state.vaultDocuments.length > 0
-      ? state.vaultDocuments.map((d) => `- ${d.title} (${d.tags.join(', ')})`).join('\n')
-      : 'No existing documents';
-
-  // Group by source query for better scoring
-  const resultsByQuery = new Map<string, Array<TavilySearchResult & { sourceQuery: string }>>();
-  for (const result of state.dedupedResults) {
-    if (!resultsByQuery.has(result.sourceQuery)) {
-      resultsByQuery.set(result.sourceQuery, []);
-    }
-    resultsByQuery.get(result.sourceQuery)!.push(result);
-  }
-
-  const scoredResults: ScoredResult[] = [];
-
-  const model = createExtractionModel({ temperature: 0.3 }).withStructuredOutput(
-    WebScoreResultsSchema
+  const toolsByName = new Map<string, StructuredToolInterface>(
+    webScoutTools.map(t => [t.name, t as StructuredToolInterface]),
   );
+  const toolMessages: ToolMessage[] = [];
+  let queriesExecuted = state.queriesExecuted;
+  const qualityResults = [...state.qualityResults];
 
-  for (const [query, results] of resultsByQuery) {
-    const resultsText = results
-      .map((r, i) => `[${i}] "${r.title}"\nURL: ${r.url}\nExcerpt: ${r.content.slice(0, 500)}`)
-      .join('\n\n');
+  for (const call of lastMessage.tool_calls) {
+    const toolFn = toolsByName.get(call.name);
+    if (!toolFn) {
+      toolMessages.push(new ToolMessage({
+        tool_call_id: call.id!,
+        content: `Unknown tool: ${call.name}`,
+      }));
+      continue;
+    }
 
     try {
-      const response = await model.invoke([
-        new SystemMessage(`You are evaluating web search results for relevance to a user's knowledge vault.
+      const result = await toolFn.invoke(call.args);
+      toolMessages.push(new ToolMessage({
+        tool_call_id: call.id!,
+        content: typeof result === 'string' ? result : JSON.stringify(result),
+      }));
 
-For each result, assess:
-1. Relevance to the search query and user's existing knowledge
-2. Content quality and depth
-3. Content type classification
+      // Track side effects
+      if (call.name === 'searchWeb') {
+        queriesExecuted++;
+      }
 
-Content types: article, documentation, paper, tutorial, video, other
-Relevance scores: 0.0 (irrelevant) to 1.0 (highly relevant)
-Only include results with relevance >= ${state.minRelevanceScore}`),
-        new HumanMessage(`SEARCH QUERY: "${query}"
-
-USER'S VAULT CONTAINS:
-${vaultContext}
-
-SEARCH RESULTS:
-${resultsText}`),
-      ]);
-
-      for (const score of response.scores) {
-        if (
-          score.index >= 0 &&
-          score.index < results.length &&
-          score.relevanceScore >= state.minRelevanceScore
-        ) {
-          scoredResults.push({
-            ...results[score.index],
-            relevanceScore: Math.min(Math.max(score.relevanceScore, 0), 1),
-            relevanceReason: score.relevanceReason.slice(0, 300),
-            contentType: score.contentType,
-            topics: score.topics.slice(0, 5),
-            sourceQuery: query,
+      if (call.name === 'evaluateResult') {
+        const parsed = JSON.parse(typeof result === 'string' ? result : JSON.stringify(result));
+        if (parsed.relevanceScore >= state.minRelevanceScore) {
+          qualityResults.push({
+            url: call.args.url,
+            title: call.args.title,
+            snippet: call.args.snippet,
+            relevanceScore: parsed.relevanceScore,
+            contentType: parsed.contentType ?? 'other',
+            topics: parsed.topics ?? [],
+            reasoning: [parsed.reasoning ?? ''],
           });
         }
       }
-    } catch {
-      // Fallback: use Tavily scores
-      for (const r of results) {
-        if (r.score >= state.minRelevanceScore) {
-          scoredResults.push({
-            ...r,
-            relevanceScore: r.score,
-            relevanceReason: 'Search match',
-            contentType: 'other',
-            topics: [],
-            sourceQuery: query,
-          });
-        }
-      }
+    } catch (err) {
+      toolMessages.push(new ToolMessage({
+        tool_call_id: call.id!,
+        content: `Error: ${err instanceof Error ? err.message : String(err)}`,
+      }));
     }
   }
 
-  // Sort by relevance and limit
-  scoredResults.sort((a, b) => b.relevanceScore - a.relevanceScore);
-  const topResults = scoredResults.slice(0, state.maxResults);
-
-  return { scoredResults: topResults };
+  return {
+    messages: [...state.messages, ...toolMessages],
+    queriesExecuted,
+    qualityResults,
+  };
 }
 
-export async function createProposals(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
-  if (state.scoredResults.length === 0) {
-    return { proposals: [], artifactIds: [] };
+// ---------- finalize ----------
+
+export async function finalize(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
+  // Deduplicate quality results by URL
+  const seen = new Set<string>();
+  const uniqueResults: ScoredResult[] = [];
+  for (const r of state.qualityResults) {
+    if (!seen.has(r.url)) {
+      seen.add(r.url);
+      uniqueResults.push(r);
+    }
   }
 
   const proposals: WebScoutProposal[] = [];
   const artifactIds: string[] = [];
-  let proposalsCreated = 0;
+  const reasoning: string[] = [];
 
-  for (const result of state.scoredResults) {
+  for (const result of uniqueResults) {
     const proposal: WebScoutProposal = {
       url: result.url,
       title: result.title,
-      summary: result.content.slice(0, 500),
-      relevanceReason: result.relevanceReason,
+      summary: result.snippet,
       relevanceScore: result.relevanceScore,
       contentType: result.contentType,
       topics: result.topics,
-      sourceQuery: result.sourceQuery,
-      excerpt: result.content.slice(0, 300),
+      reasoning: result.reasoning,
     };
-
     proposals.push(proposal);
+    reasoning.push(...result.reasoning);
 
     try {
       const artifactId = await insertWebProposalArtifact({
@@ -257,28 +213,36 @@ export async function createProposals(state: WebScoutStateType): Promise<Partial
         content: {
           url: proposal.url,
           summary: proposal.summary,
-          relevanceReason: proposal.relevanceReason,
           relevanceScore: proposal.relevanceScore,
           contentType: proposal.contentType,
           topics: proposal.topics,
-          sourceQuery: proposal.sourceQuery,
-          excerpt: proposal.excerpt,
+          reasoning: proposal.reasoning,
         },
-        sourceRefs: { query: proposal.sourceQuery },
+        sourceRefs: { goal: state.goal, watchSourceDomains: state.watchSourceDomains },
       });
       artifactIds.push(artifactId);
-      proposalsCreated++;
     } catch {
-      // Continue on error
+      // Continue on artifact save error
     }
+  }
+
+  // Determine termination reason from what the routing logic set or default
+  let terminationReason = state.terminationReason;
+  if (!terminationReason) {
+    const hasEnoughQuality = uniqueResults.length >= state.minQualityResults;
+    terminationReason = hasEnoughQuality ? 'satisfied' : 'max_iterations';
   }
 
   return {
     proposals,
     artifactIds,
+    reasoning,
+    terminationReason,
     counts: {
-      ...state.counts,
-      proposalsCreated,
+      iterations: state.iteration,
+      queriesExecuted: state.queriesExecuted,
+      resultsEvaluated: state.qualityResults.length,
+      proposalsCreated: proposals.length,
     },
   };
 }

@@ -1,82 +1,90 @@
 /**
- * Types for the WebScout agent.
+ * Types for the WebScout ReAct agent.
  */
 import { Annotation } from '@langchain/langgraph';
-import { TavilySearchResult } from '@/server/tools/tavily.tool';
-import { DocumentRow } from '@/server/repos/webScout.repo';
+import { BaseMessage } from '@langchain/core/messages';
+
+// ---------- Enums / Literals ----------
+
+export type ContentType = 'article' | 'documentation' | 'paper' | 'tutorial' | 'video' | 'other';
+export type TerminationReason = 'satisfied' | 'max_iterations' | 'max_queries' | null;
 
 // ---------- Input/Output Types ----------
 
 export interface WebScoutInput {
+  goal: string;
   mode: 'explicit-query' | 'derive-from-vault';
-  query?: string;
-  deriveLimit?: number;
-  focusTags?: string[];
-  maxResults?: number;
-  minRelevanceScore?: number;
   day: string;
+  focusTags?: string[];
+  minQualityResults?: number;
+  minRelevanceScore?: number;
+  maxIterations?: number;
+  maxQueries?: number;
+}
+
+export interface WebScoutCounts {
+  iterations: number;
+  queriesExecuted: number;
+  resultsEvaluated: number;
+  proposalsCreated: number;
 }
 
 export interface WebScoutOutput {
   proposals: WebScoutProposal[];
   artifactIds: string[];
-  counts: {
-    queriesExecuted: number;
-    urlsFetched: number;
-    urlsFiltered: number;
-    proposalsCreated: number;
-  };
-  queriesUsed: string[];
+  reasoning: string[];
+  terminationReason: TerminationReason;
+  counts: WebScoutCounts;
 }
 
 export interface WebScoutProposal {
   url: string;
   title: string;
   summary: string;
-  relevanceReason: string;
   relevanceScore: number;
-  contentType: 'article' | 'documentation' | 'paper' | 'tutorial' | 'video' | 'other';
+  contentType: ContentType;
   topics: string[];
-  sourceQuery: string;
-  excerpt?: string;
+  reasoning: string[];
 }
 
-export interface ScoredResult extends TavilySearchResult {
+export interface ScoredResult {
+  url: string;
+  title: string;
+  snippet: string;
   relevanceScore: number;
-  relevanceReason: string;
-  contentType: WebScoutProposal['contentType'];
+  contentType: ContentType;
   topics: string[];
-  sourceQuery: string;
+  reasoning: string[];
 }
 
 // ---------- State ----------
 
 export const WebScoutState = Annotation.Root({
-  // Input
+  // Inputs
+  goal: Annotation<string>,
   mode: Annotation<'explicit-query' | 'derive-from-vault'>,
-  explicitQuery: Annotation<string | undefined>,
-  deriveLimit: Annotation<number>,
-  focusTags: Annotation<string[] | undefined>,
-  maxResults: Annotation<number>,
-  minRelevanceScore: Annotation<number>,
   day: Annotation<string>,
+  focusTags: Annotation<string[] | undefined>,
+  minQualityResults: Annotation<number>,
+  minRelevanceScore: Annotation<number>,
+  maxIterations: Annotation<number>,
+  maxQueries: Annotation<number>,
   runId: Annotation<string | undefined>,
-  // Working state
-  vaultDocuments: Annotation<DocumentRow[]>,
-  queries: Annotation<string[]>,
-  allResults: Annotation<Array<TavilySearchResult & { sourceQuery: string }>>,
-  dedupedResults: Annotation<Array<TavilySearchResult & { sourceQuery: string }>>,
-  scoredResults: Annotation<ScoredResult[]>,
-  // Output
+
+  // ReAct working state
+  messages: Annotation<BaseMessage[]>,
+  iteration: Annotation<number>,
+  queriesExecuted: Annotation<number>,
+  qualityResults: Annotation<ScoredResult[]>,
+  vaultContext: Annotation<string>,
+  watchSourceDomains: Annotation<string[]>,
+
+  // Outputs
   proposals: Annotation<WebScoutProposal[]>,
   artifactIds: Annotation<string[]>,
-  counts: Annotation<{
-    queriesExecuted: number;
-    urlsFetched: number;
-    urlsFiltered: number;
-    proposalsCreated: number;
-  }>,
-  queriesUsed: Annotation<string[]>,
+  reasoning: Annotation<string[]>,
+  terminationReason: Annotation<TerminationReason>,
+  counts: Annotation<WebScoutCounts>,
   error: Annotation<string | null>,
 });
 

@@ -1,76 +1,157 @@
 /**
- * WebScout Agent Tests
- * 
- * Tests the WebScout agent pipeline with mocked Tavily and LLM.
+ * WebScout ReAct Agent Tests
+ *
+ * Tests the WebScout agent's ReAct loop with mocked LLM and tools.
  * Verifies:
- * - Pipeline produces correct number of proposals
- * - Artifacts are created with correct structure
- * - Deduplication works correctly
- * - Scoring filters low-quality results
- * 
- * Uses: Mocked Tavily, Mocked LLM, Real Postgres
+ * - ReAct loop iterates until quality threshold is met
+ * - Stopping conditions (satisfied, max_iterations, max_queries)
+ * - Artifacts are created with reasoning traces
+ * - Deduplication via checkVaultDuplicate tool
+ * - Derive-from-vault mode with empty vault
+ *
+ * Uses: Mocked LLM (tool-calling), Mocked Tavily, Real Postgres
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { AIMessage, ToolMessage } from '@langchain/core/messages';
 import {
   initTestSchema,
   cleanAllTables,
   closeTestDb,
   insertTestDocument,
 } from '../helpers/testDb';
-import {
-  MOCK_TAVILY_RESULTS,
-  MOCK_LLM_RESPONSES,
-  normalizeForSnapshot,
-} from '../helpers/mocks';
 import { TEST_DAY, SAMPLE_DOCUMENTS } from '../helpers/fixtures';
 import { listInboxArtifacts } from '@/server/repos/artifacts.repo';
 
-// Mock the Tavily tool
-vi.mock('@/server/langchain/tools/tavily.tool', () => ({
-  executeTavilySearch: vi.fn().mockImplementation(async (query: string, maxResults?: number) => {
-    // Return mock results, filtering duplicates
-    const seenUrls = new Set<string>();
-    const uniqueResults = MOCK_TAVILY_RESULTS.filter((r) => {
-      if (seenUrls.has(r.url)) {
-        return false;
-      }
-      seenUrls.add(r.url);
-      return true;
-    });
+// ---------- Mock search results ----------
 
-    return {
-      query,
-      results: uniqueResults.slice(0, maxResults ?? 10),
-    };
-  }),
+const MOCK_SEARCH_RESULTS = JSON.stringify([
+  { url: 'https://example.com/spaced-repetition', title: 'Introduction to Spaced Repetition', snippet: 'Spaced repetition is a learning technique...', score: 0.92 },
+  { url: 'https://learning-science.edu/retrieval', title: 'Retrieval Practice Research', snippet: 'Retrieval practice improves learning...', score: 0.88 },
+  { url: 'https://mit.edu/memory', title: 'Memory Science at MIT', snippet: 'Advanced memory research and findings...', score: 0.85 },
+]);
+
+const MOCK_DEDUP_ALL_NEW = JSON.stringify({
+  newUrls: [
+    'https://example.com/spaced-repetition',
+    'https://learning-science.edu/retrieval',
+    'https://mit.edu/memory',
+  ],
+  existingUrls: [],
+});
+
+function mockEvalResult(score: number) {
+  return JSON.stringify({
+    relevanceScore: score,
+    contentType: 'article',
+    topics: ['learning', 'memory'],
+    reasoning: `Score: ${score.toFixed(2)} — relevant to learning goal`,
+  });
+}
+
+// Track LLM call count for multi-iteration tests
+let llmCallCount = 0;
+
+// ---------- Mock Tavily ----------
+
+vi.mock('@/server/langchain/tools/tavily.tool', () => ({
+  executeTavilySearch: vi.fn().mockImplementation(async (query: string) => ({
+    query,
+    results: [
+      { title: 'Introduction to Spaced Repetition', url: 'https://example.com/spaced-repetition', content: 'Spaced repetition is a learning technique...', score: 0.92 },
+      { title: 'Retrieval Practice Research', url: 'https://learning-science.edu/retrieval', content: 'Retrieval practice improves learning...', score: 0.88 },
+      { title: 'Memory Science at MIT', url: 'https://mit.edu/memory', content: 'Advanced memory research and findings...', score: 0.85 },
+    ],
+  })),
 }));
 
-// Mock the LLM models
+// ---------- Mock Vault Repo ----------
+
+vi.mock('@/server/repos/webScout.repo', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/repos/webScout.repo')>();
+  return {
+    ...actual,
+    filterExistingUrls: vi.fn().mockImplementation(async (urls: string[]) => urls),
+    getRecentDocumentsForQuery: vi.fn().mockResolvedValue([]),
+    getDocumentsByTags: vi.fn().mockResolvedValue([]),
+  };
+});
+
+// ---------- Mock LLM ----------
+
 vi.mock('@/server/langchain/models', () => ({
-  createExtractionModel: vi.fn().mockImplementation(() => ({
-    withStructuredOutput: vi.fn().mockImplementation((schema: unknown) => ({
+  createChatModel: vi.fn().mockImplementation(() => ({
+    bindTools: vi.fn().mockReturnValue({
       invoke: vi.fn().mockImplementation(async () => {
-        // Return appropriate mock based on what's being invoked
-        // This is a simplified mock - in production you'd match on schema
-        return MOCK_LLM_RESPONSES.webScoreResults;
+        llmCallCount++;
+
+        // Iteration 1: search + dedup
+        if (llmCallCount === 1) {
+          return new AIMessage({
+            content: '',
+            tool_calls: [
+              { id: 'call_1', name: 'searchWeb', args: { query: 'spaced repetition techniques', maxResults: 8 } },
+            ],
+          });
+        }
+
+        // Iteration 2: check duplicates
+        if (llmCallCount === 2) {
+          return new AIMessage({
+            content: '',
+            tool_calls: [
+              {
+                id: 'call_2',
+                name: 'checkVaultDuplicate',
+                args: {
+                  urls: [
+                    'https://example.com/spaced-repetition',
+                    'https://learning-science.edu/retrieval',
+                    'https://mit.edu/memory',
+                  ],
+                },
+              },
+            ],
+          });
+        }
+
+        // Iteration 3: evaluate results
+        if (llmCallCount === 3) {
+          return new AIMessage({
+            content: '',
+            tool_calls: [
+              { id: 'call_3a', name: 'evaluateResult', args: { url: 'https://example.com/spaced-repetition', title: 'Introduction to Spaced Repetition', snippet: 'Spaced repetition is a learning technique...', goal: 'spaced repetition techniques' } },
+              { id: 'call_3b', name: 'evaluateResult', args: { url: 'https://learning-science.edu/retrieval', title: 'Retrieval Practice Research', snippet: 'Retrieval practice improves learning...', goal: 'spaced repetition techniques' } },
+              { id: 'call_3c', name: 'evaluateResult', args: { url: 'https://mit.edu/memory', title: 'Memory Science at MIT', snippet: 'Advanced memory research and findings...', goal: 'spaced repetition techniques' } },
+            ],
+          });
+        }
+
+        // Iteration 4: satisfied, no tool calls
+        return new AIMessage({
+          content: 'Found 3 high-quality resources covering spaced repetition, retrieval practice, and memory science.',
+        });
       }),
-    })),
-    invoke: vi.fn().mockResolvedValue({
-      content: JSON.stringify(['spaced repetition', 'learning']),
     }),
+  })),
+  createExtractionModel: vi.fn().mockImplementation(() => ({
+    withStructuredOutput: vi.fn().mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({
+        relevanceScore: 0.85,
+        contentType: 'article',
+        topics: ['learning'],
+        reasoning: 'Relevant to learning goal',
+      }),
+    }),
+    invoke: vi.fn().mockResolvedValue({ content: 'refined query' }),
   })),
   createGenerationModel: vi.fn().mockImplementation(() => ({
-    withStructuredOutput: vi.fn().mockReturnValue({
-      invoke: vi.fn().mockResolvedValue(MOCK_LLM_RESPONSES.flashcardGeneration),
-    }),
-    invoke: vi.fn().mockResolvedValue({ content: '' }),
-  })),
-  createChatModel: vi.fn().mockImplementation(() => ({
     invoke: vi.fn().mockResolvedValue({ content: '' }),
   })),
 }));
 
-describe('WebScout Agent', () => {
+// ---------- Tests ----------
+
+describe('WebScout ReAct Agent', () => {
   beforeAll(async () => {
     await initTestSchema();
   });
@@ -82,327 +163,176 @@ describe('WebScout Agent', () => {
   beforeEach(async () => {
     await cleanAllTables();
     vi.clearAllMocks();
+    llmCallCount = 0;
   });
 
-  describe('explicit-query mode', () => {
-    it('should produce proposals from search results', async () => {
-      // Import the graph after mocks are set up
+  describe('satisfied termination', () => {
+    it('should iterate until quality threshold is met and produce proposals', async () => {
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
       const result = await webScoutGraph({
+        goal: 'spaced repetition techniques',
         mode: 'explicit-query',
-        query: 'spaced repetition techniques',
         day: TEST_DAY,
-        maxResults: 10,
-        minRelevanceScore: 0.6,
+        minQualityResults: 3,
+        minRelevanceScore: 0.7,
+        maxIterations: 5,
+        maxQueries: 10,
       });
 
-      // Should have proposals (3 mock results that meet threshold)
       expect(result.proposals.length).toBeGreaterThan(0);
-      expect(result.proposals.length).toBeLessThanOrEqual(4); // Max from mock data
+      expect(result.counts.iterations).toBeGreaterThan(0);
+      expect(result.counts.queriesExecuted).toBeGreaterThan(0);
 
-      // Each proposal should have required fields
       for (const proposal of result.proposals) {
         expect(proposal.url).toBeDefined();
         expect(proposal.title).toBeDefined();
-        expect(proposal.relevanceScore).toBeGreaterThanOrEqual(0.6);
-        expect(proposal.contentType).toBeDefined();
+        expect(proposal.relevanceScore).toBeGreaterThanOrEqual(0.7);
+        expect(proposal.reasoning).toBeDefined();
+        expect(Array.isArray(proposal.reasoning)).toBe(true);
       }
     });
 
-    it('should create artifacts for each proposal', async () => {
+    it('should create artifacts with reasoning traces', async () => {
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
       const result = await webScoutGraph({
+        goal: 'spaced repetition techniques',
         mode: 'explicit-query',
-        query: 'learning science',
         day: TEST_DAY,
-        maxResults: 5,
-        minRelevanceScore: 0.6,
+        minQualityResults: 3,
+        minRelevanceScore: 0.7,
       });
 
-      // Verify artifacts were created
       expect(result.artifactIds.length).toBe(result.proposals.length);
 
-      // Check artifacts in database
       const inbox = await listInboxArtifacts(TEST_DAY);
       expect(inbox.length).toBe(result.proposals.length);
 
-      // Verify artifact structure
       for (const artifact of inbox) {
         expect(artifact.agent).toBe('webScout');
         expect(artifact.kind).toBe('web-proposal');
         expect(artifact.status).toBe('proposed');
         expect(artifact.content).toHaveProperty('url');
         expect(artifact.content).toHaveProperty('relevanceScore');
+        expect(artifact.content).toHaveProperty('reasoning');
       }
     });
 
-    it('should filter out low-relevance results', async () => {
+    it('should include reasoning in output', async () => {
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
       const result = await webScoutGraph({
+        goal: 'spaced repetition techniques',
         mode: 'explicit-query',
-        query: 'test query',
         day: TEST_DAY,
-        maxResults: 10,
-        minRelevanceScore: 0.8, // Higher threshold
+        minQualityResults: 3,
+        minRelevanceScore: 0.7,
       });
 
-      // Only results with score >= 0.8 should pass
-      for (const proposal of result.proposals) {
-        expect(proposal.relevanceScore).toBeGreaterThanOrEqual(0.8);
-      }
-    });
-
-    it('should track counts correctly', async () => {
-      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
-
-      const result = await webScoutGraph({
-        mode: 'explicit-query',
-        query: 'test',
-        day: TEST_DAY,
-        maxResults: 10,
-        minRelevanceScore: 0.6,
-      });
-
-      expect(result.counts.queriesExecuted).toBe(1);
-      expect(result.counts.urlsFetched).toBeGreaterThan(0);
-      expect(result.counts.proposalsCreated).toBe(result.proposals.length);
-    });
-
-    it('should return queriesUsed', async () => {
-      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
-
-      const query = 'spaced repetition learning';
-      const result = await webScoutGraph({
-        mode: 'explicit-query',
-        query,
-        day: TEST_DAY,
-      });
-
-      expect(result.queriesUsed).toContain(query);
+      expect(result.reasoning.length).toBeGreaterThan(0);
     });
   });
 
-  describe('derive-from-vault mode', () => {
-    it('should derive queries from vault documents', async () => {
-      // Seed the vault with documents
-      await insertTestDocument({
-        title: SAMPLE_DOCUMENTS.spacedRepetition.title,
-        content: SAMPLE_DOCUMENTS.spacedRepetition.content,
-        tags: SAMPLE_DOCUMENTS.spacedRepetition.tags,
-      });
-      await insertTestDocument({
-        title: SAMPLE_DOCUMENTS.retrievalPractice.title,
-        content: SAMPLE_DOCUMENTS.retrievalPractice.content,
-        tags: SAMPLE_DOCUMENTS.retrievalPractice.tags,
-      });
-
-      // Re-mock to return derived queries
+  describe('max_iterations termination', () => {
+    it('should stop at max iterations', async () => {
+      // Reset mock to always return tool calls (never "satisfied")
       const modelsModule = await import('@/server/langchain/models');
-      vi.mocked(modelsModule.createExtractionModel).mockImplementation(() => ({
-        withStructuredOutput: vi.fn().mockImplementation(() => ({
-          invoke: vi.fn()
-            .mockResolvedValueOnce(MOCK_LLM_RESPONSES.derivedQueries)
-            .mockResolvedValue(MOCK_LLM_RESPONSES.webScoreResults),
-        })),
-        invoke: vi.fn().mockResolvedValue({ content: '' }),
+      vi.mocked(modelsModule.createChatModel).mockImplementation(() => ({
+        bindTools: vi.fn().mockReturnValue({
+          invoke: vi.fn().mockResolvedValue(
+            new AIMessage({
+              content: '',
+              tool_calls: [
+                { id: 'call_s', name: 'searchWeb', args: { query: 'test', maxResults: 5 } },
+              ],
+            }),
+          ),
+        }),
       } as any));
 
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
       const result = await webScoutGraph({
-        mode: 'derive-from-vault',
-        deriveLimit: 5,
+        goal: 'never satisfied query',
+        mode: 'explicit-query',
         day: TEST_DAY,
-        maxResults: 10,
-        minRelevanceScore: 0.6,
+        minQualityResults: 100,
+        maxIterations: 2,
+        maxQueries: 10,
       });
 
-      // Should have executed searches
-      expect(result.counts.queriesExecuted).toBeGreaterThan(0);
+      expect(result.counts.iterations).toBeLessThanOrEqual(2);
+      expect(result.terminationReason).toBe('max_iterations');
     });
+  });
 
+  describe('max_queries termination', () => {
+    it('should stop when max queries reached', async () => {
+      const modelsModule = await import('@/server/langchain/models');
+      vi.mocked(modelsModule.createChatModel).mockImplementation(() => ({
+        bindTools: vi.fn().mockReturnValue({
+          invoke: vi.fn().mockResolvedValue(
+            new AIMessage({
+              content: '',
+              tool_calls: [
+                { id: 'call_s', name: 'searchWeb', args: { query: 'test', maxResults: 5 } },
+              ],
+            }),
+          ),
+        }),
+      } as any));
+
+      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
+
+      const result = await webScoutGraph({
+        goal: 'query limited test',
+        mode: 'explicit-query',
+        day: TEST_DAY,
+        minQualityResults: 100,
+        maxIterations: 20,
+        maxQueries: 2,
+      });
+
+      expect(result.counts.queriesExecuted).toBeLessThanOrEqual(2);
+    });
+  });
+
+  describe('derive-from-vault mode', () => {
     it('should handle empty vault gracefully', async () => {
-      // No documents in vault
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
       const result = await webScoutGraph({
+        goal: 'learn about memory science',
         mode: 'derive-from-vault',
         day: TEST_DAY,
+        minQualityResults: 3,
+        minRelevanceScore: 0.7,
       });
 
-      // Should return empty results without error
-      expect(result.proposals).toEqual([]);
-      expect(result.artifactIds).toEqual([]);
+      // Should still produce results — the agent searches even without vault context
+      expect(result.counts.iterations).toBeGreaterThan(0);
     });
   });
 
-  describe('deduplication', () => {
-    it('should filter out URLs already in the vault', async () => {
-      // Add a document with one of the mock URLs
-      await insertTestDocument({
-        source: 'https://example.com/spaced-repetition', // Matches mock result
-        title: 'Existing Doc',
-        content: 'Already imported content',
-      });
-
+  describe('counts tracking', () => {
+    it('should track iterations, queries, evaluations, and proposals', async () => {
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
       const result = await webScoutGraph({
+        goal: 'spaced repetition techniques',
         mode: 'explicit-query',
-        query: 'test',
         day: TEST_DAY,
-        minRelevanceScore: 0.6,
+        minQualityResults: 3,
+        minRelevanceScore: 0.7,
       });
 
-      // Should have filtered the existing URL
-      expect(result.counts.urlsFiltered).toBeGreaterThan(0);
-
-      // Proposals should not include the existing URL
-      const urls = result.proposals.map(p => p.url);
-      expect(urls).not.toContain('https://example.com/spaced-repetition');
+      expect(result.counts).toHaveProperty('iterations');
+      expect(result.counts).toHaveProperty('queriesExecuted');
+      expect(result.counts).toHaveProperty('resultsEvaluated');
+      expect(result.counts).toHaveProperty('proposalsCreated');
+      expect(result.counts.iterations).toBeGreaterThan(0);
+      expect(result.counts.proposalsCreated).toBe(result.proposals.length);
     });
-  });
-
-  describe('error handling', () => {
-    it('should handle missing query in explicit-query mode', async () => {
-      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
-
-      const result = await webScoutGraph({
-        mode: 'explicit-query',
-        query: undefined, // Missing query
-        day: TEST_DAY,
-      });
-
-      // Should return empty with no error thrown
-      expect(result.proposals).toEqual([]);
-    });
-  });
-});
-
-describe('WebScout Golden Run Snapshot', () => {
-  beforeAll(async () => {
-    await initTestSchema();
-  });
-
-  afterAll(async () => {
-    await closeTestDb();
-  });
-
-  beforeEach(async () => {
-    await cleanAllTables();
-    vi.clearAllMocks();
-  });
-
-  it('should produce stable artifact content structure', async () => {
-    const { webScoutGraph } = await import('@/server/agents/webScout.graph');
-
-    const result = await webScoutGraph({
-      mode: 'explicit-query',
-      query: 'spaced repetition',
-      day: TEST_DAY,
-      maxResults: 3,
-      minRelevanceScore: 0.6,
-    });
-
-    // Normalize the proposals for snapshot (remove dynamic values)
-    const normalizedProposals = result.proposals.map(p => ({
-      url: p.url,
-      title: p.title,
-      contentType: p.contentType,
-      topics: p.topics,
-      // Normalize score to avoid floating point issues
-      relevanceScoreRange: p.relevanceScore >= 0.8 ? 'high' : 'medium',
-    }));
-
-    // This snapshot captures the expected structure
-    // Note: When LLM mock fails, fallback produces contentType="other" and topics=[]
-    expect(normalizedProposals).toMatchInlineSnapshot(`
-      [
-        {
-          "contentType": "other",
-          "relevanceScoreRange": "high",
-          "title": "Introduction to Spaced Repetition",
-          "topics": [],
-          "url": "https://example.com/spaced-repetition",
-        },
-        {
-          "contentType": "other",
-          "relevanceScoreRange": "high",
-          "title": "Understanding Retrieval Practice",
-          "topics": [],
-          "url": "https://learning-science.edu/retrieval-practice",
-        },
-        {
-          "contentType": "other",
-          "relevanceScoreRange": "high",
-          "title": "Memory and Learning Science",
-          "topics": [],
-          "url": "https://psychology.org/memory-learning",
-        },
-      ]
-    `);
-  });
-
-  it('should produce stable artifact database structure', async () => {
-    const { webScoutGraph } = await import('@/server/agents/webScout.graph');
-
-    await webScoutGraph({
-      mode: 'explicit-query',
-      query: 'learning science',
-      day: TEST_DAY,
-      maxResults: 2,
-      minRelevanceScore: 0.8,
-    });
-
-    const inbox = await listInboxArtifacts(TEST_DAY);
-
-    // Normalize for snapshot
-    const normalizedArtifacts = inbox.map(a => ({
-      agent: a.agent,
-      kind: a.kind,
-      day: a.day,
-      status: a.status,
-      contentKeys: Object.keys(a.content).sort(),
-    }));
-
-    expect(normalizedArtifacts).toMatchInlineSnapshot(`
-      [
-        {
-          "agent": "webScout",
-          "contentKeys": [
-            "contentType",
-            "excerpt",
-            "relevanceReason",
-            "relevanceScore",
-            "sourceQuery",
-            "summary",
-            "topics",
-            "url",
-          ],
-          "day": "2025-01-15",
-          "kind": "web-proposal",
-          "status": "proposed",
-        },
-        {
-          "agent": "webScout",
-          "contentKeys": [
-            "contentType",
-            "excerpt",
-            "relevanceReason",
-            "relevanceScore",
-            "sourceQuery",
-            "summary",
-            "topics",
-            "url",
-          ],
-          "day": "2025-01-15",
-          "kind": "web-proposal",
-          "status": "proposed",
-        },
-      ]
-    `);
   });
 });

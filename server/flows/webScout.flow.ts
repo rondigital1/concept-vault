@@ -1,7 +1,7 @@
 /**
  * WebScout Flow
  *
- * Orchestrates the webScout agent (LangGraph) with run tracing.
+ * Orchestrates the webScout ReAct agent with run tracing.
  * Creates a run, executes the agent, and records all steps.
  */
 
@@ -14,16 +14,8 @@ export interface WebScoutFlowResult {
   output: WebScoutOutput;
 }
 
-/**
- * WebScout Flow
- *
- * Orchestrates the webScout agent (LangGraph) with run tracing.
- */
-export async function webScoutFlow(input: WebScoutInput): Promise<WebScoutFlowResult> {
-  const runId = await createRun('webScout');
-
+async function executeWebScoutFlow(runId: string, input: WebScoutInput): Promise<WebScoutOutput> {
   try {
-    // Start flow step
     const flowStep: RunStep = {
       timestamp: new Date().toISOString(),
       type: 'flow',
@@ -33,16 +25,14 @@ export async function webScoutFlow(input: WebScoutInput): Promise<WebScoutFlowRe
     };
     await appendStep(runId, flowStep);
 
-    // Execute webScout agent (LangGraph), passing runId for artifact association
     const result = await webScoutGraph(
       input,
       async (agentStep) => {
         await appendStep(runId, agentStep);
       },
-      runId
+      runId,
     );
 
-    // Complete flow step
     const completeStep: RunStep = {
       timestamp: new Date().toISOString(),
       type: 'flow',
@@ -53,13 +43,8 @@ export async function webScoutFlow(input: WebScoutInput): Promise<WebScoutFlowRe
     await appendStep(runId, completeStep);
 
     await finishRun(runId, 'ok');
-
-    return {
-      runId,
-      output: result,
-    };
+    return result;
   } catch (error) {
-    // Record error step
     const errorStep: RunStep = {
       timestamp: new Date().toISOString(),
       type: 'flow',
@@ -72,4 +57,29 @@ export async function webScoutFlow(input: WebScoutInput): Promise<WebScoutFlowRe
     await finishRun(runId, 'error');
     throw error;
   }
+}
+
+/**
+ * Starts a WebScout run without awaiting completion.
+ * Useful for pages that poll live run progress via runId.
+ */
+export async function startWebScoutFlow(input: WebScoutInput): Promise<{ runId: string }> {
+  const runId = await createRun('webScout');
+
+  setImmediate(() => {
+    void executeWebScoutFlow(runId, input).catch((error) => {
+      console.error('WebScout background run failed:', error);
+    });
+  });
+
+  return { runId };
+}
+
+/**
+ * WebScout Flow — runs synchronously and returns result.
+ */
+export async function webScoutFlow(input: WebScoutInput): Promise<WebScoutFlowResult> {
+  const runId = await createRun('webScout');
+  const output = await executeWebScoutFlow(runId, input);
+  return { runId, output };
 }

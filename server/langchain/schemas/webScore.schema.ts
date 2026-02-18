@@ -60,8 +60,26 @@ export const DerivedQueriesSchema = z.object({
     .describe('Search queries derived from vault documents'),
 });
 
+export const EvaluationResultSchema = z.object({
+  relevanceScore: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe('Relevance score from 0.0 (irrelevant) to 1.0 (highly relevant)'),
+  contentType: ContentTypeSchema.describe('Classification of the content type'),
+  topics: z
+    .array(z.string())
+    .max(5)
+    .describe('Topic tags extracted from this result'),
+  reasoning: z
+    .string()
+    .max(300)
+    .describe('Brief explanation of the relevance assessment'),
+});
+
 export type ContentType = z.infer<typeof ContentTypeSchema>;
 export type ScoredResult = z.infer<typeof ScoredResultSchema>;
 export type WebScoreResults = z.infer<typeof WebScoreResultsSchema>;
 export type DerivedQuery = z.infer<typeof DerivedQuerySchema>;
 export type DerivedQueries = z.infer<typeof DerivedQueriesSchema>;
+export type EvaluationResult = z.infer<typeof EvaluationResultSchema>;

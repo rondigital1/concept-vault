@@ -1,13 +1,14 @@
 /**
- * WebScout Agent using LangGraph.
+ * WebScout ReAct Agent using LangGraph.
  *
- * Responsibilities:
- * - Derive search queries from vault documents (or use explicit query)
- * - Execute web searches via Tavily
- * - Score and filter results for relevance
- * - Create proposal artifacts for user review
+ * Graph topology:
+ *   __start__ → setup → agent ⟷ executeTools → finalize → __end__
+ *
+ * The agent iteratively searches, evaluates, and refines queries
+ * until a quality threshold is met or limits are reached.
  */
 import { StateGraph, END } from '@langchain/langgraph';
+import { AIMessage } from '@langchain/core/messages';
 import { createRunStepCallback } from '@/server/langchain/callbacks/runStepAdapter';
 import { RunStep } from '@/server/observability/runTrace.types';
 import {
@@ -16,91 +17,59 @@ import {
   WebScoutState,
   WebScoutStateType,
 } from './helpers/webScout.types';
-import {
-  prepareQueries,
-  executeSearches,
-  deduplicateUrls,
-  scoreResults,
-  createProposals,
-} from './helpers/webScout.nodes';
+import { setup, agent, executeTools, finalize } from './helpers/webScout.nodes';
 
-// Re-export types for external consumers
 export type { WebScoutInput, WebScoutOutput, WebScoutProposal } from './helpers/webScout.types';
 
-// ---------- Conditional edges ----------
+// ---------- Routing ----------
 
-function shouldContinueAfterQueries(state: WebScoutStateType): string {
-  if (state.error || state.queries.length === 0) {
-    return END;
-  }
-  return 'executeSearches';
-}
+function routeAfterAgent(state: WebScoutStateType): string {
+  const lastMessage = state.messages[state.messages.length - 1];
+  const hasToolCalls = lastMessage instanceof AIMessage && (lastMessage.tool_calls?.length ?? 0) > 0;
 
-function shouldContinueAfterSearch(state: WebScoutStateType): string {
-  if (state.allResults.length === 0) {
-    return END;
+  if (!hasToolCalls) {
+    return 'finalize';
   }
-  return 'deduplicateUrls';
-}
 
-function shouldContinueAfterDedup(state: WebScoutStateType): string {
-  if (state.dedupedResults.length === 0) {
-    return END;
+  if (state.queriesExecuted >= state.maxQueries) {
+    return 'finalize';
   }
-  return 'scoreResults';
-}
+  if (state.iteration >= state.maxIterations) {
+    return 'finalize';
+  }
 
-function shouldContinueAfterScore(state: WebScoutStateType): string {
-  if (state.scoredResults.length === 0) {
-    return END;
-  }
-  return 'createProposals';
+  return 'executeTools';
 }
 
 // ---------- Graph ----------
 
 function createWebScoutGraph() {
   const workflow = new StateGraph(WebScoutState)
-    .addNode('prepareQueries', prepareQueries)
-    .addNode('executeSearches', executeSearches)
-    .addNode('deduplicateUrls', deduplicateUrls)
-    .addNode('scoreResults', scoreResults)
-    .addNode('createProposals', createProposals)
-    .addEdge('__start__', 'prepareQueries')
-    .addConditionalEdges('prepareQueries', shouldContinueAfterQueries, {
-      executeSearches: 'executeSearches',
-      [END]: END,
+    .addNode('setup', setup)
+    .addNode('agent', agent)
+    .addNode('executeTools', executeTools)
+    .addNode('finalize', finalize)
+    .addEdge('__start__', 'setup')
+    .addEdge('setup', 'agent')
+    .addConditionalEdges('agent', routeAfterAgent, {
+      executeTools: 'executeTools',
+      finalize: 'finalize',
     })
-    .addConditionalEdges('executeSearches', shouldContinueAfterSearch, {
-      deduplicateUrls: 'deduplicateUrls',
-      [END]: END,
-    })
-    .addConditionalEdges('deduplicateUrls', shouldContinueAfterDedup, {
-      scoreResults: 'scoreResults',
-      [END]: END,
-    })
-    .addConditionalEdges('scoreResults', shouldContinueAfterScore, {
-      createProposals: 'createProposals',
-      [END]: END,
-    })
-    .addEdge('createProposals', END);
+    .addEdge('executeTools', 'agent')
+    .addEdge('finalize', END);
 
   return workflow.compile();
 }
 
 // ---------- Export ----------
 
-/**
- * WebScout Agent using LangGraph.
- */
 export async function webScoutGraph(
   input: WebScoutInput,
   onStep?: (step: RunStep) => void,
-  runId?: string
+  runId?: string,
 ): Promise<WebScoutOutput> {
   const graph = createWebScoutGraph();
 
-  // Emit start step
   if (onStep) {
     onStep({
       timestamp: new Date().toISOString(),
@@ -108,11 +77,7 @@ export async function webScoutGraph(
       name: 'webscout_start',
       status: 'running',
       startedAt: new Date().toISOString(),
-      input: {
-        mode: input.mode,
-        query: input.query,
-        focusTags: input.focusTags,
-      },
+      input: { mode: input.mode, goal: input.goal, focusTags: input.focusTags },
     });
   }
 
@@ -120,29 +85,33 @@ export async function webScoutGraph(
 
   const result = await graph.invoke(
     {
+      goal: input.goal,
       mode: input.mode,
-      explicitQuery: input.query,
-      deriveLimit: input.deriveLimit ?? 5,
-      focusTags: input.focusTags,
-      maxResults: Math.min(input.maxResults ?? 10, 20),
-      minRelevanceScore: input.minRelevanceScore ?? 0.6,
       day: input.day,
+      focusTags: input.focusTags,
+      minQualityResults: input.minQualityResults ?? 3,
+      minRelevanceScore: input.minRelevanceScore ?? 0.8,
+      maxIterations: input.maxIterations ?? 5,
+      maxQueries: input.maxQueries ?? 10,
       runId,
-      vaultDocuments: [],
-      queries: [],
-      allResults: [],
-      dedupedResults: [],
-      scoredResults: [],
+      // Working state defaults
+      messages: [],
+      iteration: 0,
+      queriesExecuted: 0,
+      qualityResults: [],
+      vaultContext: '',
+      watchSourceDomains: [],
+      // Output defaults
       proposals: [],
       artifactIds: [],
-      counts: { queriesExecuted: 0, urlsFetched: 0, urlsFiltered: 0, proposalsCreated: 0 },
-      queriesUsed: [],
+      reasoning: [],
+      terminationReason: null,
+      counts: { iterations: 0, queriesExecuted: 0, resultsEvaluated: 0, proposalsCreated: 0 },
       error: null,
     },
-    { callbacks }
+    { callbacks },
   );
 
-  // Emit completion step
   if (onStep) {
     onStep({
       timestamp: new Date().toISOString(),
@@ -158,7 +127,8 @@ export async function webScoutGraph(
   return {
     proposals: result.proposals,
     artifactIds: result.artifactIds,
+    reasoning: result.reasoning,
+    terminationReason: result.terminationReason,
     counts: result.counts,
-    queriesUsed: result.queriesUsed,
   };
 }
