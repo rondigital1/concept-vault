@@ -101,6 +101,33 @@ function formatTime(dateStr?: string): string {
   });
 }
 
+function formatDisplayDate(isoDate: string): string {
+  const [yearStr, monthStr, dayStr] = isoDate.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    return isoDate;
+  }
+
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) {
+    return isoDate;
+  }
+
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 function SectionHeader({ title, count }: { title: string; count?: number }) {
   return (
     <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
@@ -131,12 +158,13 @@ export default async function TodayPage() {
   try {
     savedTopics = await listSavedTopics({ activeOnly: true });
   } catch (error) {
-    console.error('Failed to load saved topics for Today page:', error);
+    console.error('Failed to load saved topics for Agent Control Center page:', error);
   }
 
   const runs = today.runs ?? [];
   const inbox = today.inbox ?? [];
   const active = today.active ?? [];
+  const displayDate = formatDisplayDate(today.date);
 
   return (
     <>
@@ -150,10 +178,10 @@ export default async function TodayPage() {
           {/* Header */}
           <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                 Agent Control Center
               </h1>
-              <p className="text-zinc-400 mt-1">{today.date}</p>
+              <p className="text-zinc-300 mt-2 text-lg sm:text-xl">{displayDate}</p>
             </div>
             <nav className="flex items-center gap-3">
               <Link
@@ -169,7 +197,7 @@ export default async function TodayPage() {
                 Ingest
               </Link>
               <Link
-                href="/today"
+                href="/agent-control-center"
                 className="text-sm text-zinc-300 bg-zinc-800 px-3 py-1.5 rounded-lg hover:bg-zinc-700 transition-colors flex items-center gap-1.5"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -478,17 +506,17 @@ export default async function TodayPage() {
 
             {/* Right Column */}
             <div className="space-y-6">
-              {/* Active Today */}
+              {/* Active */}
               <section>
                 <Card>
                   <div className="p-4 border-b border-zinc-800">
-                    <SectionHeader title="Active Today" count={active.length} />
+                    <SectionHeader title="Active" count={active.length} />
                   </div>
                   <div className="divide-y divide-zinc-800/50">
                     {active.length === 0 ? (
                       <EmptyState
                         icon="✨"
-                        message="Nothing active today. Approve some proposals!"
+                        message="Nothing active right now. Approve some proposals!"
                       />
                     ) : (
                       active.map((item) => (

@@ -141,14 +141,14 @@ export async function POST(request: Request) {
     const result = await topicReportFlow(input);
 
     if (!expectsJson) {
-      return NextResponse.redirect(new URL('/today', request.url), { status: 303 });
+      return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
     }
 
     return NextResponse.json(result);
   } catch (error) {
     console.error('Error running topic report workflow:', error);
     if (!expectsJson) {
-      return NextResponse.redirect(new URL('/today', request.url), { status: 303 });
+      return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
     }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to run topic report workflow' },

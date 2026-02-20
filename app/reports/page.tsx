@@ -61,10 +61,10 @@ export default async function ReportsPage() {
               </p>
             </div>
             <Link
-              href="/today"
+              href="/agent-control-center"
               className="px-4 py-2 text-sm font-medium text-white/70 hover:text-white transition-colors"
             >
-              ← Dashboard
+              ← Agent Control Center
             </Link>
           </div>
         </div>

@@ -18,10 +18,10 @@ export default function WebScoutPage() {
               </p>
             </div>
             <Link
-              href="/today"
+              href="/agent-control-center"
               className="text-sm text-zinc-300 bg-zinc-800 px-3 py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
             >
-              Back to Today
+              Back to Agent Control Center
             </Link>
           </header>
           <SourceWatchlistPanel />

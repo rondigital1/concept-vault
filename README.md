@@ -50,13 +50,13 @@ Visit http://localhost:3000
 
 ### Trigger a distill run
 
-Use the "Start Distill Run" button on the `/today` page, or:
+Use the "Start Distill Run" button on the `/agent-control-center` page, or:
 
 ```bash
 curl -X POST http://localhost:3000/api/runs/distill
 ```
 
-This returns a `runId`. View the trace at `/today?runId=<runId>`.
+This returns a `runId`. View the trace at `/agent-control-center?runId=<runId>`.
 
 ### Get run trace via API
 

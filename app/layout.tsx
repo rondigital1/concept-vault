@@ -27,10 +27,10 @@ export default function RootLayout({
             {/* Navigation Links */}
             <div className="flex gap-2">
               <a
-                href="/today"
+                href="/agent-control-center"
                 className="rounded-full px-4 py-2 text-sm font-medium text-zinc-400 transition-all hover:bg-white/10 hover:text-white"
               >
-                Today
+                Agent Control Center
               </a>
               <a
                 href="/chat"

@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     const runId = await curateFlow({ documentId, enableCategorization });
 
     if (!expectsJson) {
-      return NextResponse.redirect(new URL('/today', request.url), { status: 303 });
+      return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
     }
 
     return NextResponse.json({ runId, documentId });
