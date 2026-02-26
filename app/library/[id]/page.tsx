@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getDocument } from '@/server/services/document.service';
-import { ensureSchema } from '@/db/schema';
-import { client } from '@/db';
+import { listCollections, getCollectionIdsForDocument } from '@/server/repos/collections.repo';
 import { DocumentClient } from './DocumentClient';
 
 type PageProps = {
@@ -9,13 +8,22 @@ type PageProps = {
 };
 
 export default async function DocumentPage(props: PageProps) {
-  await ensureSchema(client);
   const params = await props.params;
-  const document = await getDocument(params.id);
+  const [document, collections, memberCollectionIds] = await Promise.all([
+    getDocument(params.id),
+    listCollections(),
+    getCollectionIdsForDocument(params.id),
+  ]);
 
   if (!document) {
     notFound();
   }
 
-  return <DocumentClient document={document} />;
+  return (
+    <DocumentClient
+      document={document}
+      collections={collections}
+      memberCollectionIds={memberCollectionIds}
+    />
+  );
 }

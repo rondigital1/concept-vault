@@ -5,6 +5,7 @@ import {
   deleteDocument,
   updateDocumentTitle,
 } from '@/server/services/document.service';
+import { toggleFavorite, toggleRead } from '@/server/repos/documents.repo';
 import { revalidatePath } from 'next/cache';
 
 export async function deleteDocumentAction(documentId: string) {
@@ -37,6 +38,36 @@ export async function updateDocumentTitleAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to update title',
+    };
+  }
+}
+
+export async function toggleFavoriteAction(documentId: string) {
+  try {
+    await ensureSchema(client);
+    const isFavorite = await toggleFavorite(documentId);
+    revalidatePath('/library');
+    return { success: true, isFavorite };
+  } catch (error) {
+    console.error('Failed to toggle favorite:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to toggle favorite',
+    };
+  }
+}
+
+export async function toggleReadAction(documentId: string) {
+  try {
+    await ensureSchema(client);
+    const isRead = await toggleRead(documentId);
+    revalidatePath('/library');
+    return { success: true, isRead };
+  } catch (error) {
+    console.error('Failed to toggle read status:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to toggle read status',
     };
   }
 }

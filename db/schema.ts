@@ -199,6 +199,29 @@ CREATE INDEX IF NOT EXISTS source_watchlist_active_idx
 CREATE INDEX IF NOT EXISTS source_watchlist_due_idx
   ON source_watchlist(is_active, last_checked_at);
 
+-- Document favorites and read status
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS documents_is_favorite_idx ON documents(is_favorite) WHERE is_favorite = true;
+
+-- Collections: user-defined document groupings
+CREATE TABLE IF NOT EXISTS collections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS collection_documents (
+  collection_id UUID NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (collection_id, document_id)
+);
+
+CREATE INDEX IF NOT EXISTS collection_documents_document_idx ON collection_documents(document_id);
+
 -- Agent-produced artifacts (review / approval inbox)
 CREATE TABLE IF NOT EXISTS artifacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
