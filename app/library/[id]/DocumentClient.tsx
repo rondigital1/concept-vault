@@ -9,7 +9,6 @@ import {
   deleteDocumentAction,
   updateDocumentTitleAction,
   toggleFavoriteAction,
-  toggleReadAction,
 } from '@/app/actions/libraryActions';
 import type { CollectionRow } from '@/server/repos/collections.repo';
 
@@ -20,7 +19,6 @@ type Document = {
   content: string;
   tags: string[];
   is_favorite: boolean;
-  is_read: boolean;
   imported_at: string;
 };
 
@@ -70,7 +68,6 @@ export function DocumentClient({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFavPending, startFavTransition] = useTransition();
-  const [isReadPending, startReadTransition] = useTransition();
 
   const source = getSourceDisplay(document.source);
 
@@ -120,15 +117,6 @@ export function DocumentClient({
     });
   };
 
-  const handleReadToggle = () => {
-    startReadTransition(async () => {
-      const result = await toggleReadAction(document.id);
-      if (result.success && result.isRead !== undefined) {
-        setDocument((prev) => ({ ...prev, is_read: result.isRead! }));
-      }
-    });
-  };
-
   return (
     <div className="h-full">
       {/* Header */}
@@ -140,39 +128,6 @@ export function DocumentClient({
               collections={collections}
               memberCollectionIds={memberCollectionIds}
             />
-            <button
-              onClick={handleReadToggle}
-              disabled={isReadPending}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                document.is_read
-                  ? 'text-green-400 hover:bg-green-500/10'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                {document.is_read ? (
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                ) : (
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                )}
-              </svg>
-              {document.is_read ? 'Read' : 'Mark as read'}
-            </button>
             <button
               onClick={handleFavoriteToggle}
               disabled={isFavPending}

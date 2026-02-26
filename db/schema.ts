@@ -199,9 +199,8 @@ CREATE INDEX IF NOT EXISTS source_watchlist_active_idx
 CREATE INDEX IF NOT EXISTS source_watchlist_due_idx
   ON source_watchlist(is_active, last_checked_at);
 
--- Document favorites and read status
+-- Document favorites
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS documents_is_favorite_idx ON documents(is_favorite) WHERE is_favorite = true;
 
 -- Collections: user-defined document groupings

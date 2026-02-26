@@ -37,7 +37,6 @@ export interface Document {
   tags: string[];
   content_hash: string;
   is_favorite: boolean;
-  is_read: boolean;
   imported_at: Date;
 }
 

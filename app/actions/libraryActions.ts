@@ -5,7 +5,7 @@ import {
   deleteDocument,
   updateDocumentTitle,
 } from '@/server/services/document.service';
-import { toggleFavorite, toggleRead } from '@/server/repos/documents.repo';
+import { toggleFavorite } from '@/server/repos/documents.repo';
 import { revalidatePath } from 'next/cache';
 
 export async function deleteDocumentAction(documentId: string) {
@@ -53,21 +53,6 @@ export async function toggleFavoriteAction(documentId: string) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to toggle favorite',
-    };
-  }
-}
-
-export async function toggleReadAction(documentId: string) {
-  try {
-    await ensureSchema(client);
-    const isRead = await toggleRead(documentId);
-    revalidatePath('/library');
-    return { success: true, isRead };
-  } catch (error) {
-    console.error('Failed to toggle read status:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to toggle read status',
     };
   }
 }
