@@ -13,6 +13,7 @@ export type DocumentRow = {
   content: string;
   tags: string[];
   content_hash: string;
+  is_favorite: boolean;
   imported_at: string;
 };
 
@@ -107,7 +108,7 @@ function finalizeTags(candidates: string[], maxFinal: number): string[] {
 
 export async function getDocument(documentId: string): Promise<DocumentRow | null> {
   const rows = await sql<Array<DocumentRow>>`
-    SELECT id, source, title, content, tags, content_hash, imported_at
+    SELECT id, source, title, content, tags, content_hash, is_favorite, imported_at
     FROM documents
     WHERE id = ${documentId}
     LIMIT 1
@@ -121,7 +122,7 @@ export async function getDocument(documentId: string): Promise<DocumentRow | nul
  */
 export async function getAllDocuments(): Promise<DocumentRow[]> {
   const rows = await sql<Array<DocumentRow>>`
-    SELECT id, source, title, content, tags, content_hash, imported_at
+    SELECT id, source, title, content, tags, content_hash, is_favorite, imported_at
     FROM documents
     ORDER BY imported_at DESC
   `;

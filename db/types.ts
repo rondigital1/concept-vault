@@ -36,7 +36,28 @@ export interface Document {
   content: string;
   tags: string[];
   content_hash: string;
+  is_favorite: boolean;
   imported_at: Date;
+}
+
+/**
+ * User-defined document collection
+ */
+export interface Collection {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * Join record: collection ↔ document
+ */
+export interface CollectionDocument {
+  collection_id: string;
+  document_id: string;
+  added_at: Date;
 }
 
 /**
