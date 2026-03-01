@@ -12,8 +12,9 @@ function getClient() {
 }
 
 export async function searchWeb(query: string, maxResults = 10): Promise<WebSearchResult[]> {
+  const boundedMaxResults = Math.max(1, Math.min(Math.floor(maxResults), 20));
   const response = await getClient().search(query, {
-    maxResults: maxResults,
+    maxResults: boundedMaxResults,
     searchDepth: 'advanced',
   });
 

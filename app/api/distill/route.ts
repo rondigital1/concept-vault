@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { distillFlow } from '@/server/flows/distill.flow';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -11,12 +12,20 @@ function todayISODate(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function clampLimit(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.min(Math.floor(value), 20));
+}
+
 // GET /api/runs/distill - List distill runs
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const day = searchParams.get('day') || todayISODate();
-    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 10;
+    const rawLimit = searchParams.get('limit');
+    const limit = rawLimit ? clampLimit(Number.parseInt(rawLimit, 10), 10) : 10;
 
     // TODO: Implement listing distill runs
     return NextResponse.json({
@@ -27,7 +36,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error listing distill runs:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to list runs' },
+      { error: publicErrorMessage(error, 'Failed to list runs') },
       { status: 500 }
     );
   }
@@ -43,8 +52,12 @@ export async function POST(request: Request) {
 
     try {
       const body = await request.json();
-      documentIds = body.documentIds;
-      limit = body.limit;
+      if (Array.isArray(body.documentIds)) {
+        documentIds = body.documentIds
+          .filter((id: unknown): id is string => typeof id === 'string')
+          .slice(0, 100);
+      }
+      limit = clampLimit(body.limit, 5);
       topicTag = body.topicTag;
     } catch {
       // No body or invalid JSON - use defaults
@@ -65,7 +78,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error creating distill run:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create run' },
+      { error: publicErrorMessage(error, 'Failed to create run') },
       { status: 500 }
     );
   }
@@ -93,7 +106,7 @@ export async function PUT(request: Request) {
   } catch (error) {
     console.error('Error updating distill run:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to update run' },
+      { error: publicErrorMessage(error, 'Failed to update run') },
       { status: 500 }
     );
   }
@@ -120,7 +133,7 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error('Error deleting distill run:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to delete run' },
+      { error: publicErrorMessage(error, 'Failed to delete run') },
       { status: 500 }
     );
   }

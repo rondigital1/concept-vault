@@ -7,7 +7,7 @@ import { tavilySearch, TavilySearchResponse } from '@/server/tools/tavily.tool';
 
 export const TavilySearchInputSchema = z.object({
   query: z.string().describe('Search query'),
-  maxResults: z.number().optional().default(10).describe('Maximum number of results'),
+  maxResults: z.number().int().min(1).max(20).optional().default(10).describe('Maximum number of results'),
   searchDepth: z.enum(['basic', 'advanced']).optional().default('basic'),
   includeDomains: z.array(z.string()).optional().describe('Optional domain allowlist.'),
   excludeDomains: z.array(z.string()).optional().describe('Optional domain denylist.'),
@@ -51,8 +51,10 @@ export async function executeTavilySearch(
   searchDepth: 'basic' | 'advanced' = 'basic',
   options?: { includeDomains?: string[]; excludeDomains?: string[] },
 ): Promise<TavilySearchResponse> {
+  const boundedMaxResults = Math.max(1, Math.min(Math.floor(maxResults), 20));
+
   return tavilySearch(query, {
-    maxResults,
+    maxResults: boundedMaxResults,
     searchDepth,
     includeDomains: options?.includeDomains,
     excludeDomains: options?.excludeDomains,

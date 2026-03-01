@@ -30,6 +30,13 @@ export type { DistillerInput, DistillerOutput } from './helpers/distiller.types'
 
 // ---------- Conditional edges ----------
 
+function clampLimit(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 5;
+  }
+  return Math.max(1, Math.min(Math.floor(value), 20));
+}
+
 function shouldProcessNextDocument(state: DistillerStateType): string {
   if (state.documents.length === 0) {
     return END;
@@ -76,6 +83,8 @@ export async function distillerGraph(
   runId?: string
 ): Promise<DistillerOutput> {
   const graph = createDistillerGraph();
+  const limit = clampLimit(input.limit);
+  const documentIds = Array.isArray(input.documentIds) ? input.documentIds.slice(0, 100) : undefined;
 
   // Emit start step
   if (onStep) {
@@ -87,8 +96,8 @@ export async function distillerGraph(
       startedAt: new Date().toISOString(),
       input: {
         day: input.day,
-        documentIds: input.documentIds,
-        limit: input.limit,
+        documentIds,
+        limit,
         topicTag: input.topicTag,
       },
     });
@@ -99,8 +108,8 @@ export async function distillerGraph(
   const result = await graph.invoke(
     {
       day: input.day,
-      documentIds: input.documentIds,
-      limit: input.limit ?? 5,
+      documentIds,
+      limit,
       topicTag: input.topicTag,
       runId,
       documents: [],

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { distillFlow } from '@/server/flows/distill.flow';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +22,10 @@ function isJsonRequest(contentType: string): boolean {
   return contentType.includes('application/json');
 }
 
+function clampLimit(value: number): number {
+  return Math.max(1, Math.min(Math.floor(value), 20));
+}
+
 export async function POST(request: Request) {
   const contentType = request.headers.get('content-type') ?? '';
   const expectsJson = isJsonRequest(contentType);
@@ -34,10 +39,12 @@ export async function POST(request: Request) {
       const body = (await request.json()) as DistillRequestBody;
 
       if (Array.isArray(body.documentIds)) {
-        documentIds = body.documentIds.filter((id): id is string => typeof id === 'string');
+        documentIds = body.documentIds
+          .filter((id): id is string => typeof id === 'string')
+          .slice(0, 100);
       }
       if (typeof body.limit === 'number' && Number.isFinite(body.limit)) {
-        limit = body.limit;
+        limit = clampLimit(body.limit);
       }
       if (typeof body.topicTag === 'string') {
         topicTag = body.topicTag;
@@ -63,7 +70,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error creating distill run:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create run' },
+      { error: publicErrorMessage(error, 'Failed to create run') },
       { status: 500 }
     );
   }

@@ -23,6 +23,20 @@ export type { WebScoutInput, WebScoutOutput, WebScoutProposal } from './helpers/
 
 // ---------- Routing ----------
 
+function clampInt(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(Math.floor(value), max));
+}
+
+function clampScore(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(value, 1));
+}
+
 function routeAfterAgent(state: WebScoutStateType): string {
   const lastMessage = state.messages[state.messages.length - 1];
   const hasToolCalls = lastMessage instanceof AIMessage && (lastMessage.tool_calls?.length ?? 0) > 0;
@@ -69,6 +83,12 @@ export async function webScoutGraph(
   runId?: string,
 ): Promise<WebScoutOutput> {
   const graph = createWebScoutGraph();
+  const goal = input.goal.trim().slice(0, 500);
+  const focusTags = Array.isArray(input.focusTags) ? input.focusTags.slice(0, 20) : undefined;
+  const minQualityResults = clampInt(input.minQualityResults, 3, 1, 10);
+  const minRelevanceScore = clampScore(input.minRelevanceScore, 0.8);
+  const maxIterations = clampInt(input.maxIterations, 5, 1, 10);
+  const maxQueries = clampInt(input.maxQueries, 10, 1, 25);
 
   if (onStep) {
     onStep({
@@ -77,7 +97,7 @@ export async function webScoutGraph(
       name: 'webscout_start',
       status: 'running',
       startedAt: new Date().toISOString(),
-      input: { mode: input.mode, goal: input.goal, focusTags: input.focusTags },
+      input: { mode: input.mode, goal, focusTags },
     });
   }
 
@@ -85,14 +105,14 @@ export async function webScoutGraph(
 
   const result = await graph.invoke(
     {
-      goal: input.goal,
+      goal,
       mode: input.mode,
       day: input.day,
-      focusTags: input.focusTags,
-      minQualityResults: input.minQualityResults ?? 3,
-      minRelevanceScore: input.minRelevanceScore ?? 0.8,
-      maxIterations: input.maxIterations ?? 5,
-      maxQueries: input.maxQueries ?? 10,
+      focusTags,
+      minQualityResults,
+      minRelevanceScore,
+      maxIterations,
+      maxQueries,
       runId,
       importToLibrary: input.importToLibrary ?? false,
       restrictToWatchlistDomains: input.restrictToWatchlistDomains ?? false,

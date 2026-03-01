@@ -58,11 +58,18 @@ function computeHeuristicScore(url: string, title: string, snippet: string, goal
   return Math.max(0, Math.min(1, score));
 }
 
+function clampMaxResults(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 8;
+  }
+  return Math.max(1, Math.min(Math.floor(value), 20));
+}
+
 // ---------- Tools ----------
 
 export const searchWebTool = tool(
   async ({ query, maxResults, includeDomains, excludeDomains }) => {
-    const response = await executeTavilySearch(query, maxResults ?? 8, 'basic', {
+    const response = await executeTavilySearch(query, clampMaxResults(maxResults), 'basic', {
       includeDomains: includeDomains ?? undefined,
       excludeDomains: excludeDomains ?? undefined,
     });
@@ -80,7 +87,13 @@ export const searchWebTool = tool(
       'Search the web for resources. Returns JSON array of { url, title, snippet, score }.',
     schema: z.object({
       query: z.string().describe('Search query'),
-      maxResults: z.number().nullable().describe('Max results to return. Use null for default (8).'),
+      maxResults: z
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .nullable()
+        .describe('Max results to return (1-20). Use null for default (8).'),
       includeDomains: z
         .array(z.string())
         .nullable()
