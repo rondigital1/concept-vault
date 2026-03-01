@@ -12,7 +12,7 @@
 
 // Set env FIRST - before any imports that might load db
 const testDbUrl = process.env.TEST_DATABASE_URL ||
-  'postgresql://knowledge:knowledge@localhost:5432/knowledge_distiller_test';
+  'postgresql://knowledge:knowledge@localhost:5432/concept_vault_test';
 process.env.DATABASE_URL = testDbUrl;
 
 // Ensure test database exists before any code connects to it
@@ -22,10 +22,10 @@ async function ensureTestDatabase() {
   const sql = postgres(baseUrl, { max: 1 });
   try {
     const exists = await sql`
-      SELECT 1 FROM pg_database WHERE datname = 'knowledge_distiller_test'
+      SELECT 1 FROM pg_database WHERE datname = 'concept_vault_test'
     `;
     if (exists.length === 0) {
-      await sql.unsafe('CREATE DATABASE knowledge_distiller_test');
+      await sql.unsafe('CREATE DATABASE concept_vault_test');
     }
   } catch {
     // Ignore - DB may exist, or Postgres not running

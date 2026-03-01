@@ -20,23 +20,23 @@ echo "Postgres is ready."
 
 # Drop test database if exists
 echo "Dropping existing test database (if any)..."
-docker compose exec -T postgres psql -U knowledge -d postgres -c "DROP DATABASE IF EXISTS knowledge_distiller_test;"
+docker compose exec -T postgres psql -U knowledge -d postgres -c "DROP DATABASE IF EXISTS concept_vault_test;"
 
 # Create test database
 echo "Creating test database..."
-docker compose exec -T postgres psql -U knowledge -d postgres -c "CREATE DATABASE knowledge_distiller_test;"
+docker compose exec -T postgres psql -U knowledge -d postgres -c "CREATE DATABASE concept_vault_test;"
 
 # Verify database was created
 echo "Verifying database creation..."
-docker compose exec -T postgres psql -U knowledge -d postgres -c "SELECT datname FROM pg_database WHERE datname = 'knowledge_distiller_test';"
+docker compose exec -T postgres psql -U knowledge -d postgres -c "SELECT datname FROM pg_database WHERE datname = 'concept_vault_test';"
 
 # Enable pgvector extension
 echo "Enabling vector extension..."
-docker compose exec -T postgres psql -U knowledge -d knowledge_distiller_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+docker compose exec -T postgres psql -U knowledge -d concept_vault_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 # Initialize schema (use dedicated test script to avoid connection caching)
 echo "Initializing schema..."
-DATABASE_URL="postgresql://knowledge:knowledge@localhost:5432/knowledge_distiller_test" npx tsx scripts/init-test-schema.ts
+DATABASE_URL="postgresql://knowledge:knowledge@localhost:5432/concept_vault_test" npx tsx scripts/init-test-schema.ts
 
 echo ""
 echo "✓ Test database ready!"

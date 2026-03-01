@@ -19,7 +19,7 @@ export async function register() {
       // Check if DATABASE_URL is set
       if (!process.env.DATABASE_URL) {
         console.error('[Instrumentation] DATABASE_URL environment variable is not set');
-        console.error('[Instrumentation] Please create a .env file with DATABASE_URL=postgresql://knowledge:knowledge@localhost:5432/knowledge_distiller');
+        console.error('[Instrumentation] Please create a .env file with DATABASE_URL=postgresql://knowledge:knowledge@localhost:5432/concept_vault');
         console.error('[Instrumentation] Or copy .env.example to .env and update it');
         isInitialized = true;
         return;

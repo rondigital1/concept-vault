@@ -1,9 +1,9 @@
 import postgres from 'postgres';
 
 const DEFAULT_DATABASE_URL =
-  'postgresql://knowledge:knowledge@localhost:5432/knowledge_distiller';
+  'postgresql://knowledge:knowledge@localhost:5432/concept_vault';
 const DEFAULT_TEST_DATABASE_URL =
-  'postgresql://knowledge:knowledge@localhost:5432/knowledge_distiller_test';
+  'postgresql://knowledge:knowledge@localhost:5432/concept_vault_test';
 const isVitest = Boolean(process.env.VITEST);
 
 // Use test DB when running Vitest (avoids .env overriding test setup)
