@@ -26,8 +26,12 @@ export async function insertReport(input: ReportInput): Promise<string> {
   const { runId, day, title, content, sourceRefs = {} } = input;
 
   const id = await sql.begin(async (tx) => {
+    // postgres@3.4.8 typings expose TransactionSql without tag-call signatures.
+    // Cast to the root sql tag type for template-query ergonomics.
+    const txSql = tx as unknown as typeof sql;
+
     // Supersede any existing approved report for this day
-    await tx`
+    await txSql`
       UPDATE artifacts
       SET status = 'superseded', reviewed_at = now()
       WHERE agent = 'research'
@@ -36,7 +40,7 @@ export async function insertReport(input: ReportInput): Promise<string> {
         AND status = 'approved'
     `;
 
-    const rows = await tx<Array<{ id: string }>>`
+    const rows = await txSql<Array<{ id: string }>>`
       INSERT INTO artifacts (run_id, agent, kind, day, title, content, source_refs, status, reviewed_at)
       VALUES (
         ${runId},

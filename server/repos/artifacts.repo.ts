@@ -84,8 +84,12 @@ export async function approveArtifact(artifactId: string): Promise<boolean> {
 
   // Start a transaction to supersede old and approve new
   await sql.begin(async (tx) => {
+    // postgres@3.4.8 typings expose TransactionSql without tag-call signatures.
+    // Cast to the root sql tag type for template-query ergonomics.
+    const txSql = tx as unknown as typeof sql;
+
     // Supersede any existing approved artifact with same (agent, kind, day)
-    await tx`
+    await txSql`
       UPDATE artifacts
       SET status = 'superseded', reviewed_at = now()
       WHERE agent = ${agent}
@@ -96,7 +100,7 @@ export async function approveArtifact(artifactId: string): Promise<boolean> {
     `;
 
     // Approve the new artifact
-    await tx`
+    await txSql`
       UPDATE artifacts
       SET status = 'approved', reviewed_at = now()
       WHERE id = ${artifactId}
