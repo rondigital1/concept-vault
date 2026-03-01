@@ -6,7 +6,7 @@ AI-powered knowledge curation and distillation system with strong observability.
 
 - TypeScript
 - Next.js (App Router)
-- Postgres + pgvector
+- Postgres + pgvector (Supabase for cloud)
 
 ## Setup
 
@@ -63,6 +63,36 @@ This returns a `runId`. View the trace at `/agent-control-center?runId=<runId>`.
 ```bash
 curl http://localhost:3000/api/runs/<runId>
 ```
+
+### Daily WebScout (Trusted Sources -> Library)
+
+`/api/cron/web-scout` runs WebScout in `derive-from-vault` mode with:
+
+- `restrictToWatchlistDomains=true`
+- `importToLibrary=true`
+
+It requires an auth token via `Authorization: Bearer <CRON_SECRET or WEB_SCOUT_CRON_SECRET>` in production.
+On Vercel, `vercel.json` schedules this route weekly.
+
+### Daily Topic Report
+
+`/api/cron/topic-report` runs the full topic-report workflow and saves report artifacts.
+
+It requires an auth token via `Authorization: Bearer <CRON_SECRET or TOPIC_REPORT_CRON_SECRET>` in production.
+On Vercel, `vercel.json` schedules this route daily.
+
+## Production Deploy (Vercel + Supabase + Google OAuth)
+
+1. Create a Supabase project and copy the pooled Postgres connection string into `DATABASE_URL` (include `sslmode=require`).
+2. Configure a Google OAuth app and set:
+   - `AUTH_GOOGLE_ID`
+   - `AUTH_GOOGLE_SECRET`
+   - `AUTH_SECRET`
+   - `OWNER_EMAIL` (only this email can sign in)
+3. Set `CRON_SECRET` in Vercel project environment variables.
+4. Keep `vercel.json` cron schedules enabled:
+   - Daily `topic-report`: `0 11 * * *`
+   - Weekly `web-scout`: `0 13 * * 0`
 
 ## Project Structure
 

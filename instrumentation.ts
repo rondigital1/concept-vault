@@ -4,8 +4,6 @@
  * https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
  */
 
-import { client, ensureSchema } from '@/db';
-
 let isInitialized = false;
 
 export async function register() {
@@ -27,6 +25,8 @@ export async function register() {
         return;
       }
 
+      // Import db only in node runtime to avoid edge bundle pulling node-only deps.
+      const { client, ensureSchema } = await import('@/db');
       const result = await ensureSchema(client);
 
       if (result.ok) {
