@@ -61,8 +61,11 @@ function computeHeuristicScore(url: string, title: string, snippet: string, goal
 // ---------- Tools ----------
 
 export const searchWebTool = tool(
-  async ({ query, maxResults }) => {
-    const response = await executeTavilySearch(query, maxResults ?? 8, 'basic');
+  async ({ query, maxResults, includeDomains, excludeDomains }) => {
+    const response = await executeTavilySearch(query, maxResults ?? 8, 'basic', {
+      includeDomains: includeDomains ?? undefined,
+      excludeDomains: excludeDomains ?? undefined,
+    });
     const results = response.results.map(r => ({
       url: r.url,
       title: r.title,
@@ -78,6 +81,16 @@ export const searchWebTool = tool(
     schema: z.object({
       query: z.string().describe('Search query'),
       maxResults: z.number().nullable().describe('Max results to return. Use null for default (8).'),
+      includeDomains: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe('Optional domain allowlist for trusted/curated searches.'),
+      excludeDomains: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe('Optional domain denylist to exclude low-quality domains.'),
     }),
   },
 );

@@ -9,6 +9,8 @@ export const TavilySearchInputSchema = z.object({
   query: z.string().describe('Search query'),
   maxResults: z.number().optional().default(10).describe('Maximum number of results'),
   searchDepth: z.enum(['basic', 'advanced']).optional().default('basic'),
+  includeDomains: z.array(z.string()).optional().describe('Optional domain allowlist.'),
+  excludeDomains: z.array(z.string()).optional().describe('Optional domain denylist.'),
 });
 
 /**
@@ -19,10 +21,12 @@ export function createTavilySearchTool() {
     name: 'tavily_search',
     description: 'Search the web using Tavily. Returns relevant web pages with titles, URLs, and content excerpts.',
     schema: TavilySearchInputSchema,
-    func: async ({ query, maxResults, searchDepth }): Promise<string> => {
+    func: async ({ query, maxResults, searchDepth, includeDomains, excludeDomains }): Promise<string> => {
       const response = await tavilySearch(query, {
         maxResults,
         searchDepth,
+        includeDomains,
+        excludeDomains,
       });
 
       return JSON.stringify({
@@ -44,7 +48,13 @@ export function createTavilySearchTool() {
 export async function executeTavilySearch(
   query: string,
   maxResults: number = 10,
-  searchDepth: 'basic' | 'advanced' = 'basic'
+  searchDepth: 'basic' | 'advanced' = 'basic',
+  options?: { includeDomains?: string[]; excludeDomains?: string[] },
 ): Promise<TavilySearchResponse> {
-  return tavilySearch(query, { maxResults, searchDepth });
+  return tavilySearch(query, {
+    maxResults,
+    searchDepth,
+    includeDomains: options?.includeDomains,
+    excludeDomains: options?.excludeDomains,
+  });
 }

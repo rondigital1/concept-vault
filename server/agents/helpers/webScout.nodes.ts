@@ -10,13 +10,114 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/
 import { StructuredToolInterface } from '@langchain/core/tools';
 import { createChatModel } from '@/server/langchain/models';
 import {
+  checkUrlExists,
   getRecentDocumentsForQuery,
   getDocumentsByTags,
   insertWebProposalArtifact,
 } from '@/server/repos/webScout.repo';
 import { checkoutDueSources } from '@/server/services/sourceWatch.service';
+import { extractDocumentFromUrl } from '@/server/services/urlExtract.service';
+import { ingestDocument } from '@/server/services/ingest.service';
+import { setDocumentTags } from '@/server/services/document.service';
 import { webScoutTools } from '@/server/langchain/tools/webScout.tools';
 import { ScoredResult, WebScoutProposal, WebScoutStateType } from './webScout.types';
+
+interface SearchToolArgs {
+  query?: string;
+  maxResults?: number | null;
+  includeDomains?: string[] | null;
+  excludeDomains?: string[] | null;
+  urls?: string[];
+  url?: string;
+  title?: string;
+  snippet?: string;
+  goal?: string;
+  originalQuery?: string;
+  feedback?: string;
+}
+
+function normalizeDomains(domains: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const domain of domains) {
+    const clean = domain.trim().toLowerCase();
+    if (!clean || seen.has(clean)) {
+      continue;
+    }
+    seen.add(clean);
+    normalized.push(clean);
+  }
+  return normalized;
+}
+
+function normalizeTopics(topics: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const topic of topics) {
+    const clean = topic
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!clean) {
+      continue;
+    }
+    if (clean.length < 3 || clean.length > 40) {
+      continue;
+    }
+    const words = clean.split(' ');
+    if (words.length > 3) {
+      continue;
+    }
+    if (seen.has(clean)) {
+      continue;
+    }
+    seen.add(clean);
+    normalized.push(clean);
+
+    if (normalized.length >= 8) {
+      break;
+    }
+  }
+
+  return normalized;
+}
+
+function coerceSearchToolArgs(args: unknown): SearchToolArgs {
+  if (!args || typeof args !== 'object') {
+    return {};
+  }
+  return { ...(args as SearchToolArgs) };
+}
+
+async function importProposalToLibrary(proposal: WebScoutProposal): Promise<boolean> {
+  const exists = await checkUrlExists(proposal.url);
+  if (exists) {
+    return false;
+  }
+
+  const extraction = await extractDocumentFromUrl(proposal.url);
+  const title = (extraction.title?.trim() || proposal.title || 'Untitled').slice(0, 200);
+  const ingestResult = await ingestDocument({
+    title,
+    source: proposal.url,
+    content: extraction.content,
+  });
+
+  if (!ingestResult.created) {
+    return false;
+  }
+
+  const tags = normalizeTopics(proposal.topics ?? []);
+  if (tags.length > 0) {
+    await setDocumentTags(ingestResult.documentId, tags);
+  }
+
+  return true;
+}
 
 // ---------- setup ----------
 
@@ -40,7 +141,7 @@ export async function setup(state: WebScoutStateType): Promise<Partial<WebScoutS
   try {
     const dueSources = await checkoutDueSources(8);
     if (dueSources.length > 0) {
-      watchSourceDomains = dueSources.map((source) => source.domain);
+      watchSourceDomains = normalizeDomains(dueSources.map((source) => source.domain));
       watchSourceLines = dueSources
         .map((source) => `- ${source.domain} (${source.kind}; every ${source.checkIntervalHours}h)`)
         .join('\n');
@@ -55,12 +156,17 @@ export async function setup(state: WebScoutStateType): Promise<Partial<WebScoutS
   const watchSourceSection = watchSourceLines
     ? `\nPERIODIC SOURCE WATCHLIST (check these first when relevant):\n${watchSourceLines}\n`
     : '';
+  const restrictDomainSection =
+    state.restrictToWatchlistDomains && watchSourceDomains.length > 0
+      ? '\nTRUSTED SOURCE MODE: Restrict search results to watchlist domains only.\n'
+      : '';
 
   const systemPrompt = `You are a web research agent finding high-quality learning resources.
 
 GOAL: ${state.goal}
 ${vaultSection}
 ${watchSourceSection}
+${restrictDomainSection}
 TOOLS:
 - searchWeb: Search the web. Start here.
 - checkVaultDuplicate: Check which URLs are already in the user's vault. Call after searching.
@@ -74,6 +180,7 @@ STRATEGY:
 4. If you have fewer than ${state.minQualityResults} quality results (score >= ${state.minRelevanceScore}), refine your query and search again
 5. When satisfied, respond with a summary of what you found WITHOUT calling any tools
 6. If watchlist sources are present, prioritize queries constrained to those domains first (for example, include site:domain in your query)
+7. If TRUSTED SOURCE MODE is enabled, use only watchlist domains in searchWeb includeDomains
 
 QUALITY BAR: Find at least ${state.minQualityResults} results with relevance >= ${state.minRelevanceScore}.
 IMPORTANT: When calling evaluateResult, always pass the goal parameter as "${state.goal}".`;
@@ -84,8 +191,12 @@ IMPORTANT: When calling evaluateResult, always pass the goal parameter as "${sta
   const watchSourceHint = watchSourceDomains.length > 0
     ? `Start by checking recent interesting resources from these watched domains: ${watchSourceDomains.join(', ')}.`
     : '';
+  const restrictDomainHint =
+    state.restrictToWatchlistDomains && watchSourceDomains.length > 0
+      ? 'Restrict searchWeb includeDomains to these watched domains for this run.'
+      : '';
   const humanMessage = watchSourceHint
-    ? `${baseHumanMessage}\n${watchSourceHint}`
+    ? `${baseHumanMessage}\n${watchSourceHint}${restrictDomainHint ? `\n${restrictDomainHint}` : ''}`
     : baseHumanMessage;
 
   return {
@@ -133,7 +244,16 @@ export async function executeTools(state: WebScoutStateType): Promise<Partial<We
     }
 
     try {
-      const result = await toolFn.invoke(call.args);
+      const toolArgs = coerceSearchToolArgs(call.args);
+      if (
+        call.name === 'searchWeb' &&
+        state.restrictToWatchlistDomains &&
+        state.watchSourceDomains.length > 0
+      ) {
+        toolArgs.includeDomains = state.watchSourceDomains;
+      }
+
+      const result = await toolFn.invoke(toolArgs);
       toolMessages.push(new ToolMessage({
         tool_call_id: call.id!,
         content: typeof result === 'string' ? result : JSON.stringify(result),
@@ -147,10 +267,14 @@ export async function executeTools(state: WebScoutStateType): Promise<Partial<We
       if (call.name === 'evaluateResult') {
         const parsed = JSON.parse(typeof result === 'string' ? result : JSON.stringify(result));
         if (parsed.relevanceScore >= state.minRelevanceScore) {
+          const url = typeof toolArgs.url === 'string' ? toolArgs.url : '';
+          if (!url) {
+            continue;
+          }
           qualityResults.push({
-            url: call.args.url,
-            title: call.args.title,
-            snippet: call.args.snippet,
+            url,
+            title: typeof toolArgs.title === 'string' ? toolArgs.title : 'Untitled',
+            snippet: typeof toolArgs.snippet === 'string' ? toolArgs.snippet : '',
             relevanceScore: parsed.relevanceScore,
             contentType: parsed.contentType ?? 'other',
             topics: parsed.topics ?? [],
@@ -189,6 +313,8 @@ export async function finalize(state: WebScoutStateType): Promise<Partial<WebSco
   const proposals: WebScoutProposal[] = [];
   const artifactIds: string[] = [];
   const reasoning: string[] = [];
+  let documentsImported = 0;
+  let documentsSkipped = 0;
 
   for (const result of uniqueResults) {
     const proposal: WebScoutProposal = {
@@ -224,13 +350,32 @@ export async function finalize(state: WebScoutStateType): Promise<Partial<WebSco
     } catch {
       // Continue on artifact save error
     }
+
+    if (state.importToLibrary) {
+      try {
+        const imported = await importProposalToLibrary(proposal);
+        if (imported) {
+          documentsImported += 1;
+        } else {
+          documentsSkipped += 1;
+        }
+      } catch {
+        documentsSkipped += 1;
+      }
+    }
   }
 
   // Determine termination reason from what the routing logic set or default
   let terminationReason = state.terminationReason;
   if (!terminationReason) {
     const hasEnoughQuality = uniqueResults.length >= state.minQualityResults;
-    terminationReason = hasEnoughQuality ? 'satisfied' : 'max_iterations';
+    if (hasEnoughQuality) {
+      terminationReason = 'satisfied';
+    } else if (state.queriesExecuted >= state.maxQueries) {
+      terminationReason = 'max_queries';
+    } else {
+      terminationReason = 'max_iterations';
+    }
   }
 
   return {
@@ -243,6 +388,8 @@ export async function finalize(state: WebScoutStateType): Promise<Partial<WebSco
       queriesExecuted: state.queriesExecuted,
       resultsEvaluated: state.qualityResults.length,
       proposalsCreated: proposals.length,
+      documentsImported,
+      documentsSkipped,
     },
   };
 }

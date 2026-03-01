@@ -20,6 +20,8 @@ export interface WebScoutInput {
   minRelevanceScore?: number;
   maxIterations?: number;
   maxQueries?: number;
+  importToLibrary?: boolean;
+  restrictToWatchlistDomains?: boolean;
 }
 
 export interface WebScoutCounts {
@@ -27,6 +29,8 @@ export interface WebScoutCounts {
   queriesExecuted: number;
   resultsEvaluated: number;
   proposalsCreated: number;
+  documentsImported: number;
+  documentsSkipped: number;
 }
 
 export interface WebScoutOutput {
@@ -70,6 +74,8 @@ export const WebScoutState = Annotation.Root({
   maxIterations: Annotation<number>,
   maxQueries: Annotation<number>,
   runId: Annotation<string | undefined>,
+  importToLibrary: Annotation<boolean>,
+  restrictToWatchlistDomains: Annotation<boolean>,
 
   // ReAct working state
   messages: Annotation<BaseMessage[]>,

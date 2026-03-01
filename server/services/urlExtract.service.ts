@@ -1,4 +1,6 @@
 import { tavilyExtract } from '@/server/tools/tavily.tool';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 
 const MIN_EXTRACTED_CONTENT_LENGTH = 50;
 const FETCH_USER_AGENT =
@@ -45,10 +47,94 @@ export function isHttpUrl(value: string | undefined | null): value is string {
   }
 }
 
+function isPrivateIpv4(address: string): boolean {
+  const octets = address.split('.').map((part) => Number(part));
+  if (octets.length !== 4 || octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) {
+    return true;
+  }
+
+  const [a, b] = octets;
+
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 0) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+
+  return false;
+}
+
+function isPrivateIpv6(address: string): boolean {
+  const normalized = address.toLowerCase();
+
+  if (normalized === '::1') return true;
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+  if (normalized.startsWith('fe80')) return true;
+  if (normalized.startsWith('::ffff:')) {
+    const mapped = normalized.replace('::ffff:', '');
+    return isPrivateIpv4(mapped);
+  }
+
+  return false;
+}
+
+function isPrivateIpAddress(address: string): boolean {
+  const ipVersion = isIP(address);
+  if (ipVersion === 4) {
+    return isPrivateIpv4(address);
+  }
+  if (ipVersion === 6) {
+    return isPrivateIpv6(address);
+  }
+
+  return false;
+}
+
+function isBlockedHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+
+  return (
+    normalized === 'localhost' ||
+    normalized.endsWith('.localhost') ||
+    normalized === 'host.docker.internal' ||
+    normalized.endsWith('.local')
+  );
+}
+
+async function assertPublicUrl(url: string): Promise<void> {
+  const parsed = new URL(url);
+  const hostname = parsed.hostname;
+
+  if (isBlockedHostname(hostname)) {
+    throw new Error('Refusing to fetch local or private network addresses');
+  }
+
+  if (isPrivateIpAddress(hostname)) {
+    throw new Error('Refusing to fetch private IP addresses');
+  }
+
+  try {
+    const addresses = await lookup(hostname, { all: true });
+    if (addresses.some((entry) => isPrivateIpAddress(entry.address))) {
+      throw new Error('Refusing to fetch hostnames resolving to private IP addresses');
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Refusing to fetch')) {
+      throw error;
+    }
+
+    throw new Error('Could not resolve URL host');
+  }
+}
+
 export async function extractDocumentFromUrl(url: string): Promise<UrlExtractionResult> {
   if (!isHttpUrl(url)) {
     throw new Error('source must be a valid http(s) URL');
   }
+
+  await assertPublicUrl(url);
 
   // Prefer direct HTML extraction so we can isolate article-only containers.
   const fetchExtraction = await tryExtractWithFetch(url);

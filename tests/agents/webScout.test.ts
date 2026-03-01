@@ -12,74 +12,22 @@
  * Uses: Mocked LLM (tool-calling), Mocked Tavily, Real Postgres
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { AIMessage, ToolMessage } from '@langchain/core/messages';
+import { AIMessage } from '@langchain/core/messages';
 import {
   initTestSchema,
   cleanAllTables,
   closeTestDb,
   insertTestDocument,
 } from '../helpers/testDb';
-import { TEST_DAY, SAMPLE_DOCUMENTS } from '../helpers/fixtures';
+import { TEST_DAY } from '../helpers/fixtures';
 import { listInboxArtifacts } from '@/server/repos/artifacts.repo';
-
-// ---------- Mock search results ----------
-
-const MOCK_SEARCH_RESULTS = JSON.stringify([
-  { url: 'https://example.com/spaced-repetition', title: 'Introduction to Spaced Repetition', snippet: 'Spaced repetition is a learning technique...', score: 0.92 },
-  { url: 'https://learning-science.edu/retrieval', title: 'Retrieval Practice Research', snippet: 'Retrieval practice improves learning...', score: 0.88 },
-  { url: 'https://mit.edu/memory', title: 'Memory Science at MIT', snippet: 'Advanced memory research and findings...', score: 0.85 },
-]);
-
-const MOCK_DEDUP_ALL_NEW = JSON.stringify({
-  newUrls: [
-    'https://example.com/spaced-repetition',
-    'https://learning-science.edu/retrieval',
-    'https://mit.edu/memory',
-  ],
-  existingUrls: [],
-});
-
-function mockEvalResult(score: number) {
-  return JSON.stringify({
-    relevanceScore: score,
-    contentType: 'article',
-    topics: ['learning', 'memory'],
-    reasoning: `Score: ${score.toFixed(2)} — relevant to learning goal`,
-  });
-}
+import { sql } from '@/db';
 
 // Track LLM call count for multi-iteration tests
 let llmCallCount = 0;
 
-// ---------- Mock Tavily ----------
-
-vi.mock('@/server/langchain/tools/tavily.tool', () => ({
-  executeTavilySearch: vi.fn().mockImplementation(async (query: string) => ({
-    query,
-    results: [
-      { title: 'Introduction to Spaced Repetition', url: 'https://example.com/spaced-repetition', content: 'Spaced repetition is a learning technique...', score: 0.92 },
-      { title: 'Retrieval Practice Research', url: 'https://learning-science.edu/retrieval', content: 'Retrieval practice improves learning...', score: 0.88 },
-      { title: 'Memory Science at MIT', url: 'https://mit.edu/memory', content: 'Advanced memory research and findings...', score: 0.85 },
-    ],
-  })),
-}));
-
-// ---------- Mock Vault Repo ----------
-
-vi.mock('@/server/repos/webScout.repo', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/server/repos/webScout.repo')>();
+function createDefaultChatModelMock(): any {
   return {
-    ...actual,
-    filterExistingUrls: vi.fn().mockImplementation(async (urls: string[]) => urls),
-    getRecentDocumentsForQuery: vi.fn().mockResolvedValue([]),
-    getDocumentsByTags: vi.fn().mockResolvedValue([]),
-  };
-});
-
-// ---------- Mock LLM ----------
-
-vi.mock('@/server/langchain/models', () => ({
-  createChatModel: vi.fn().mockImplementation(() => ({
     bindTools: vi.fn().mockReturnValue({
       invoke: vi.fn().mockImplementation(async () => {
         llmCallCount++;
@@ -132,7 +80,55 @@ vi.mock('@/server/langchain/models', () => ({
         });
       }),
     }),
+  };
+}
+
+// ---------- Mock Tavily ----------
+
+vi.mock('@/server/langchain/tools/tavily.tool', () => ({
+  executeTavilySearch: vi.fn().mockImplementation(async (query: string) => ({
+    query,
+    results: [
+      { title: 'Introduction to Spaced Repetition', url: 'https://example.com/spaced-repetition', content: 'Spaced repetition is a learning technique...', score: 0.92 },
+      { title: 'Retrieval Practice Research', url: 'https://learning-science.edu/retrieval', content: 'Retrieval practice improves learning...', score: 0.88 },
+      { title: 'Memory Science at MIT', url: 'https://mit.edu/memory', content: 'Advanced memory research and findings...', score: 0.85 },
+    ],
   })),
+}));
+
+// ---------- Mock Vault Repo ----------
+
+vi.mock('@/server/repos/webScout.repo', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/repos/webScout.repo')>();
+  return {
+    ...actual,
+    filterExistingUrls: vi.fn().mockImplementation(async (urls: string[]) => urls),
+    getRecentDocumentsForQuery: vi.fn().mockResolvedValue([]),
+    getDocumentsByTags: vi.fn().mockResolvedValue([]),
+  };
+});
+
+// ---------- Mock Source Watchlist ----------
+
+vi.mock('@/server/services/sourceWatch.service', () => ({
+  checkoutDueSources: vi.fn().mockResolvedValue([]),
+}));
+
+// ---------- Mock URL Extraction ----------
+
+vi.mock('@/server/services/urlExtract.service', () => ({
+  extractDocumentFromUrl: vi.fn().mockResolvedValue({
+    title: 'Mock Extracted Article',
+    content: 'This is extracted article content with enough detail to be ingested into the library successfully.',
+    method: 'fetch',
+  }),
+  isHttpUrl: vi.fn((value: string) => value.startsWith('http://') || value.startsWith('https://')),
+}));
+
+// ---------- Mock LLM ----------
+
+vi.mock('@/server/langchain/models', () => ({
+  createChatModel: vi.fn().mockImplementation(() => createDefaultChatModelMock()),
   createExtractionModel: vi.fn().mockImplementation(() => ({
     withStructuredOutput: vi.fn().mockReturnValue({
       invoke: vi.fn().mockResolvedValue({
@@ -164,6 +160,9 @@ describe('WebScout ReAct Agent', () => {
     await cleanAllTables();
     vi.clearAllMocks();
     llmCallCount = 0;
+
+    const modelsModule = await import('@/server/langchain/models');
+    vi.mocked(modelsModule.createChatModel).mockImplementation(() => createDefaultChatModelMock());
   });
 
   describe('satisfied termination', () => {
@@ -295,6 +294,7 @@ describe('WebScout ReAct Agent', () => {
       });
 
       expect(result.counts.queriesExecuted).toBeLessThanOrEqual(2);
+      expect(result.terminationReason).toBe('max_queries');
     });
   });
 
@@ -316,7 +316,7 @@ describe('WebScout ReAct Agent', () => {
   });
 
   describe('counts tracking', () => {
-    it('should track iterations, queries, evaluations, and proposals', async () => {
+    it('should track iterations, queries, evaluations, proposals, and imports', async () => {
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
       const result = await webScoutGraph({
@@ -331,8 +331,91 @@ describe('WebScout ReAct Agent', () => {
       expect(result.counts).toHaveProperty('queriesExecuted');
       expect(result.counts).toHaveProperty('resultsEvaluated');
       expect(result.counts).toHaveProperty('proposalsCreated');
+      expect(result.counts).toHaveProperty('documentsImported');
+      expect(result.counts).toHaveProperty('documentsSkipped');
       expect(result.counts.iterations).toBeGreaterThan(0);
       expect(result.counts.proposalsCreated).toBe(result.proposals.length);
+    });
+  });
+
+  describe('trusted source + library import', () => {
+    it('should constrain search to watchlist domains when restricted mode is enabled', async () => {
+      const sourceWatchModule = await import('@/server/services/sourceWatch.service');
+      vi.mocked(sourceWatchModule.checkoutDueSources).mockResolvedValueOnce([
+        {
+          id: 'watch-1',
+          url: 'https://mit.edu',
+          domain: 'mit.edu',
+          label: 'MIT',
+          kind: 'source',
+          isActive: true,
+          checkIntervalHours: 24,
+          lastCheckedAt: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+
+      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
+      await webScoutGraph({
+        goal: 'spaced repetition techniques',
+        mode: 'derive-from-vault',
+        day: TEST_DAY,
+        restrictToWatchlistDomains: true,
+      });
+
+      const tavilyModule = await import('@/server/langchain/tools/tavily.tool');
+      const searchCalls = vi.mocked(tavilyModule.executeTavilySearch).mock.calls;
+      expect(searchCalls.length).toBeGreaterThan(0);
+      expect(searchCalls[0]?.[3]).toEqual(
+        expect.objectContaining({
+          includeDomains: ['mit.edu'],
+        }),
+      );
+    });
+
+    it('should import evaluated proposals into library when importToLibrary is enabled', async () => {
+      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
+
+      const result = await webScoutGraph({
+        goal: 'spaced repetition techniques',
+        mode: 'explicit-query',
+        day: TEST_DAY,
+        minQualityResults: 3,
+        minRelevanceScore: 0.7,
+        importToLibrary: true,
+      });
+
+      const rows = await sql<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS count
+        FROM documents
+        WHERE source = ANY(${result.proposals.map((proposal) => proposal.url)})
+      `;
+
+      expect(result.counts.proposalsCreated).toBeGreaterThan(0);
+      expect(result.counts.documentsImported).toBeGreaterThan(0);
+      expect(rows[0]?.count ?? 0).toBe(result.counts.documentsImported);
+    });
+
+    it('should skip importing URLs that already exist in library', async () => {
+      await insertTestDocument({
+        source: 'https://example.com/spaced-repetition',
+        content:
+          'Existing document content for spaced repetition that is already in the library and long enough to pass validation.',
+      });
+
+      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
+      const result = await webScoutGraph({
+        goal: 'spaced repetition techniques',
+        mode: 'explicit-query',
+        day: TEST_DAY,
+        minQualityResults: 3,
+        minRelevanceScore: 0.7,
+        importToLibrary: true,
+      });
+
+      expect(result.counts.proposalsCreated).toBeGreaterThan(0);
+      expect(result.counts.documentsSkipped).toBeGreaterThan(0);
     });
   });
 });

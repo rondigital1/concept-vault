@@ -18,6 +18,8 @@ export async function POST(request: Request) {
       minRelevanceScore: body.minRelevanceScore,
       maxIterations: body.maxIterations,
       maxQueries: body.maxQueries,
+      importToLibrary: body.importToLibrary,
+      restrictToWatchlistDomains: body.restrictToWatchlistDomains,
     };
 
     if (!input.goal) {

@@ -45,6 +45,11 @@ export async function POST(request: Request) {
       minRelevanceScore: typeof body.minRelevanceScore === 'number' ? body.minRelevanceScore : undefined,
       maxIterations: typeof body.maxIterations === 'number' ? body.maxIterations : undefined,
       maxQueries: typeof body.maxQueries === 'number' ? body.maxQueries : undefined,
+      importToLibrary: typeof body.importToLibrary === 'boolean' ? body.importToLibrary : undefined,
+      restrictToWatchlistDomains:
+        typeof body.restrictToWatchlistDomains === 'boolean'
+          ? body.restrictToWatchlistDomains
+          : undefined,
     };
 
     const { runId } = await startWebScoutFlow(input);
