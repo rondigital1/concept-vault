@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { client, ensureSchema } from '@/db';
 import { createSavedTopic, listSavedTopics } from '@/server/repos/savedTopics.repo';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -111,7 +112,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error listing saved topics:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to list topics' },
+      { error: publicErrorMessage(error, 'Failed to list topics') },
       { status: 500 },
     );
   }
@@ -188,15 +189,19 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ topic }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const isDuplicate = message.includes('saved_topics_name_key');
+    const internalMessage = error instanceof Error ? error.message : String(error);
+    const isDuplicate = internalMessage.includes('saved_topics_name_key');
 
     if (!expectsJson) {
       return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
     }
 
     return NextResponse.json(
-      { error: isDuplicate ? 'A topic with this name already exists' : message },
+      {
+        error: isDuplicate
+          ? 'A topic with this name already exists'
+          : publicErrorMessage(error, 'Failed to create topic'),
+      },
       { status: isDuplicate ? 409 : 500 },
     );
   }

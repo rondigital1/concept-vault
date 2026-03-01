@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createChatModel } from '@/server/langchain/models';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import { localKbTool } from '@/server/tools/localKb.tool';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -73,7 +74,7 @@ When you don't have specific information from the knowledge base, you can still 
   } catch (error: unknown) {
     console.error('Chat API error:', error);
 
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = publicErrorMessage(error, 'Chat request failed');
     return NextResponse.json(
       { error: 'CHAT_API_FAILED', message: errorMessage },
       { status: 500 }

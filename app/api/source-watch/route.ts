@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { client, ensureSchema } from '@/db';
 import { createSourceWatch, listSourceWatch } from '@/server/services/sourceWatch.service';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -12,7 +13,7 @@ export async function GET() {
   } catch (error) {
     console.error('Error listing source watch items:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to load source watch items' },
+      { error: publicErrorMessage(error, 'Failed to load source watch items') },
       { status: 500 },
     );
   }
@@ -38,10 +39,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ item }, { status: 201 });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to create source watch item';
-    const isConflict = message.toLowerCase().includes('duplicate key');
+    const internalMessage = error instanceof Error ? error.message : String(error);
+    const isConflict = internalMessage.toLowerCase().includes('duplicate key');
     const status = isConflict ? 409 : 400;
-    return NextResponse.json({ error: message }, { status });
+    const errorMessage = isConflict
+      ? 'Source watch item already exists'
+      : publicErrorMessage(error, 'Failed to create source watch item');
+    return NextResponse.json({ error: errorMessage }, { status });
   }
 }

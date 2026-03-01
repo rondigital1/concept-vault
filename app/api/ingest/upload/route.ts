@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { client, ensureSchema } from "@/db";
 import { ingestDocument } from "@/server/services/ingest.service";
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = "nodejs";
 
@@ -300,7 +301,7 @@ export async function POST(request: Request) {
     );
   } catch (error: any) {
     console.error("File upload error:", error);
-    const message = error?.message ?? "Unknown error";
+    const message = publicErrorMessage(error, 'File upload failed');
     return NextResponse.json(
       { ok: false, error: "UPLOAD_FAILED", message },
       { status: 500 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { client, ensureSchema } from "@/db";
 import { ingestDocument } from "@/server/services/ingest.service";
 import { extractDocumentFromUrl, isHttpUrl } from "@/server/services/urlExtract.service";
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
         extractedTitle = extraction.title;
       } catch (error: any) {
         if (!content) {
-          return badRequest(error?.message ?? "Failed to extract content from URL");
+          return badRequest(publicErrorMessage(error, 'Failed to extract content from URL'));
         }
       }
     }
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error: any) {
-    const message = error?.message ?? "Unknown error";
+    const message = publicErrorMessage(error, 'Failed to ingest document');
     return NextResponse.json(
       { ok: false, error: "INGEST_FAILED", message },
       { status: 500 }

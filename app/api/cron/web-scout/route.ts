@@ -3,6 +3,7 @@ import { client, ensureSchema } from '@/db';
 import { webScoutFlow } from '@/server/flows/webScout.flow';
 import { listSourceWatch } from '@/server/services/sourceWatch.service';
 import { isCronRequestAuthorized } from '@/server/security/cronAuth';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -85,7 +86,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error running daily web scout cron:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to run daily web scout' },
+      { error: publicErrorMessage(error, 'Failed to run daily web scout') },
       { status: 500 },
     );
   }
@@ -97,7 +98,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error running daily web scout cron:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to run daily web scout' },
+      { error: publicErrorMessage(error, 'Failed to run daily web scout') },
       { status: 500 },
     );
   }

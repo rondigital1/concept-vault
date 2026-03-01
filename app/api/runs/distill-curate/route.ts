@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DistillCurateInput, distillCurateFlow } from '@/server/flows/distillCurate.flow';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error running distill-curate automation:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to run distill-curate automation' },
+      { error: publicErrorMessage(error, 'Failed to run distill-curate automation') },
       { status: 500 },
     );
   }

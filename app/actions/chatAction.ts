@@ -4,6 +4,7 @@ import { client, ensureSchema } from '@/db';
 import { createChatModel } from '@/server/langchain/models';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import * as chatHistoryService from '@/server/services/chatHistory.service';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export interface ChatActionInput {
   message: string;
@@ -87,6 +88,6 @@ Do not mention the suggestions in your main response text.`;
     return { content, suggestedReplies, sessionId: session.id };
   } catch (error) {
     console.error('Chat action error:', error);
-    throw new Error(error instanceof Error ? error.message : 'Failed to process chat request');
+    throw new Error(publicErrorMessage(error, 'Failed to process chat request'));
   }
 }

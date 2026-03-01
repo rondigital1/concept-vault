@@ -7,6 +7,7 @@ import {
 } from '@/server/services/document.service';
 import { toggleFavorite } from '@/server/repos/documents.repo';
 import { revalidatePath } from 'next/cache';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function deleteDocumentAction(documentId: string) {
   try {
@@ -18,7 +19,7 @@ export async function deleteDocumentAction(documentId: string) {
     console.error('Failed to delete document:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete document',
+      error: publicErrorMessage(error, 'Failed to delete document'),
     };
   }
 }
@@ -37,7 +38,7 @@ export async function updateDocumentTitleAction(
     console.error('Failed to update document title:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to update title',
+      error: publicErrorMessage(error, 'Failed to update title'),
     };
   }
 }
@@ -52,7 +53,7 @@ export async function toggleFavoriteAction(documentId: string) {
     console.error('Failed to toggle favorite:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to toggle favorite',
+      error: publicErrorMessage(error, 'Failed to toggle favorite'),
     };
   }
 }

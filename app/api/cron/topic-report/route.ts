@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { client, ensureSchema } from '@/db';
 import { topicReportFlow, TopicReportFlowInput } from '@/server/flows/topicReport.flow';
 import { isCronRequestAuthorized } from '@/server/security/cronAuth';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -122,7 +123,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error running daily topic-report cron:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to run topic report cron' },
+      { error: publicErrorMessage(error, 'Failed to run topic report cron') },
       { status: 500 },
     );
   }
@@ -134,7 +135,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error running daily topic-report cron:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to run topic report cron' },
+      { error: publicErrorMessage(error, 'Failed to run topic report cron') },
       { status: 500 },
     );
   }

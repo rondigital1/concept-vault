@@ -3,6 +3,7 @@
 import { client, ensureSchema } from '@/db';
 import * as chatHistoryService from '@/server/services/chatHistory.service';
 import { revalidatePath } from 'next/cache';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export interface SessionSummary {
   id: string;
@@ -78,7 +79,7 @@ export async function deleteSessionAction(
     console.error('Failed to delete session:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete session',
+      error: publicErrorMessage(error, 'Failed to delete session'),
     };
   }
 }
@@ -96,7 +97,7 @@ export async function renameSessionAction(
     console.error('Failed to rename session:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to rename session',
+      error: publicErrorMessage(error, 'Failed to rename session'),
     };
   }
 }

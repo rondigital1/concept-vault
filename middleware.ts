@@ -10,6 +10,16 @@ function isStateChangingMethod(method: string): boolean {
   return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
 }
 
+function normalizeEmail(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+const OWNER_EMAIL = normalizeEmail(process.env.OWNER_EMAIL);
+
 function isCrossOriginRequest(request: NextRequest): boolean {
   const origin = request.headers.get('origin');
   if (!origin) {
@@ -17,6 +27,54 @@ function isCrossOriginRequest(request: NextRequest): boolean {
   }
 
   return origin !== request.nextUrl.origin;
+}
+
+function isCrossSiteFetchRequest(request: NextRequest): boolean {
+  const fetchSite = request.headers.get('sec-fetch-site');
+  if (!fetchSite) {
+    return false;
+  }
+
+  return fetchSite === 'cross-site';
+}
+
+function appendVary(existing: string | null, value: string): string {
+  if (!existing) {
+    return value;
+  }
+
+  const normalized = existing
+    .split(',')
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (normalized.includes(value.toLowerCase())) {
+    return existing;
+  }
+
+  return `${existing}, ${value}`;
+}
+
+function withPrivateHeaders(response: NextResponse): NextResponse {
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  response.headers.set('Pragma', 'no-cache');
+  response.headers.set('Expires', '0');
+  response.headers.set('Vary', appendVary(response.headers.get('Vary'), 'Cookie'));
+  response.headers.set('Vary', appendVary(response.headers.get('Vary'), 'Authorization'));
+  return response;
+}
+
+function isOwnerSession(request: AuthenticatedRequest): boolean {
+  const sessionEmail = normalizeEmail(request.auth?.user?.email);
+
+  if (!OWNER_EMAIL) {
+    return process.env.NODE_ENV !== 'production';
+  }
+
+  return sessionEmail === OWNER_EMAIL;
 }
 
 function isPublicPath(pathname: string): boolean {
@@ -58,27 +116,44 @@ export default auth((request) => {
     return NextResponse.next();
   }
 
-  if (isStateChangingMethod(request.method) && isCrossOriginRequest(request)) {
+  if (
+    isStateChangingMethod(request.method) &&
+    (isCrossOriginRequest(request) || isCrossSiteFetchRequest(request))
+  ) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return withPrivateHeaders(NextResponse.json({ error: 'Forbidden' }, { status: 403 }));
     }
-    return new NextResponse('Forbidden', { status: 403 });
+    return withPrivateHeaders(new NextResponse('Forbidden', { status: 403 }));
   }
 
   if (request.auth) {
-    return NextResponse.next();
+    if (!isOwnerSession(request)) {
+      if (pathname.startsWith('/api/')) {
+        return withPrivateHeaders(NextResponse.json({ error: 'Forbidden' }, { status: 403 }));
+      }
+      return withPrivateHeaders(new NextResponse('Forbidden', { status: 403 }));
+    }
+
+    return withPrivateHeaders(NextResponse.next());
   }
 
   if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return withPrivateHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
   }
 
   const signInUrl = new URL('/api/auth/signin', request.nextUrl.origin);
   signInUrl.searchParams.set('callbackUrl', `${pathname}${search}`);
 
-  return NextResponse.redirect(signInUrl);
+  return withPrivateHeaders(NextResponse.redirect(signInUrl));
 });
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image).*)'],
+};
+type AuthenticatedRequest = NextRequest & {
+  auth?: {
+    user?: {
+      email?: string | null;
+    } | null;
+  } | null;
 };

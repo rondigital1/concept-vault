@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { markReportRead } from '@/server/repos/report.repo';
 import { client, ensureSchema } from '@/db';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function POST(
   _request: Request,
@@ -22,7 +23,7 @@ export async function POST(
   } catch (error) {
     console.error('Error marking report read:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to mark report read' },
+      { error: publicErrorMessage(error, 'Failed to mark report read') },
       { status: 500 },
     );
   }

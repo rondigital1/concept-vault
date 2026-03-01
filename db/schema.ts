@@ -364,11 +364,11 @@ export async function ensureSchema(sqlClient: {
           error.message.includes('ECONNREFUSED') ||
           error.message.includes('connection refused')
         ) {
-          message = `Database connection failed. 
+          message = `Database connection failed.
 Troubleshooting:
 1. Is Docker Desktop running? If so, run 'docker compose up -d'.
 2. If using Homebrew Postgres, is it started? Run 'brew services list'.
-3. Check your DATABASE_URL in .env (current: ${process.env.DATABASE_URL})`;
+3. Check your DATABASE_URL in .env.`;
         } else {
           message = error.message;
         }

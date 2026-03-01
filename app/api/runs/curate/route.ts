@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { curateFlow } from '@/server/flows/curate.flow';
 import { getDocumentIdForCuration } from '@/server/services/document.service';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error creating curate run:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create run' },
+      { error: publicErrorMessage(error, 'Failed to create run') },
       { status: 500 }
     );
   }

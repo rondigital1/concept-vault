@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { client, ensureSchema } from '@/db';
 import { topicReportFlow, TopicReportFlowInput } from '@/server/flows/topicReport.flow';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
@@ -151,7 +152,7 @@ export async function POST(request: Request) {
       return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
     }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to run topic report workflow' },
+      { error: publicErrorMessage(error, 'Failed to run topic report workflow') },
       { status: 500 },
     );
   }

@@ -2,6 +2,7 @@
 
 import { client, ensureSchema } from '@/db';
 import { ingestDocument } from '@/server/services/ingest.service';
+import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function saveToLibraryAction(text: string, title?: string) {
   try {
@@ -29,7 +30,7 @@ export async function saveToLibraryAction(text: string, title?: string) {
     console.error('Failed to save to library:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to save text to library',
+      error: publicErrorMessage(error, 'Failed to save text to library'),
     };
   }
 }
