@@ -172,6 +172,31 @@ describe('Artifact Lifecycle', () => {
       const result = await approveArtifact(artifactId);
       expect(result).toBe(false);
     });
+
+    it('merges review metadata into source_refs when approving', async () => {
+      const artifactId = await insertArtifact({
+        runId: null,
+        agent: 'webScout',
+        kind: 'web-proposal',
+        day: TEST_DAY,
+        title: 'Test Proposal',
+        content: {},
+        sourceRefs: { goal: 'learn retrieval practice' },
+      });
+
+      const result = await approveArtifact(artifactId, {
+        documentId: '123e4567-e89b-12d3-a456-426614174000',
+      });
+
+      expect(result).toBe(true);
+
+      const artifact = await getArtifactById(artifactId);
+      expect(artifact?.status).toBe('approved');
+      expect(artifact?.source_refs).toEqual({
+        goal: 'learn retrieval practice',
+        documentId: '123e4567-e89b-12d3-a456-426614174000',
+      });
+    });
   });
 
   describe('rejectArtifact', () => {

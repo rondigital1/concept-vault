@@ -12,76 +12,158 @@
  * Uses: Mocked LLM (tool-calling), Mocked Tavily, Real Postgres
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { AIMessage } from '@langchain/core/messages';
 import {
   initTestSchema,
   cleanAllTables,
   closeTestDb,
-  insertTestDocument,
 } from '../helpers/testDb';
 import { TEST_DAY } from '../helpers/fixtures';
 import { listInboxArtifacts } from '@/server/repos/artifacts.repo';
-import { sql } from '@/db';
 
 // Track LLM call count for multi-iteration tests
 let llmCallCount = 0;
 
-function createDefaultChatModelMock(): any {
-  return {
-    bindTools: vi.fn().mockReturnValue({
-      invoke: vi.fn().mockImplementation(async () => {
-        llmCallCount++;
+function createDefaultToolRoundMock() {
+  return vi.fn().mockImplementation(async () => {
+    llmCallCount += 1;
 
-        // Iteration 1: search + dedup
-        if (llmCallCount === 1) {
-          return new AIMessage({
-            content: '',
-            tool_calls: [
-              { id: 'call_1', name: 'searchWeb', args: { query: 'spaced repetition techniques', maxResults: 8 } },
-            ],
-          });
-        }
+    if (llmCallCount === 1) {
+      return {
+        outputText: '',
+        responseId: 'resp-1',
+        retryCount: 0,
+        tier: 'default',
+        model: 'gpt-5-mini',
+        toolCalls: [
+          {
+            callId: 'call_1',
+            name: 'searchWeb',
+            arguments: { query: 'spaced repetition techniques', maxResults: 8 },
+          },
+        ],
+        usage: {
+          cachedInputTokens: 0,
+          inputTokens: 100,
+          outputTokens: 20,
+          reasoningTokens: 0,
+          totalTokens: 120,
+        },
+        estimatedCostUsd: 0.001,
+        actualCostUsd: 0.001,
+        wasEscalated: false,
+      };
+    }
 
-        // Iteration 2: check duplicates
-        if (llmCallCount === 2) {
-          return new AIMessage({
-            content: '',
-            tool_calls: [
-              {
-                id: 'call_2',
-                name: 'checkVaultDuplicate',
-                args: {
-                  urls: [
-                    'https://example.com/spaced-repetition',
-                    'https://learning-science.edu/retrieval',
-                    'https://mit.edu/memory',
-                  ],
-                },
-              },
-            ],
-          });
-        }
+    if (llmCallCount === 2) {
+      return {
+        outputText: '',
+        responseId: 'resp-2',
+        retryCount: 0,
+        tier: 'default',
+        model: 'gpt-5-mini',
+        toolCalls: [
+          {
+            callId: 'call_2',
+            name: 'checkVaultDuplicate',
+            arguments: {
+              urls: [
+                'https://example.com/spaced-repetition',
+                'https://learning-science.edu/retrieval',
+                'https://mit.edu/memory',
+              ],
+            },
+          },
+        ],
+        usage: {
+          cachedInputTokens: 0,
+          inputTokens: 100,
+          outputTokens: 20,
+          reasoningTokens: 0,
+          totalTokens: 120,
+        },
+        estimatedCostUsd: 0.001,
+        actualCostUsd: 0.001,
+        wasEscalated: false,
+      };
+    }
 
-        // Iteration 3: evaluate results
-        if (llmCallCount === 3) {
-          return new AIMessage({
-            content: '',
-            tool_calls: [
-              { id: 'call_3a', name: 'evaluateResult', args: { url: 'https://example.com/spaced-repetition', title: 'Introduction to Spaced Repetition', snippet: 'Spaced repetition is a learning technique...', goal: 'spaced repetition techniques' } },
-              { id: 'call_3b', name: 'evaluateResult', args: { url: 'https://learning-science.edu/retrieval', title: 'Retrieval Practice Research', snippet: 'Retrieval practice improves learning...', goal: 'spaced repetition techniques' } },
-              { id: 'call_3c', name: 'evaluateResult', args: { url: 'https://mit.edu/memory', title: 'Memory Science at MIT', snippet: 'Advanced memory research and findings...', goal: 'spaced repetition techniques' } },
-            ],
-          });
-        }
+    if (llmCallCount === 3) {
+      return {
+        outputText: '',
+        responseId: 'resp-3',
+        retryCount: 0,
+        tier: 'default',
+        model: 'gpt-5-mini',
+        toolCalls: [
+          {
+            callId: 'call_3a',
+            name: 'evaluateResult',
+            arguments: {
+              url: 'https://example.com/spaced-repetition',
+              title: 'Introduction to Spaced Repetition',
+              snippet: 'Spaced repetition is a learning technique...',
+              goal: 'spaced repetition techniques',
+            },
+          },
+          {
+            callId: 'call_3b',
+            name: 'evaluateResult',
+            arguments: {
+              url: 'https://learning-science.edu/retrieval',
+              title: 'Retrieval Practice Research',
+              snippet: 'Retrieval practice improves learning...',
+              goal: 'spaced repetition techniques',
+            },
+          },
+          {
+            callId: 'call_3c',
+            name: 'evaluateResult',
+            arguments: {
+              url: 'https://mit.edu/memory',
+              title: 'Memory Science at MIT',
+              snippet: 'Advanced memory research and findings...',
+              goal: 'spaced repetition techniques',
+            },
+          },
+        ],
+        usage: {
+          cachedInputTokens: 0,
+          inputTokens: 100,
+          outputTokens: 20,
+          reasoningTokens: 0,
+          totalTokens: 120,
+        },
+        estimatedCostUsd: 0.001,
+        actualCostUsd: 0.001,
+        wasEscalated: false,
+      };
+    }
 
-        // Iteration 4: satisfied, no tool calls
-        return new AIMessage({
-          content: 'Found 3 high-quality resources covering spaced repetition, retrieval practice, and memory science.',
-        });
-      }),
-    }),
-  };
+    return {
+      outputText:
+        'Found 3 high-quality resources covering spaced repetition, retrieval practice, and memory science.',
+      responseId: 'resp-4',
+      retryCount: 0,
+      tier: 'default',
+      model: 'gpt-5-mini',
+      toolCalls: [],
+      usage: {
+        cachedInputTokens: 0,
+        inputTokens: 100,
+        outputTokens: 20,
+        reasoningTokens: 0,
+        totalTokens: 120,
+      },
+      estimatedCostUsd: 0.001,
+      actualCostUsd: 0.001,
+      wasEscalated: false,
+    };
+  });
 }
+
+const mockExecuteToolRound = vi.hoisted(() => createDefaultToolRoundMock());
+const mockExecuteStructured = vi.hoisted(() => vi.fn());
+const mockExecuteText = vi.hoisted(() => vi.fn());
 
 // ---------- Mock Tavily ----------
 
@@ -125,24 +207,12 @@ vi.mock('@/server/services/urlExtract.service', () => ({
   isHttpUrl: vi.fn((value: string) => value.startsWith('http://') || value.startsWith('https://')),
 }));
 
-// ---------- Mock LLM ----------
-
-vi.mock('@/server/langchain/models', () => ({
-  createChatModel: vi.fn().mockImplementation(() => createDefaultChatModelMock()),
-  createExtractionModel: vi.fn().mockImplementation(() => ({
-    withStructuredOutput: vi.fn().mockReturnValue({
-      invoke: vi.fn().mockResolvedValue({
-        relevanceScore: 0.85,
-        contentType: 'article',
-        topics: ['learning'],
-        reasoning: 'Relevant to learning goal',
-      }),
-    }),
-    invoke: vi.fn().mockResolvedValue({ content: 'refined query' }),
-  })),
-  createGenerationModel: vi.fn().mockImplementation(() => ({
-    invoke: vi.fn().mockResolvedValue({ content: '' }),
-  })),
+vi.mock('@/server/ai/openai-execution-service', () => ({
+  openAIExecutionService: {
+    executeToolRound: mockExecuteToolRound,
+    executeStructured: mockExecuteStructured,
+    executeText: mockExecuteText,
+  },
 }));
 
 // ---------- Tests ----------
@@ -160,9 +230,18 @@ describe('WebScout ReAct Agent', () => {
     await cleanAllTables();
     vi.clearAllMocks();
     llmCallCount = 0;
-
-    const modelsModule = await import('@/server/langchain/models');
-    vi.mocked(modelsModule.createChatModel).mockImplementation(() => createDefaultChatModelMock());
+    mockExecuteToolRound.mockImplementation(createDefaultToolRoundMock());
+    mockExecuteStructured.mockResolvedValue({
+      output: {
+        relevanceScore: 0.85,
+        contentType: 'article',
+        topics: ['learning'],
+        reasoning: 'Relevant to learning goal',
+      },
+    });
+    mockExecuteText.mockResolvedValue({
+      output: 'refined query',
+    });
   });
 
   describe('satisfied termination', () => {
@@ -235,20 +314,30 @@ describe('WebScout ReAct Agent', () => {
 
   describe('max_iterations termination', () => {
     it('should stop at max iterations', async () => {
-      // Reset mock to always return tool calls (never "satisfied")
-      const modelsModule = await import('@/server/langchain/models');
-      vi.mocked(modelsModule.createChatModel).mockImplementation(() => ({
-        bindTools: vi.fn().mockReturnValue({
-          invoke: vi.fn().mockResolvedValue(
-            new AIMessage({
-              content: '',
-              tool_calls: [
-                { id: 'call_s', name: 'searchWeb', args: { query: 'test', maxResults: 5 } },
-              ],
-            }),
-          ),
-        }),
-      } as any));
+      mockExecuteToolRound.mockResolvedValue({
+        outputText: '',
+        responseId: 'resp-stuck',
+        retryCount: 0,
+        tier: 'default',
+        model: 'gpt-5-mini',
+        toolCalls: [
+          {
+            callId: 'call_s',
+            name: 'searchWeb',
+            arguments: { query: 'test', maxResults: 5 },
+          },
+        ],
+        usage: {
+          cachedInputTokens: 0,
+          inputTokens: 50,
+          outputTokens: 10,
+          reasoningTokens: 0,
+          totalTokens: 60,
+        },
+        estimatedCostUsd: 0.001,
+        actualCostUsd: 0.001,
+        wasEscalated: false,
+      });
 
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
@@ -268,19 +357,30 @@ describe('WebScout ReAct Agent', () => {
 
   describe('max_queries termination', () => {
     it('should stop when max queries reached', async () => {
-      const modelsModule = await import('@/server/langchain/models');
-      vi.mocked(modelsModule.createChatModel).mockImplementation(() => ({
-        bindTools: vi.fn().mockReturnValue({
-          invoke: vi.fn().mockResolvedValue(
-            new AIMessage({
-              content: '',
-              tool_calls: [
-                { id: 'call_s', name: 'searchWeb', args: { query: 'test', maxResults: 5 } },
-              ],
-            }),
-          ),
-        }),
-      } as any));
+      mockExecuteToolRound.mockResolvedValue({
+        outputText: '',
+        responseId: 'resp-query-limit',
+        retryCount: 0,
+        tier: 'default',
+        model: 'gpt-5-mini',
+        toolCalls: [
+          {
+            callId: 'call_s',
+            name: 'searchWeb',
+            arguments: { query: 'test', maxResults: 5 },
+          },
+        ],
+        usage: {
+          cachedInputTokens: 0,
+          inputTokens: 50,
+          outputTokens: 10,
+          reasoningTokens: 0,
+          totalTokens: 60,
+        },
+        estimatedCostUsd: 0.001,
+        actualCostUsd: 0.001,
+        wasEscalated: false,
+      });
 
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
@@ -316,7 +416,7 @@ describe('WebScout ReAct Agent', () => {
   });
 
   describe('counts tracking', () => {
-    it('should track iterations, queries, evaluations, proposals, and imports', async () => {
+    it('should track iterations, queries, evaluations, and proposals', async () => {
       const { webScoutGraph } = await import('@/server/agents/webScout.graph');
 
       const result = await webScoutGraph({
@@ -331,14 +431,12 @@ describe('WebScout ReAct Agent', () => {
       expect(result.counts).toHaveProperty('queriesExecuted');
       expect(result.counts).toHaveProperty('resultsEvaluated');
       expect(result.counts).toHaveProperty('proposalsCreated');
-      expect(result.counts).toHaveProperty('documentsImported');
-      expect(result.counts).toHaveProperty('documentsSkipped');
       expect(result.counts.iterations).toBeGreaterThan(0);
       expect(result.counts.proposalsCreated).toBe(result.proposals.length);
     });
   });
 
-  describe('trusted source + library import', () => {
+  describe('trusted source mode', () => {
     it('should constrain search to watchlist domains when restricted mode is enabled', async () => {
       const sourceWatchModule = await import('@/server/services/sourceWatch.service');
       vi.mocked(sourceWatchModule.checkoutDueSources).mockResolvedValueOnce([
@@ -372,50 +470,6 @@ describe('WebScout ReAct Agent', () => {
           includeDomains: ['mit.edu'],
         }),
       );
-    });
-
-    it('should import evaluated proposals into library when importToLibrary is enabled', async () => {
-      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
-
-      const result = await webScoutGraph({
-        goal: 'spaced repetition techniques',
-        mode: 'explicit-query',
-        day: TEST_DAY,
-        minQualityResults: 3,
-        minRelevanceScore: 0.7,
-        importToLibrary: true,
-      });
-
-      const rows = await sql<Array<{ count: number }>>`
-        SELECT COUNT(*)::int AS count
-        FROM documents
-        WHERE source = ANY(${result.proposals.map((proposal) => proposal.url)})
-      `;
-
-      expect(result.counts.proposalsCreated).toBeGreaterThan(0);
-      expect(result.counts.documentsImported).toBeGreaterThan(0);
-      expect(rows[0]?.count ?? 0).toBe(result.counts.documentsImported);
-    });
-
-    it('should skip importing URLs that already exist in library', async () => {
-      await insertTestDocument({
-        source: 'https://example.com/spaced-repetition',
-        content:
-          'Existing document content for spaced repetition that is already in the library and long enough to pass validation.',
-      });
-
-      const { webScoutGraph } = await import('@/server/agents/webScout.graph');
-      const result = await webScoutGraph({
-        goal: 'spaced repetition techniques',
-        mode: 'explicit-query',
-        day: TEST_DAY,
-        minQualityResults: 3,
-        minRelevanceScore: 0.7,
-        importToLibrary: true,
-      });
-
-      expect(result.counts.proposalsCreated).toBeGreaterThan(0);
-      expect(result.counts.documentsSkipped).toBeGreaterThan(0);
     });
   });
 });

@@ -40,6 +40,7 @@ export async function cleanAllTables(): Promise<void> {
     chat_history,
     chat_sessions,
     source_watchlist,
+    topic_documents,
     saved_topics,
     artifacts,
     run_steps,
@@ -87,7 +88,9 @@ export async function insertTestDocument(params: {
 /**
  * Insert a test run and return its ID.
  */
-export async function insertTestRun(kind: 'distill' | 'curate' | 'webScout' = 'distill'): Promise<string> {
+export async function insertTestRun(
+  kind: 'distill' | 'curate' | 'webScout' | 'research' | 'pipeline' = 'distill',
+): Promise<string> {
   const rows = await sql<Array<{ id: string }>>`
     INSERT INTO runs (kind, status)
     VALUES (${kind}, 'running')

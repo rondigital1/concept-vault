@@ -15,9 +15,11 @@ import {
   cleanAllTables,
   closeTestDb,
   insertTestDocument,
+  insertTestArtifact,
 } from '../helpers/testDb';
 import { SAMPLE_DOCUMENTS } from '../helpers/fixtures';
 import { ingestDocument } from '@/server/services/ingest.service';
+import { getAllDocumentsForLibrary } from '@/server/services/document.service';
 import {
   getRecentDocumentsForQuery,
   getDocumentsByTags,
@@ -371,6 +373,44 @@ describe('Document Repository', () => {
       const docs = await getDocumentsByIds([docId], 1);
 
       expect(docs[0].tags).toEqual(['spaced repetition', 'learning', 'memory science']);
+    });
+  });
+
+  describe('getAllDocumentsForLibrary', () => {
+    it('marks a document as a WebScout discovery when an approved artifact links by documentId', async () => {
+      const documentId = await insertTestDocument({
+        source: 'manual',
+        title: 'Existing Manual Note',
+      });
+
+      await insertTestArtifact({
+        kind: 'web-proposal',
+        status: 'approved',
+        content: { url: 'https://example.com/article', summary: 'Useful article' },
+        sourceRefs: { documentId },
+      });
+
+      const docs = await getAllDocumentsForLibrary();
+      expect(docs).toHaveLength(1);
+      expect(docs[0].id).toBe(documentId);
+      expect(docs[0].is_webscout_discovered).toBe(true);
+    });
+
+    it('ignores proposed artifacts when classifying Library documents', async () => {
+      const source = 'https://example.com/article';
+      const documentId = await insertTestDocument({ source, title: 'Direct Import' });
+
+      await insertTestArtifact({
+        kind: 'web-proposal',
+        status: 'proposed',
+        content: { url: source, summary: 'Useful article' },
+      });
+
+      const docs = await getAllDocumentsForLibrary();
+      const doc = docs.find((row) => row.id === documentId);
+
+      expect(doc).toBeDefined();
+      expect(doc?.is_webscout_discovered).toBe(false);
     });
   });
 });

@@ -17,40 +17,22 @@ import {
   closeTestDb,
   insertTestDocument,
 } from '../helpers/testDb';
-import { MOCK_LLM_RESPONSES, normalizeForSnapshot } from '../helpers/mocks';
+import { MOCK_LLM_RESPONSES } from '../helpers/mocks';
 import { TEST_DAY, SAMPLE_DOCUMENTS } from '../helpers/fixtures';
 import { listInboxArtifacts, listArtifactsByAgentAndKind } from '@/server/repos/artifacts.repo';
+import { AI_TASKS } from '@/server/ai/tasks';
 
 // Track which mock response to return
 let conceptCallCount = 0;
 let flashcardCallCount = 0;
+const mockExecuteStructured = vi.hoisted(() => vi.fn());
 
-// Mock the LLM models
-vi.mock('@/server/langchain/models', () => ({
-  createExtractionModel: vi.fn().mockImplementation(() => ({
-    withStructuredOutput: vi.fn().mockImplementation(() => ({
-      invoke: vi.fn().mockImplementation(async (messages: unknown[]) => {
-        // Determine which schema is being used based on context
-        conceptCallCount++;
-        return MOCK_LLM_RESPONSES.conceptExtraction;
-      }),
-    })),
-    invoke: vi.fn().mockResolvedValue({
-      content: JSON.stringify(['spaced repetition', 'learning']),
-    }),
-  })),
-  createGenerationModel: vi.fn().mockImplementation(() => ({
-    withStructuredOutput: vi.fn().mockImplementation(() => ({
-      invoke: vi.fn().mockImplementation(async () => {
-        flashcardCallCount++;
-        return MOCK_LLM_RESPONSES.flashcardGeneration;
-      }),
-    })),
-    invoke: vi.fn().mockResolvedValue({ content: '' }),
-  })),
-  createChatModel: vi.fn().mockImplementation(() => ({
-    invoke: vi.fn().mockResolvedValue({ content: '' }),
-  })),
+vi.mock('@/server/ai/openai-execution-service', () => ({
+  openAIExecutionService: {
+    executeStructured: mockExecuteStructured,
+    executeText: vi.fn(),
+    executeToolRound: vi.fn(),
+  },
 }));
 
 describe('Distiller Agent', () => {
@@ -67,6 +49,23 @@ describe('Distiller Agent', () => {
     vi.clearAllMocks();
     conceptCallCount = 0;
     flashcardCallCount = 0;
+    mockExecuteStructured.mockImplementation(async ({ task }: { task: string }) => {
+      if (task === AI_TASKS.distillDocument) {
+        conceptCallCount += 1;
+        return {
+          output: MOCK_LLM_RESPONSES.conceptExtraction,
+        };
+      }
+
+      if (task === AI_TASKS.generateFlashcards) {
+        flashcardCallCount += 1;
+        return {
+          output: MOCK_LLM_RESPONSES.flashcardGeneration,
+        };
+      }
+
+      throw new Error(`Unexpected task ${task}`);
+    });
   });
 
   describe('basic pipeline', () => {
