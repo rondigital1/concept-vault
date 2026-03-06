@@ -14,7 +14,7 @@ export const SCHEMA_SQL = `
 -- Core: runs + steps (append-only observability)
 CREATE TABLE IF NOT EXISTS runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  kind TEXT NOT NULL CHECK (kind IN ('distill','curate','webScout')),
+  kind TEXT NOT NULL CHECK (kind IN ('distill','curate','webScout','pipeline')),
   status TEXT NOT NULL CHECK (status IN ('running','ok','error','partial')),
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ended_at TIMESTAMPTZ,
@@ -30,7 +30,7 @@ WHERE kind IN ('web-scout', 'web_scout');
 ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_kind_check;
 ALTER TABLE runs
   ADD CONSTRAINT runs_kind_check
-  CHECK (kind IN ('distill','curate','webScout','research'));
+  CHECK (kind IN ('distill','curate','webScout','research','pipeline'));
 
 CREATE TABLE IF NOT EXISTS run_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -173,12 +173,46 @@ CREATE TABLE IF NOT EXISTS saved_topics (
   max_iterations INTEGER NOT NULL DEFAULT 5 CHECK (max_iterations BETWEEN 1 AND 20),
   max_queries INTEGER NOT NULL DEFAULT 10 CHECK (max_queries BETWEEN 1 AND 50),
   is_active BOOLEAN NOT NULL DEFAULT true,
+  is_tracked BOOLEAN NOT NULL DEFAULT false,
+  cadence TEXT NOT NULL DEFAULT 'weekly' CHECK (cadence IN ('daily', 'weekly')),
+  last_run_at TIMESTAMPTZ,
+  last_run_mode TEXT,
+  last_signal_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS saved_topics_active_idx
   ON saved_topics(is_active, updated_at DESC);
+
+ALTER TABLE saved_topics ADD COLUMN IF NOT EXISTS is_tracked BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE saved_topics ADD COLUMN IF NOT EXISTS cadence TEXT NOT NULL DEFAULT 'weekly';
+ALTER TABLE saved_topics ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMPTZ;
+ALTER TABLE saved_topics ADD COLUMN IF NOT EXISTS last_run_mode TEXT;
+ALTER TABLE saved_topics ADD COLUMN IF NOT EXISTS last_signal_at TIMESTAMPTZ;
+ALTER TABLE saved_topics ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE saved_topics DROP CONSTRAINT IF EXISTS saved_topics_cadence_check;
+ALTER TABLE saved_topics
+  ADD CONSTRAINT saved_topics_cadence_check
+  CHECK (cadence IN ('daily', 'weekly'));
+CREATE INDEX IF NOT EXISTS saved_topics_tracking_idx
+  ON saved_topics(is_tracked, cadence, is_active, last_run_at, last_signal_at);
+
+-- Topic ↔ Document links for tracked refreshes and lightweight ingest enrichment.
+CREATE TABLE IF NOT EXISTS topic_documents (
+  topic_id UUID NOT NULL REFERENCES saved_topics(id) ON DELETE CASCADE,
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  matched_tags TEXT[] NOT NULL DEFAULT '{}',
+  linked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (topic_id, document_id)
+);
+
+CREATE INDEX IF NOT EXISTS topic_documents_topic_updated_idx
+  ON topic_documents(topic_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS topic_documents_document_idx
+  ON topic_documents(document_id);
 
 -- User-managed source watchlist for periodic web scouting
 CREATE TABLE IF NOT EXISTS source_watchlist (
@@ -286,9 +320,62 @@ type SqlClient = {
 const SCHEMA_INIT_LOCK_KEY = 924_761_201;
 const SCHEMA_INIT_MAX_ATTEMPTS = 3;
 const SCHEMA_INIT_RETRY_BASE_MS = 150;
+const REQUIRED_RUN_KIND_VALUES = ['distill', 'curate', 'webScout', 'research', 'pipeline'] as const;
 
 let schemaInitialized = false;
 let schemaInitInFlight: Promise<SchemaInitResult> | null = null;
+
+function toBool(value: unknown): boolean {
+  return value === true || value === 't' || value === 'true' || value === 1 || value === '1';
+}
+
+async function hasRequiredCoreTables(sqlClient: SqlClient): Promise<boolean> {
+  const rows = await sqlClient.unsafe(`
+    SELECT
+      to_regclass('public.runs') IS NOT NULL AS has_runs,
+      to_regclass('public.run_steps') IS NOT NULL AS has_run_steps,
+      to_regclass('public.documents') IS NOT NULL AS has_documents,
+      to_regclass('public.artifacts') IS NOT NULL AS has_artifacts
+  `) as Array<Record<string, unknown>>;
+  const row = rows[0];
+  if (!row) return false;
+  return (
+    toBool(row.has_runs) &&
+    toBool(row.has_run_steps) &&
+    toBool(row.has_documents) &&
+    toBool(row.has_artifacts)
+  );
+}
+
+async function hasRequiredRunsKindConstraint(sqlClient: SqlClient): Promise<boolean> {
+  const rows = await sqlClient.unsafe(`
+    SELECT pg_get_constraintdef(c.oid) AS definition
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = 'public'
+      AND t.relname = 'runs'
+      AND c.conname = 'runs_kind_check'
+    LIMIT 1
+  `) as Array<{ definition?: unknown }>;
+
+  const definition = typeof rows[0]?.definition === 'string' ? rows[0].definition : '';
+  if (!definition) return false;
+
+  return REQUIRED_RUN_KIND_VALUES.every((kind) => definition.includes(`'${kind}'`));
+}
+
+async function canSkipSchemaInit(sqlClient: SqlClient): Promise<boolean> {
+  try {
+    const [hasTables, hasConstraint] = await Promise.all([
+      hasRequiredCoreTables(sqlClient),
+      hasRequiredRunsKindConstraint(sqlClient),
+    ]);
+    return hasTables && hasConstraint;
+  } catch {
+    return false;
+  }
+}
 
 function getPostgresErrorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -339,6 +426,11 @@ export async function ensureSchema(sqlClient: {
 
   schemaInitInFlight = (async () => {
     try {
+      if (await canSkipSchemaInit(sqlClient)) {
+        schemaInitialized = true;
+        return { ok: true };
+      }
+
       for (let attempt = 1; attempt <= SCHEMA_INIT_MAX_ATTEMPTS; attempt++) {
         try {
           await runSchemaSql(sqlClient);

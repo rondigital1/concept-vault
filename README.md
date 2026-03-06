@@ -46,40 +46,111 @@ npm run dev
 
 Visit http://localhost:3000
 
-## Usage
+## Usage (Hybrid Workflow)
 
-### Trigger a distill run
+Use this order for normal operations:
 
-Use the "Start Distill Run" button on the `/agent-control-center` page, or:
+### 1. Ingest documents
 
-```bash
-curl -X POST http://localhost:3000/api/runs/distill
-```
+- UI: `/ingest`
+- APIs: `/api/ingest`, `/api/ingest/upload`, `/api/ingest/llm`
 
-This returns a `runId`. View the trace at `/agent-control-center?runId=<runId>`.
+On document creation, the app auto-runs a lightweight enrichment pipeline:
 
-### Get run trace via API
+- `ResolveTargets -> Curate -> optional Distill`
 
-```bash
-curl http://localhost:3000/api/runs/<runId>
-```
+This auto-run does **not** run WebScout, full report generation, or Notion publishing.
 
-### Daily WebScout (Trusted Sources -> Library)
+### 2. Create topics
 
-`/api/cron/web-scout` runs WebScout in `derive-from-vault` mode with:
+- UI: `/agent-control-center` (Topic form)
+- API: `POST /api/topics`
 
-- `restrictToWatchlistDomains=true`
-- `importToLibrary=true`
+Topic creation auto-runs lightweight topic setup (`runMode=topic_setup`) to:
 
-It requires an auth token via `Authorization: Bearer <CRON_SECRET or WEB_SCOUT_CRON_SECRET>` in production.
-On Vercel, `vercel.json` schedules this route weekly.
+- normalize/seed focus tags
+- link matching documents
+- prepare topic metadata for future runs
 
-### Daily Topic Report
+Topic creation does **not** auto-run full reports.
 
-`/api/cron/topic-report` runs the full topic-report workflow and saves report artifacts.
+### 3. Use manual actions intentionally
 
-It requires an auth token via `Authorization: Bearer <CRON_SECRET or TOPIC_REPORT_CRON_SECRET>` in production.
-On Vercel, `vercel.json` schedules this route daily.
+From `/agent-control-center`:
+
+- `Generate Report (Live)` -> `runMode=full_report`
+- `Refresh Concepts` -> `runMode=concept_only`
+- `Find New Sources` -> `runMode=scout_only`
+- `Refresh Topic Now (Live)` -> `runMode=incremental_update`
+
+What each action does and where results appear:
+
+- `Generate Report (Live)` (`full_report`)
+  - Flow: `ResolveTargets -> Curate -> WebScout -> AnalyzeFindings -> Distill -> SynthesizeReport -> PersistAndPublish`
+  - Result: creates `research-report` artifact(s) shown on `/reports`, plus concept/flashcard proposals.
+  - Note: does **not** import new web URLs into Library documents.
+- `Refresh Concepts` (`concept_only`)
+  - Flow: `ResolveTargets -> Curate -> Distill -> Persist`
+  - Result: creates concept + flashcard proposal artifacts for review.
+  - No web scouting or longform report generation.
+- `Find New Sources` (`scout_only`)
+  - Flow: `ResolveTargets -> Curate -> WebScout -> AnalyzeFindings -> Persist`
+  - Result: creates `web-proposal` and `web-analysis` artifacts.
+  - No longform report synthesis and no automatic document import into Library.
+- `Refresh Topic Now (Live)` (`incremental_update`)
+  - Flow: `ResolveTargets -> Curate -> WebScout -> AnalyzeFindings -> Distill -> (optional) SynthesizeReport -> PersistAndPublish`
+  - Result: for one selected topic, updates evidence/concepts and generates a report only when sufficient analyzed evidence exists.
+
+Manual action endpoints:
+
+- `POST /api/runs/generate-report`
+- `POST /api/runs/refresh-concepts`
+- `POST /api/runs/find-sources`
+- `POST /api/runs/refresh-topic`
+
+Canonical run API:
+
+- `POST /api/runs/pipeline`
+
+### 4. Watch progress
+
+- Live run screen: `/web-scout`
+- Run trace API: `GET /api/runs/<runId>`
+
+The live screen shows active stage, active agent, and stage-colored timeline cards.
+
+### 5. Scheduled tracked-topic runs
+
+Tracked topics (daily/weekly cadence) are processed by cron through:
+
+- `GET/POST /api/cron/pipeline`
+- alias: `GET/POST /api/cron/tracked-topics`
+
+Scheduler chooses per-topic run mode:
+
+- `full_report`
+- `incremental_update`
+- `concept_only`
+- `skip`
+
+### 6. Report persistence and Notion publishing
+
+Report flow is local-first:
+
+- persist report in local DB/app storage first
+- then publish to Notion (best effort)
+
+If Notion publish fails, local report is still retained.
+
+To enable Notion publishing, set:
+
+- `NOTION_API_TOKEN`
+- `NOTION_PARENT_PAGE_ID`
+
+### 7. Important endpoint changes
+
+Legacy run endpoints were hard-cutover and now return `410 Gone` with migration guidance.
+Use `/api/runs/pipeline` or the manual run endpoints above.
 
 ## Production Deploy (Vercel + Supabase + Google OAuth)
 
@@ -91,8 +162,7 @@ On Vercel, `vercel.json` schedules this route daily.
    - `OWNER_EMAIL` (only this email can sign in)
 3. Set `CRON_SECRET` in Vercel project environment variables.
 4. Keep `vercel.json` cron schedules enabled:
-   - Daily `topic-report`: `0 11 * * *`
-   - Weekly `web-scout`: `0 13 * * 0`
+   - Daily tracked-topic scheduler: call `/api/cron/pipeline` with `Authorization: Bearer <CRON_SECRET>`
 
 ## Project Structure
 
