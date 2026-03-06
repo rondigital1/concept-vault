@@ -70,23 +70,35 @@ export async function insertArtifact(input: ArtifactInput): Promise<string> {
  * 
  * Returns true if approved, false if artifact not found or already processed.
  */
-export async function approveArtifact(artifactId: string): Promise<boolean> {
-  // First, get the artifact to approve
-  const artifact = await sql<Array<ArtifactRow>>`
-    SELECT * FROM artifacts WHERE id = ${artifactId} AND status = 'proposed'
-  `;
-
-  if (artifact.length === 0) {
-    return false;
-  }
-
-  const { agent, kind, day } = artifact[0];
+export async function approveArtifact(
+  artifactId: string,
+  reviewMetadata?: Record<string, unknown>,
+): Promise<boolean> {
+  let approved = false;
+  const metadataPatch =
+    reviewMetadata && Object.keys(reviewMetadata).length > 0 ? reviewMetadata : null;
 
   // Start a transaction to supersede old and approve new
   await sql.begin(async (tx) => {
     // postgres@3.4.8 typings expose TransactionSql without tag-call signatures.
     // Cast to the root sql tag type for template-query ergonomics.
     const txSql = tx as unknown as typeof sql;
+
+    await txSql`SET LOCAL lock_timeout = '2s'`;
+    await txSql`SET LOCAL statement_timeout = '8s'`;
+
+    const artifact = await txSql<Array<Pick<ArtifactRow, 'agent' | 'kind' | 'day'>>>`
+      SELECT agent, kind, day
+      FROM artifacts
+      WHERE id = ${artifactId} AND status = 'proposed'
+      FOR UPDATE
+    `;
+
+    if (artifact.length === 0) {
+      return;
+    }
+
+    const { agent, kind, day } = artifact[0];
 
     // Supersede any existing approved artifact with same (agent, kind, day)
     await txSql`
@@ -100,14 +112,22 @@ export async function approveArtifact(artifactId: string): Promise<boolean> {
     `;
 
     // Approve the new artifact
-    await txSql`
+    const updated = await txSql<Array<{ id: string }>>`
       UPDATE artifacts
-      SET status = 'approved', reviewed_at = now()
-      WHERE id = ${artifactId}
+      SET
+        status = 'approved',
+        reviewed_at = now()
+        ${metadataPatch
+          ? sql`, source_refs = COALESCE(source_refs, '{}'::jsonb) || ${sql.json(metadataPatch as JsonParam)}`
+          : sql``}
+      WHERE id = ${artifactId} AND status = 'proposed'
+      RETURNING id
     `;
+
+    approved = updated.length > 0;
   });
 
-  return true;
+  return approved;
 }
 
 /**
@@ -118,14 +138,23 @@ export async function approveArtifact(artifactId: string): Promise<boolean> {
  * Returns true if rejected, false if artifact not found or already processed.
  */
 export async function rejectArtifact(artifactId: string): Promise<boolean> {
-  const result = await sql<Array<{ id: string }>>`
-    UPDATE artifacts
-    SET status = 'rejected', reviewed_at = now()
-    WHERE id = ${artifactId} AND status = 'proposed'
-    RETURNING id
-  `;
+  let rejected = false;
 
-  return result.length > 0;
+  await sql.begin(async (tx) => {
+    const txSql = tx as unknown as typeof sql;
+    await txSql`SET LOCAL lock_timeout = '2s'`;
+    await txSql`SET LOCAL statement_timeout = '8s'`;
+
+    const result = await txSql<Array<{ id: string }>>`
+      UPDATE artifacts
+      SET status = 'rejected', reviewed_at = now()
+      WHERE id = ${artifactId} AND status = 'proposed'
+      RETURNING id
+    `;
+    rejected = result.length > 0;
+  });
+
+  return rejected;
 }
 
 // ---------- Query Operations ----------
@@ -213,6 +242,19 @@ export async function listArtifactsByAgentAndKind(
   }
 
   return query;
+}
+
+/**
+ * List all artifacts created by a specific run.
+ */
+export async function listArtifactsByRunId(runId: string): Promise<ArtifactRow[]> {
+  const rows = await sql<ArtifactRow[]>`
+    SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
+    FROM artifacts
+    WHERE run_id = ${runId}
+    ORDER BY created_at ASC
+  `;
+  return rows;
 }
 
 /**

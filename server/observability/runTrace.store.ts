@@ -101,12 +101,15 @@ function toDbStep(step: RunStep) {
   };
 }
 
-export async function createRun(kind: RunKind): Promise<string> {
+export async function createRun(
+  kind: RunKind,
+  metadata: Record<string, unknown> = {},
+): Promise<string> {
   const rows = await sql<
     Array<{ id: string; started_at: string }>
   >`
-    INSERT INTO runs (kind, status, started_at)
-    VALUES (${kind}, 'running', now())
+    INSERT INTO runs (kind, status, started_at, metadata)
+    VALUES (${kind}, 'running', now(), ${sql.json(sanitizeJsonForDb(metadata) as JsonParam)})
     RETURNING id, started_at
   `;
 

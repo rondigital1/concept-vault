@@ -1,6 +1,8 @@
 import { sql } from '@/db';
-import { createExtractionModel } from '@/server/langchain/models';
-import { HumanMessage } from '@langchain/core/messages';
+import { openAIExecutionService } from '@/server/ai/openai-execution-service';
+import { buildPrompt } from '@/server/ai/prompt-builder';
+import { AI_TASKS } from '@/server/ai/tasks';
+import { CategorizationSchema, TagExtractionSchema } from '@/server/langchain/schemas/tags.schema';
 
 /**
  * Minimal DB shape for the SQL-first `documents` table.
@@ -15,6 +17,10 @@ export type DocumentRow = {
   content_hash: string;
   is_favorite: boolean;
   imported_at: string;
+};
+
+export type LibraryDocumentRow = DocumentRow & {
+  is_webscout_discovered: boolean;
 };
 
 const STOP_TAGS = new Set([
@@ -37,33 +43,6 @@ const STOP_TAGS = new Set([
 function truncateForPrompt(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars)}\n\n[TRUNCATED: original_length=${text.length}]`;
-}
-
-function safeParseJsonStringArray(raw: string): string[] {
-  // 1) Try direct JSON parse.
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
-      return parsed as string[];
-    }
-  } catch {
-    // ignore
-  }
-
-  // 2) Try to extract the first JSON array substring.
-  const match = raw.match(/\[[\s\S]*\]/);
-  if (match) {
-    try {
-      const parsed = JSON.parse(match[0]);
-      if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
-        return parsed as string[];
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  return [];
 }
 
 function normalizeTag(tag: string): string | null {
@@ -131,6 +110,39 @@ export async function getAllDocuments(): Promise<DocumentRow[]> {
 }
 
 /**
+ * Get all documents with source classification for library sections.
+ * A document is WebScout-discovered when an approved WebScout proposal
+ * matches its source URL or explicitly links back to the document ID.
+ */
+export async function getAllDocumentsForLibrary(): Promise<LibraryDocumentRow[]> {
+  const rows = await sql<Array<LibraryDocumentRow>>`
+    SELECT
+      d.id,
+      d.source,
+      d.title,
+      d.content,
+      d.tags,
+      d.content_hash,
+      d.is_favorite,
+      d.imported_at,
+      EXISTS (
+        SELECT 1
+        FROM artifacts a
+        WHERE a.kind = 'web-proposal'
+          AND a.status = 'approved'
+          AND (
+            COALESCE(a.content->>'url', '') = d.source
+            OR COALESCE(a.source_refs->>'documentId', a.source_refs->>'document_id', '') = d.id::text
+          )
+      ) AS is_webscout_discovered
+    FROM documents d
+    ORDER BY d.imported_at DESC
+  `;
+
+  return rows;
+}
+
+/**
  * Picks a document for curation from most recent imports.
  * Prioritizes untagged documents, then falls back to the latest document.
  */
@@ -165,98 +177,89 @@ export async function getDocumentIdForCuration(): Promise<string | null> {
  * - We enforce stability via deterministic normalization + dedupe + capping.
  */
 export async function extractTags(content: string): Promise<string[]> {
-  // Cost/control: do not send unlimited text.
   const docForPrompt = truncateForPrompt(content, 12_000);
-
-  const prompt = `
-You are extracting topic tags from a document.
-
-TASK
-Given the document text below, produce a short list of topic tags.
-
-RULES (STRICT)
-- Return ONLY a JSON array of strings.
-- Maximum 10 tags.
-- Each tag must be:
-  - lowercase
-  - 1–3 words
-  - a noun or noun phrase
-- No punctuation.
-- No explanations.
-- No duplicates.
-- No generic words like:
-  "introduction", "overview", "guide", "article", "notes", "example", "basics", "concepts"
-- Do NOT invent jargon.
-- Prefer concrete, commonly-used terms.
-
-GOOD TAG EXAMPLES
-- spaced repetition
-- retrieval practice
-- learning science
-- distributed systems
-- schema design
-- vector databases
-
-BAD TAG EXAMPLES
-- how to learn better
-- interesting ideas
-- modern technology
-- this article discusses
-- memory and learning techniques
-
-DOCUMENT
-<<<
-${docForPrompt}
->>>
-
-OUTPUT FORMAT
-Return only valid JSON. Example:
-
-["spaced repetition", "retrieval practice", "learning science"]
-`;
-
-  let raw = '';
   try {
-    const model = createExtractionModel({ temperature: 0.3 });
-    const response = await model.invoke([new HumanMessage(prompt)]);
-    raw = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+    const prompt = buildPrompt({
+      task: AI_TASKS.tagDocument,
+      systemInstructions: [
+        {
+          heading: 'Role',
+          content: 'You extract stable topic tags from a document for a personal knowledge vault.',
+        },
+        {
+          heading: 'Rules',
+          content: [
+            'Maximum 10 tags.',
+            'Each tag must be lowercase, 1-3 words, and a noun or noun phrase.',
+            'No punctuation, explanations, or duplicates.',
+            'Do not return generic words like introduction, overview, guide, article, notes, example, basics, concepts.',
+            'Prefer concrete, commonly used terms.',
+          ].join('\n'),
+        },
+      ],
+      sharedContext: [
+        {
+          heading: 'Examples',
+          content: [
+            'Good: spaced repetition, retrieval practice, learning science, distributed systems.',
+            'Bad: how to learn better, interesting ideas, modern technology.',
+          ].join('\n'),
+        },
+      ],
+      requestPayload: [
+        {
+          heading: 'Document',
+          content: docForPrompt,
+        },
+      ],
+    });
+    const response = await openAIExecutionService.executeStructured({
+      task: AI_TASKS.tagDocument,
+      prompt,
+      schema: TagExtractionSchema,
+      schemaName: 'document_tag_extraction',
+    });
+    return finalizeTags(response.output.tags, 8);
   } catch {
     return [];
   }
-
-  if (!raw) return [];
-
-  const candidates = safeParseJsonStringArray(raw);
-  // Store 5–8 final tags for MVP. Start with 8; you can tune later.
-  const finalTags = finalizeTags(candidates, 8);
-
-  return finalTags;
 }
 
 export async function categorize(tags: string[]): Promise<string> {
-  const allow = ['learning', 'software engineering', 'ai systems', 'finance', 'productivity', 'other'] as const;
+  if (!tags.length) {
+    return 'other';
+  }
 
-  if (!tags.length) return 'other';
-
-  const prompt = `
-Choose exactly ONE category for the following tags.
-
-Allowed categories (must match exactly):
-${allow.map((c) => `- ${c}`).join('\n')}
-
-Tags:
-${tags.join(', ')}
-
-Return ONLY the category string.
-`;
-
-  const model = createExtractionModel({ temperature: 0.2 });
-  const response = await model.invoke([new HumanMessage(prompt)]);
-  const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-  const raw = content.toLowerCase().trim();
-
-  const chosen = allow.find((c) => c === raw);
-  return chosen ?? 'other';
+  try {
+    const prompt = buildPrompt({
+      task: AI_TASKS.classifyDocument,
+      systemInstructions: [
+        {
+          heading: 'Role',
+          content: 'Choose exactly one category for the provided document tags.',
+        },
+        {
+          heading: 'Allowed Categories',
+          content: 'learning, software engineering, ai systems, finance, productivity, other',
+        },
+      ],
+      requestPayload: [
+        {
+          heading: 'Tags',
+          content: tags.join(', '),
+        },
+      ],
+    });
+    const response = await openAIExecutionService.executeStructured({
+      task: AI_TASKS.classifyDocument,
+      prompt,
+      schema: CategorizationSchema,
+      schemaName: 'document_category_selection',
+    });
+    return response.output.category;
+  } catch {
+    return 'other';
+  }
 }
 
 /**

@@ -4,9 +4,10 @@
  * Uses LLM to synthesize WebScout proposals into a readable markdown report.
  */
 
-import { createGenerationModel } from '@/server/langchain/models';
-import { HumanMessage } from '@langchain/core/messages';
-import { WebScoutProposal } from '@/server/agents/helpers/webScout.types';
+import { openAIExecutionService } from '@/server/ai/openai-execution-service';
+import { buildPrompt } from '@/server/ai/prompt-builder';
+import { AI_TASKS } from '@/server/ai/tasks';
+import { AnalyzeFindingsOutput } from '@/server/services/analyzeFindings.service';
 
 export interface ReportContent {
   markdown: string;
@@ -17,66 +18,100 @@ export interface ReportContent {
 }
 
 /**
- * Synthesize WebScout proposals into a structured markdown report.
+ * Synthesize analyzed findings into a structured markdown report.
  * Falls back to a simple bullet-point list on LLM failure.
  */
 export async function synthesizeReport(
   goal: string,
-  proposals: WebScoutProposal[],
+  findings: AnalyzeFindingsOutput,
   vaultTopics: string[],
+  jobId?: string,
 ): Promise<ReportContent> {
-  const proposalText = proposals
+  const proposalText = findings.evidence
     .map(
       (p, i) =>
         `[${i + 1}] "${p.title}" (${p.url})\n` +
         `    Score: ${p.relevanceScore} | Type: ${p.contentType}\n` +
         `    Summary: ${p.summary}\n` +
-        `    Topics: ${p.topics.join(', ')}\n` +
+        `    Topics: ${p.topics.join(', ') || 'none'}\n` +
+        `    Cluster: ${p.clusterId}\n` +
         `    Reasoning: ${p.reasoning.join('; ')}`,
     )
     .join('\n\n');
 
-  const prompt = `You are writing a research report based on web resources found for a learning goal.
-
-GOAL: ${goal}
-VAULT TOPICS: ${vaultTopics.join(', ')}
-
-RESOURCES FOUND:
-${proposalText}
-
-Write a markdown report with these sections:
-1. **Title** (H1) - a descriptive title for this research session
-2. **Executive Summary** - 2-3 sentence overview of what was found
-3. **Key Findings** - for each resource, a subsection (H3) with: what it covers, why it's relevant, key takeaways
-4. **Synthesis** - connections between resources, how they relate to the learning goal
-5. **Recommended Next Steps** - 3-5 actionable items for the learner
-6. **Sources** - numbered list with titles and URLs
-
-Keep it concise and actionable. Use markdown formatting.`;
-
   try {
-    const model = createGenerationModel({ temperature: 0.7, maxTokens: 4096 });
-    const response = await model.invoke([new HumanMessage(prompt)]);
-
-    const markdown =
-      typeof response.content === 'string'
-        ? response.content
-        : JSON.stringify(response.content);
+    const prompt = buildPrompt({
+      task: AI_TASKS.generateFinalReport,
+      systemInstructions: [
+        {
+          heading: 'Role',
+          content: 'You write credible, high-signal markdown research reports from vetted findings.',
+        },
+        {
+          heading: 'Report Structure',
+          content: [
+            'Use an H1 title.',
+            'Use exactly these H2 sections: Executive Summary, Key Takeaways, Findings by Theme, Source-by-Source Notes, Synthesis, Recommended Next Steps, and Sources.',
+            'Executive Summary must contain 4-6 bullets.',
+            'Key Takeaways must contain 6-10 bullets.',
+            'Findings by Theme must use multiple H3 subsections and explain what matters, why it matters, and any caveats.',
+            'Source-by-Source Notes must include one H3 subsection per source with at least 3 bullets: what it covers, useful evidence, and why it is relevant.',
+            'Synthesis must contain 4-6 bullets connecting the evidence.',
+            'Recommended Next Steps must contain 5-8 concrete actions.',
+            'Prefer dense, concrete bullets over generic prose.',
+            'Call out uncertainty, disagreement, or thin evidence when present.',
+            'Only use the provided findings.',
+          ].join('\n'),
+        },
+      ],
+      requestPayload: [
+        {
+          heading: 'Goal',
+          content: goal,
+        },
+        {
+          heading: 'Vault Topics',
+          content: vaultTopics.join(', ') || 'none',
+        },
+        {
+          heading: 'Analysis Summary',
+          content: [
+            `Input resources: ${findings.summary.totalInput}`,
+            `Unique evidence after normalization and dedupe: ${findings.summary.uniqueEvidence}`,
+            `Clusters: ${findings.summary.clusters}`,
+            `Top domains: ${findings.summary.topDomains.join(', ') || 'none'}`,
+          ].join('\n'),
+        },
+        {
+          heading: 'Resources Found',
+          content: proposalText,
+        },
+      ],
+    });
+    const response = await openAIExecutionService.executeText({
+      task: AI_TASKS.generateFinalReport,
+      prompt,
+      temperature: 0.4,
+      attribution: {
+        jobId,
+      },
+    });
+    const markdown = response.output;
 
     const title = extractTitle(markdown) || `Research: ${goal}`;
     const executiveSummary = extractSummary(markdown);
-    const allTopics = [...new Set(proposals.flatMap((p) => p.topics))];
+    const allTopics = [...new Set(findings.evidence.flatMap((p) => p.topics))];
 
     return {
       markdown,
       title,
       executiveSummary,
-      sourcesCount: proposals.length,
+      sourcesCount: findings.evidence.length,
       topicsCovered: allTopics,
     };
   } catch (error) {
     console.error('[ReportService] LLM synthesis failed, using fallback:', error);
-    return buildFallbackReport(goal, proposals, vaultTopics);
+    return buildFallbackReport(goal, findings, vaultTopics);
   }
 }
 
@@ -100,34 +135,81 @@ function extractSummary(markdown: string): string {
 
 function buildFallbackReport(
   goal: string,
-  proposals: WebScoutProposal[],
+  findings: AnalyzeFindingsOutput,
   vaultTopics: string[],
 ): ReportContent {
+  const topEvidence = findings.evidence.slice(0, 8);
+  const topClusters = findings.clusters.slice(0, 4);
+  const allTopics = [...new Set(findings.evidence.flatMap((p) => p.topics))];
+
   const lines = [
     `# Research: ${goal}`,
     '',
-    `## Summary`,
+    `## Executive Summary`,
     '',
-    `Found ${proposals.length} resource(s) related to: ${goal}.`,
-    `Vault topics: ${vaultTopics.join(', ') || 'none'}.`,
+    `- Found ${findings.evidence.length} deduplicated resource(s) related to: ${goal}.`,
+    `- Evidence clusters identified: ${findings.summary.clusters}.`,
+    `- Average relevance score: ${findings.summary.averageRelevance.toFixed(2)}.`,
+    `- Top domains: ${findings.summary.topDomains.join(', ') || 'none'}.`,
+    `- Vault topics in scope: ${vaultTopics.join(', ') || 'none'}.`,
     '',
-    '## Resources',
+    '## Key Takeaways',
     '',
-    ...proposals.map(
-      (p, i) =>
-        `${i + 1}. **[${p.title}](${p.url})** (score: ${p.relevanceScore})\n   ${p.summary}`,
+    ...topEvidence.map(
+      (p) =>
+        `- **${p.title}**: ${p.summary} Why it matters: ${p.reasoning[0] ?? 'It directly supports the research goal.'}`,
     ),
     '',
   ];
 
+  lines.push('## Findings by Theme', '');
+
+  for (const cluster of topClusters) {
+    const clusterEvidence = topEvidence.filter((item) => item.clusterId === cluster.id).slice(0, 3);
+    lines.push(`### ${cluster.label}`);
+    lines.push(`- Theme size: ${cluster.count} source(s) with average relevance ${cluster.averageRelevance.toFixed(2)}.`);
+    lines.push(`- Topics: ${cluster.topics.join(', ') || 'none'}.`);
+    lines.push(`- Domains represented: ${cluster.domains.join(', ') || 'none'}.`);
+    for (const item of clusterEvidence) {
+      lines.push(`- **${item.title}**: ${item.summary}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('## Source-by-Source Notes', '');
+
+  for (const [index, item] of topEvidence.entries()) {
+    lines.push(`### ${index + 1}. [${item.title}](${item.url})`);
+    lines.push(`- Covers: ${item.summary}`);
+    lines.push(`- Useful evidence: topics ${item.topics.join(', ') || 'none'}; content type ${item.contentType}; relevance ${item.relevanceScore.toFixed(2)}.`);
+    lines.push(`- Why it is relevant: ${item.reasoning.join('; ') || 'Directly related to the goal.'}`);
+    lines.push('');
+  }
+
+  lines.push('## Synthesis', '');
+  lines.push(`- The strongest themes cluster around ${topClusters.map((cluster) => cluster.label).join(', ') || 'a small set of related areas'}.`);
+  lines.push(`- The most represented domains are ${findings.summary.topDomains.join(', ') || 'not yet clear from the current evidence'}.`);
+  lines.push(`- Recurring topics include ${allTopics.slice(0, 6).join(', ') || 'none identified yet'}.`);
+  lines.push('- The current evidence provides a solid starting point, but high-stakes decisions should still be checked against primary sources.');
+  lines.push('');
+  lines.push('## Recommended Next Steps', '');
+  lines.push(`- Read the highest-relevance sources first and capture notes tied directly to "${goal}".`);
+  lines.push('- Compare overlapping sources to isolate agreement, disagreement, and gaps.');
+  lines.push('- Approve the strongest recurring concepts so they become part of the active vault.');
+  lines.push('- Add more first-party or primary material if the current evidence leans heavily on commentary.');
+  lines.push('- Re-run the report after new linked documents are added to this topic.');
+  lines.push('');
+  lines.push('## Sources', '');
+  lines.push(...topEvidence.map((p, i) => `${i + 1}. [${p.title}](${p.url})`));
+  lines.push('');
+
   const markdown = lines.join('\n');
-  const allTopics = [...new Set(proposals.flatMap((p) => p.topics))];
 
   return {
     markdown,
     title: `Research: ${goal}`,
-    executiveSummary: `Found ${proposals.length} resource(s) related to: ${goal}.`,
-    sourcesCount: proposals.length,
+    executiveSummary: `Found ${findings.evidence.length} resource(s) related to: ${goal}.`,
+    sourcesCount: findings.evidence.length,
     topicsCovered: allTopics,
   };
 }

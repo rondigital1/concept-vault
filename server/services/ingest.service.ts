@@ -1,5 +1,6 @@
 import { sql } from '@/db';
 import { createHash } from 'node:crypto';
+import { pipelineFlow } from '@/server/flows/pipeline.flow';
 
 function sha256(content: string): string {
   return createHash('sha256').update(content).digest('hex');
@@ -9,11 +10,15 @@ export async function ingestDocument({
   title,
   source,
   content,
+  autoEnrich = process.env.NODE_ENV !== 'test',
+  enableAutoDistill = false,
 }: {
   title: string;
   source: string;
   content: string;
-}): Promise<{ documentId: string; created: boolean }> {
+  autoEnrich?: boolean;
+  enableAutoDistill?: boolean;
+}): Promise<{ documentId: string; created: boolean; enrichmentRunId: string | null }> {
   const normalizedContent = normalizeContent(content);
   // 2. Compute a stable content_hash
   const contentHash = sha256(normalizedContent);
@@ -35,17 +40,36 @@ export async function ingestDocument({
     return {
       documentId,
       created: false,
+      enrichmentRunId: null,
     };
   }
   const documentId = inserted[0].id;
   console.log(`[Ingest] Inserted document: ${title} (${documentId})`);
   console.log(`[Ingest] Created document: ${title} (${documentId})`);
 
-  // TODO: Trigger background jobs (extraction, summarization, etc.)
+  let enrichmentRunId: string | null = null;
+  if (autoEnrich) {
+    try {
+      const enrichmentResult = await pipelineFlow({
+        trigger: 'auto_document',
+        runMode: 'lightweight_enrichment',
+        documentIds: [documentId],
+        limit: 1,
+        enableCategorization: true,
+        enableAutoDistill,
+        idempotencyKey: `auto_enrich:${documentId}`,
+      });
+      enrichmentRunId = enrichmentResult.runId;
+    } catch (error) {
+      // Ingest should succeed even if auto-enrichment fails.
+      console.error('[Ingest] Auto enrichment failed:', error);
+    }
+  }
 
   return {
     documentId,
     created: true,
+    enrichmentRunId,
   };
 }
 

@@ -1,4 +1,8 @@
-import { sql } from "@/db";
+import { client, ensureSchema, sql } from "@/db";
+import { z } from 'zod';
+import { openAIExecutionService } from '@/server/ai/openai-execution-service';
+import { buildPrompt } from '@/server/ai/prompt-builder';
+import { AI_TASKS } from '@/server/ai/tasks';
 
 export type LearningBrief = {
   topicTagsUsed: string[];
@@ -21,10 +25,72 @@ export type TodayView = {
   randomFact?: { fact: string; source?: string };
 };
 
+export type AgentControlStep = {
+  name: string;
+  status: 'running' | 'ok' | 'error' | 'skipped';
+  startedAt?: string;
+  endedAt?: string;
+  error?: string;
+};
+
+export type AgentControlRun = {
+  id: string;
+  kind: string;
+  status: 'running' | 'ok' | 'error' | 'partial';
+  startedAt: string;
+  endedAt?: string;
+  steps: AgentControlStep[];
+};
+
+export type AgentControlArtifact = {
+  id: string;
+  runId: string | null;
+  day: string;
+  agent: string;
+  kind: string;
+  status: 'proposed' | 'approved' | 'rejected' | 'active';
+  title: string;
+  preview?: string;
+  createdAt: string;
+  sourceUrl?: string;
+  sourceDocumentId?: string;
+  sourceRefs?: Record<string, unknown>;
+  content?: Record<string, unknown>;
+};
+
+export type AgentControlCenterView = {
+  date: string;
+  runs: AgentControlRun[];
+  inbox: AgentControlArtifact[];
+  active: AgentControlArtifact[];
+};
+
+let todaySchemaInitialized = false;
+let todaySchemaInFlight: Promise<void> | null = null;
+
+async function ensureTodaySchema(): Promise<void> {
+  if (todaySchemaInitialized) return;
+  if (todaySchemaInFlight) return todaySchemaInFlight;
+
+  todaySchemaInFlight = (async () => {
+    const result = await ensureSchema(client);
+    if (!result.ok) {
+      throw new Error(result.error || 'Failed to initialize database schema for today service');
+    }
+    todaySchemaInitialized = true;
+  })().finally(() => {
+    todaySchemaInFlight = null;
+  });
+
+  return todaySchemaInFlight;
+}
+
 export async function getTopTags(
   limit = 10
 ): Promise<Array<{ tag: string; count: number }>> {
   try {
+    await ensureTodaySchema();
+
     // Ensure limit is a valid number
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 10));
     
@@ -436,6 +502,8 @@ export async function buildLearningBrief(): Promise<LearningBrief> {
  * Prefer documents that match top tags.
  */
 async function getSourceDocsForToday(topTags: Array<{ tag: string; count: number }>) {
+  await ensureTodaySchema();
+
   if (topTags.length === 0) return [];
 
   // Get top 2 tags
@@ -484,94 +552,75 @@ async function generateTodayContent(
     };
   }
 
-  // Import LangChain model
-  const { createExtractionModel } = await import('@/server/langchain/models');
-  const { HumanMessage } = await import('@langchain/core/messages');
-
-  // Build prompt with strict instructions
   const docsText = sourceDocs
     .map((doc, idx) => `[Document ${idx + 1}: "${doc.title}"]\n${doc.content}`)
     .join('\n\n---\n\n');
 
   const validTitles = sourceDocs.map(d => d.title);
-
-  const prompt = `You are extracting key insights from the user's knowledge base.
-
-STRICT RULES:
-- Use ONLY the provided documents below
-- Do NOT invent facts or sources
-- All outputs must be directly supported by the text
-- Return ONLY valid JSON, no prose
-- sourceTitle must EXACTLY match one of the document titles provided
-
-DOCUMENTS:
-${docsText}
-
-OUTPUT FORMAT (strict JSON):
-{
-  "keyIdeas": ["idea 1", "idea 2", "idea 3"],
-  "interestingFacts": [
-    { "fact": "...", "sourceTitle": "exact title from documents" },
-    { "fact": "...", "sourceTitle": "exact title from documents" }
-  ],
-  "randomFact": { "fact": "...", "sourceTitle": "exact title from documents" }
-}
-
-REQUIREMENTS:
-- keyIdeas: 3-5 concise bullets (actionable insights or principles)
-- interestingFacts: 2-4 surprising or notable facts
-- randomFact: 1 fun or unexpected fact
-- Each fact MUST reference a sourceTitle from the list above
-
-Generate the JSON now:`;
+  const TodayContentSchema = z.object({
+    keyIdeas: z.array(z.string().min(1)).min(1).max(5),
+    interestingFacts: z.array(
+      z.object({
+        fact: z.string().min(1),
+        sourceTitle: z.string().min(1),
+      }),
+    ).max(4),
+    randomFact: z.object({
+      fact: z.string().min(1),
+      sourceTitle: z.string().min(1),
+    }).nullable(),
+  });
 
   try {
-    const startTime = Date.now();
-    const model = createExtractionModel({ temperature: 0.3, maxTokens: 800 });
-    const response = await model.invoke([new HumanMessage(prompt)]);
-    const duration = Date.now() - startTime;
+    const prompt = buildPrompt({
+      task: AI_TASKS.extractStructuredMetadata,
+      systemInstructions: [
+        {
+          heading: 'Role',
+          content: "You extract grounded insights from the user's knowledge base.",
+        },
+        {
+          heading: 'Strict Rules',
+          content: [
+            'Use only the provided documents.',
+            'Do not invent facts or sources.',
+            'Every fact must be directly supported by the source text.',
+            'sourceTitle must exactly match one of the provided titles.',
+          ].join('\n'),
+        },
+      ],
+      sharedContext: [
+        {
+          heading: 'Required Output',
+          content: [
+            'keyIdeas: 3-5 concise actionable insights.',
+            'interestingFacts: up to 4 notable facts with exact source titles.',
+            'randomFact: one optional fact with exact source title.',
+          ].join('\n'),
+        },
+      ],
+      requestPayload: [
+        {
+          heading: 'Documents',
+          content: docsText,
+        },
+      ],
+    });
+    const response = await openAIExecutionService.executeStructured({
+      task: AI_TASKS.extractStructuredMetadata,
+      prompt,
+      schema: TodayContentSchema,
+      schemaName: 'today_content',
+    });
 
-    console.log(`[TodayService] LLM call completed in ${duration}ms`);
-    // TODO: Log to llm_calls table for observability
-
-    // Parse and validate JSON
-    const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-    const raw = content.trim();
-    let parsed: any;
-
-    try {
-      // Try to extract JSON if wrapped in markdown code blocks
-      const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || raw.match(/\{[\s\S]*\}/);
-      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : raw;
-      parsed = JSON.parse(jsonStr);
-    } catch (parseError) {
-      console.error('[TodayService] JSON parse failed:', parseError);
-      return { keyIdeas: [], interestingFacts: [], randomFact: null };
-    }
-
-    // Validate structure
-    const keyIdeas = Array.isArray(parsed.keyIdeas)
-      ? parsed.keyIdeas.filter((k: any) => typeof k === 'string').slice(0, 5)
-      : [];
-
-    const interestingFacts = Array.isArray(parsed.interestingFacts)
-      ? parsed.interestingFacts
-          .filter((f: any) =>
-            f &&
-            typeof f.fact === 'string' &&
-            typeof f.sourceTitle === 'string' &&
-            validTitles.includes(f.sourceTitle) // Anti-hallucination check
-          )
-          .slice(0, 4)
-          .map((f: any) => ({ fact: f.fact, source: f.sourceTitle }))
-      : [];
-
+    const keyIdeas = response.output.keyIdeas.slice(0, 5);
+    const interestingFacts = response.output.interestingFacts
+      .filter((fact) => validTitles.includes(fact.sourceTitle))
+      .slice(0, 4)
+      .map((fact) => ({ fact: fact.fact, source: fact.sourceTitle }));
     const randomFact =
-      parsed.randomFact &&
-      typeof parsed.randomFact.fact === 'string' &&
-      typeof parsed.randomFact.sourceTitle === 'string' &&
-      validTitles.includes(parsed.randomFact.sourceTitle)
-        ? { fact: parsed.randomFact.fact, source: parsed.randomFact.sourceTitle }
+      response.output.randomFact && validTitles.includes(response.output.randomFact.sourceTitle)
+        ? { fact: response.output.randomFact.fact, source: response.output.randomFact.sourceTitle }
         : null;
 
     return {
@@ -592,6 +641,284 @@ function todayISODate(): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function asShortPreview(content: unknown, kind: string): string | undefined {
+  if (!content || typeof content !== 'object') return undefined;
+  const record = content as Record<string, unknown>;
+
+  const candidates: unknown[] = [
+    record.summary,
+    record.executiveSummary,
+    record.fact,
+    record.front,
+    record.back,
+  ];
+
+  if (kind === 'web-proposal' && typeof record.url === 'string' && record.url.trim()) {
+    return record.url.trim().slice(0, 180);
+  }
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.replace(/\s+/g, ' ').trim().slice(0, 220);
+    }
+  }
+
+  return undefined;
+}
+
+function asHttpUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return trimmed;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function readSourceDocumentId(sourceRefs: Record<string, unknown>): string | undefined {
+  const directCandidates = [sourceRefs.documentId, sourceRefs.document_id];
+  for (const candidate of directCandidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  const pluralCandidates = [sourceRefs.documentIds, sourceRefs.document_ids];
+  for (const candidate of pluralCandidates) {
+    if (!Array.isArray(candidate)) continue;
+    const firstString = candidate.find((v) => typeof v === 'string' && v.trim());
+    if (typeof firstString === 'string') {
+      return firstString.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function resolveArtifactSourceUrl(params: {
+  content: Record<string, unknown>;
+  sourceRefs: Record<string, unknown>;
+  sourceDocumentId?: string;
+  documentSourceById: Map<string, string>;
+}): string | undefined {
+  const { content, sourceRefs, sourceDocumentId, documentSourceById } = params;
+
+  const inlineUrlCandidates = [content.url, sourceRefs.url, sourceRefs.source];
+  for (const candidate of inlineUrlCandidates) {
+    const url = asHttpUrl(candidate);
+    if (url) return url;
+  }
+
+  if (!sourceDocumentId) return undefined;
+  return asHttpUrl(documentSourceById.get(sourceDocumentId));
+}
+
+function toErrorText(error: unknown): string | undefined {
+  if (!error) return undefined;
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    if (typeof record.message === 'string') return record.message;
+  }
+  return undefined;
+}
+
+function toArtifactStatus(
+  status: 'proposed' | 'approved' | 'rejected' | 'superseded',
+  mapApprovedToActive = false,
+): AgentControlArtifact['status'] {
+  if (status === 'superseded') return 'rejected';
+  if (status === 'approved' && mapApprovedToActive) return 'active';
+  return status;
+}
+
+/**
+ * Lightweight view for /agent-control-center.
+ * This intentionally avoids web search and LLM calls so the page loads quickly.
+ */
+export async function getAgentControlCenterView(): Promise<AgentControlCenterView> {
+  await ensureTodaySchema();
+  const date = todayISODate();
+
+  const [inboxRows, activeRows, runRows] = await Promise.all([
+    sql<
+      Array<{
+        id: string;
+        run_id: string | null;
+        agent: string;
+        kind: string;
+        day: string;
+        title: string;
+        content: Record<string, unknown>;
+        source_refs: Record<string, unknown>;
+        status: 'proposed' | 'approved' | 'rejected' | 'superseded';
+        created_at: string;
+      }>
+    >`
+      SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
+      FROM artifacts
+      WHERE day = ${date}
+        AND status = 'proposed'
+      ORDER BY created_at DESC
+    `,
+    sql<
+      Array<{
+        id: string;
+        run_id: string | null;
+        agent: string;
+        kind: string;
+        day: string;
+        title: string;
+        content: Record<string, unknown>;
+        source_refs: Record<string, unknown>;
+        status: 'proposed' | 'approved' | 'rejected' | 'superseded';
+        created_at: string;
+      }>
+    >`
+      SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
+      FROM artifacts
+      WHERE day = ${date}
+        AND status = 'approved'
+      ORDER BY COALESCE(reviewed_at, created_at) DESC
+    `,
+    sql<
+      Array<{
+        id: string;
+        kind: string;
+        status: 'running' | 'ok' | 'error' | 'partial';
+        started_at: string;
+        ended_at: string | null;
+      }>
+    >`
+      SELECT id, kind, status, started_at, ended_at
+      FROM runs
+      ORDER BY started_at DESC
+      LIMIT 12
+    `,
+  ]);
+
+  const runIds = runRows.map((run) => run.id);
+  const stepRows = runIds.length
+    ? await sql<
+        Array<{
+          run_id: string;
+          step_name: string;
+          status: 'running' | 'ok' | 'error' | 'skipped';
+          started_at: string;
+          ended_at: string | null;
+          error: unknown;
+        }>
+      >`
+        SELECT run_id, step_name, status, started_at, ended_at, error
+        FROM run_steps
+        WHERE run_id = ANY(${runIds})
+          AND (
+            step_name = 'pipeline'
+            OR step_name LIKE 'pipeline_%'
+            OR step_name IN ('curator_start', 'curator_complete', 'webscout_start', 'webscout_complete', 'distiller_start', 'distiller_complete')
+          )
+        ORDER BY started_at ASC
+      `
+    : [];
+
+  const stepsByRun = new Map<string, AgentControlStep[]>();
+  for (const row of stepRows) {
+    const existing = stepsByRun.get(row.run_id) ?? [];
+    if (existing.length >= 40) {
+      continue;
+    }
+    existing.push({
+      name: row.step_name,
+      status: row.status,
+      startedAt: row.started_at,
+      endedAt: row.ended_at ?? undefined,
+      error: toErrorText(row.error),
+    });
+    stepsByRun.set(row.run_id, existing);
+  }
+
+  const documentIds = new Set<string>();
+  for (const artifact of [...inboxRows, ...activeRows]) {
+    const documentId = readSourceDocumentId(artifact.source_refs ?? {});
+    if (documentId) {
+      documentIds.add(documentId);
+    }
+  }
+
+  const documentSourceRows = documentIds.size
+    ? await sql<Array<{ id: string; source: string }>>`
+        SELECT id, source
+        FROM documents
+        WHERE id = ANY(${Array.from(documentIds)})
+      `
+    : [];
+
+  const documentSourceById = new Map<string, string>();
+  for (const row of documentSourceRows) {
+    if (typeof row.source === 'string' && row.source.trim()) {
+      documentSourceById.set(row.id, row.source.trim());
+    }
+  }
+
+  function mapArtifact(
+    artifact: {
+      id: string;
+      run_id: string | null;
+      agent: string;
+      kind: string;
+      day: string;
+      title: string;
+      content: Record<string, unknown>;
+      source_refs: Record<string, unknown>;
+      status: 'proposed' | 'approved' | 'rejected' | 'superseded';
+      created_at: string;
+    },
+    mapApprovedToActive = false,
+  ): AgentControlArtifact {
+    const sourceDocumentId = readSourceDocumentId(artifact.source_refs ?? {});
+    return {
+      id: artifact.id,
+      runId: artifact.run_id,
+      day: artifact.day,
+      agent: artifact.agent,
+      kind: artifact.kind,
+      status: toArtifactStatus(artifact.status, mapApprovedToActive),
+      title: artifact.title,
+      preview: asShortPreview(artifact.content, artifact.kind),
+      createdAt: artifact.created_at,
+      sourceDocumentId,
+      sourceUrl: resolveArtifactSourceUrl({
+        content: artifact.content ?? {},
+        sourceRefs: artifact.source_refs ?? {},
+        sourceDocumentId,
+        documentSourceById,
+      }),
+      sourceRefs: artifact.source_refs,
+      content: artifact.content,
+    };
+  }
+
+  return {
+    date,
+    runs: runRows.map((run) => ({
+      id: run.id,
+      kind: run.kind,
+      status: run.status,
+      startedAt: run.started_at,
+      endedAt: run.ended_at ?? undefined,
+      steps: stepsByRun.get(run.id) ?? [],
+    })),
+    inbox: inboxRows.map((artifact) => mapArtifact(artifact)),
+    active: activeRows.map((artifact) => mapArtifact(artifact, true)),
+  };
 }
 
 export async function getTodayView(): Promise<TodayView> {
