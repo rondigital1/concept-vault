@@ -1,5 +1,32 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ThemeToggle } from './components/ThemeToggle';
+
+const themeInitScript = `
+(() => {
+  const storageKey = 'concept-vault-theme';
+  const root = document.documentElement;
+  const getSystemTheme = () =>
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
+  try {
+    const storedTheme = window.localStorage.getItem(storageKey);
+    const theme =
+      storedTheme === 'dark' || storedTheme === 'light' || storedTheme === 'system'
+        ? storedTheme
+        : 'system';
+    const resolvedTheme = theme === 'system' ? getSystemTheme() : theme;
+
+    root.dataset.theme = theme;
+    root.dataset.resolvedTheme = resolvedTheme;
+    root.style.colorScheme = resolvedTheme;
+  } catch {
+    root.dataset.theme = 'system';
+    root.dataset.resolvedTheme = getSystemTheme();
+    root.style.colorScheme = root.dataset.resolvedTheme;
+  }
+})();
+`;
 
 export const metadata: Metadata = {
   title: 'ConceptVault',
@@ -13,7 +40,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="bg-zinc-950 text-zinc-100 antialiased selection:bg-white/20">
+      <body className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100 antialiased selection:bg-white/20">
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <nav className="sticky top-0 z-50 border-b border-white/5 bg-zinc-950/80 backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
             {/* Logo/Brand */}
@@ -59,7 +87,12 @@ export default function RootLayout({
             </div>
           </div>
         </nav>
-        <main>{children}</main>
+        <main className="flex-1">{children}</main>
+        <footer className="border-t border-white/5 bg-zinc-950/80 backdrop-blur-xl">
+          <div className="mx-auto max-w-7xl px-6 py-6">
+            <ThemeToggle />
+          </div>
+        </footer>
       </body>
     </html>
   );

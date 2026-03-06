@@ -6,6 +6,9 @@ import { EmptyState } from '@/app/components/EmptyState';
 import { ensureSchema } from '@/db/schema';
 import { client } from '@/db';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {

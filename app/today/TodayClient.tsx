@@ -8,6 +8,104 @@ import { toast, ToastContainer } from '@/app/components/Toast';
 export function TodayClient() {
   const router = useRouter();
 
+  useEffect(() => {
+    function isArtifactActionForm(form: HTMLFormElement): boolean {
+      const action = form.getAttribute('action') ?? form.action;
+      return /\/api\/artifacts\/[^/]+\/(approve|reject)(?:\?.*)?$/.test(action);
+    }
+
+    function decisionFromAction(action: string): 'approved' | 'rejected' {
+      return /\/approve(?:\?|$)/.test(action) ? 'approved' : 'rejected';
+    }
+
+    async function handleArtifactActionSubmit(event: Event) {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement) || !isArtifactActionForm(form)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const submitEvent = event as SubmitEvent;
+      const submitter =
+        submitEvent.submitter instanceof HTMLButtonElement ? submitEvent.submitter : null;
+      const fallbackButton = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+      const button = submitter ?? fallbackButton;
+      const previousLabel = button?.textContent ?? '';
+
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Saving...';
+      }
+
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        });
+
+        const payload = await response.json().catch(() => null) as
+          | {
+              error?: string;
+              libraryImport?: {
+                status: 'imported' | 'linked';
+                documentId: string;
+                created: boolean;
+              } | null;
+            }
+          | null;
+
+        if (!response.ok) {
+          const errorMessage =
+            payload && typeof payload.error === 'string' ? payload.error : 'Action failed';
+          throw new Error(errorMessage);
+        }
+
+        const decision = decisionFromAction(form.action);
+        const itemElement = form.closest('[data-inbox-item]');
+        if (itemElement instanceof HTMLElement) {
+          itemElement.setAttribute('data-reviewed', 'true');
+          itemElement.style.display = 'none';
+        }
+
+        const countElement = document.getElementById('review-inbox-count');
+        if (countElement) {
+          const current = Number.parseInt((countElement.textContent ?? '').trim(), 10);
+          if (Number.isFinite(current) && current > 0) {
+            countElement.textContent = String(current - 1);
+          }
+        }
+
+        if (decision === 'approved' && payload?.libraryImport) {
+          toast.success(
+            payload.libraryImport.created
+              ? 'Approved. Saved to Library and future topic reports can use it.'
+              : 'Approved. This source was already in Library and will stay available for future topic reports.',
+          );
+        } else {
+          toast.success(`Artifact ${decision}`);
+        }
+        router.refresh();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Action failed';
+        toast.error(message);
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = previousLabel;
+        }
+      }
+    }
+
+    document.addEventListener('submit', handleArtifactActionSubmit);
+    return () => {
+      document.removeEventListener('submit', handleArtifactActionSubmit);
+    };
+  }, [router]);
+
   // Set up copy-to-clipboard for error messages
   useEffect(() => {
     function handleCopyClick(e: MouseEvent) {
@@ -41,86 +139,14 @@ export function TodayClient() {
       },
     },
     {
-      key: 'd',
-      description: 'Run Distill',
-      action: async () => {
-        toast.info('Starting Distill run...');
-        try {
-          const res = await fetch('/api/runs/distill', { method: 'POST' });
-          if (res.ok) {
-            toast.success('Distill run started!');
-            router.refresh();
-          } else {
-            toast.error('Distill run failed');
-          }
-        } catch {
-          toast.error('Failed to start Distill');
-        }
-      },
-    },
-    {
-      key: 'u',
-      description: 'Run Curate',
-      action: async () => {
-        toast.info('Starting Curate run...');
-        try {
-          const res = await fetch('/api/runs/curate', { method: 'POST' });
-          if (res.ok) {
-            toast.success('Curate run started!');
-            router.refresh();
-          } else {
-            toast.error('Curate run failed');
-          }
-        } catch {
-          toast.error('Failed to start Curate');
-        }
-      },
-    },
-    {
-      key: 'w',
-      description: 'Open Web Scout run page',
-      action: () => {
-        router.push('/web-scout');
-      },
-    },
-    {
-      key: 'a',
-      description: 'Run Distill + Curate',
-      action: async () => {
-        toast.info('Starting Distill + Curate automation...');
-        try {
-          const res = await fetch('/api/runs/distill-curate', { method: 'POST' });
-          if (res.ok) {
-            toast.success('Distill + Curate automation completed');
-            router.refresh();
-          } else {
-            toast.error('Distill + Curate automation failed');
-          }
-        } catch {
-          toast.error('Failed to start Distill + Curate automation');
-        }
-      },
-    },
-    {
-      key: 'g',
-      description: 'Generate Research report',
-      action: async () => {
-        toast.info('Starting Research...');
-        try {
-          const res = await fetch('/api/research', { method: 'POST' });
-          if (res.ok) {
-            toast.success('Research started!');
-            router.refresh();
-          } else {
-            toast.error('Research failed');
-          }
-        } catch {
-          toast.error('Failed to start Research');
-        }
-      },
-    },
-    {
       key: 'p',
+      description: 'Choose Report Topic',
+      action: () => {
+        router.push('/web-scout?runMode=full_report');
+      },
+    },
+    {
+      key: 'o',
       description: 'Go to Reports',
       action: () => {
         router.push('/reports');

@@ -1,9 +1,88 @@
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { TodayBackground } from '@/app/today/TodayBackground';
 import { WebScoutRunClient } from './WebScoutRunClient';
-import { SourceWatchlistPanel } from './SourceWatchlistPanel';
+import { client, ensureSchema } from '@/db';
+import { getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
+import {
+  listReportReadyTopics,
+  MIN_LINKED_DOCUMENTS_FOR_REPORT,
+} from '@/server/services/topicWorkflow.service';
 
-export default function WebScoutPage() {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+type PageSearchParams = Record<string, string | string[] | undefined>;
+
+function firstQueryParam(value: string | string[] | undefined): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0];
+  }
+
+  return undefined;
+}
+
+export default async function WebScoutPage({
+  searchParams,
+}: {
+  searchParams?: Promise<PageSearchParams> | PageSearchParams;
+}) {
+  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
+  const runMode = firstQueryParam(resolvedSearchParams.runMode) ?? 'full_report';
+  const topicId = firstQueryParam(resolvedSearchParams.topicId);
+  const requiresTopicSelection = runMode === 'full_report' && !topicId;
+  const pageTitle = runMode === 'full_report' ? 'Generate Report' : 'Run Output';
+  const pageDescription =
+    runMode === 'full_report'
+      ? 'Choose a topic, run the report, then open the finished result.'
+      : 'Live status plus a clear summary of exactly what this run generated.';
+
+  let reportTopicsError: string | null = null;
+  let selectedTopicName: string | null = null;
+  let reportTopicOptions: Array<{
+    id: string;
+    name: string;
+    goal: string;
+    focusTags: string[];
+    linkedDocumentCount: number;
+    lastReportAt: string | null;
+  }> = [];
+
+  const schemaResult = await ensureSchema(client);
+  if (!schemaResult.ok) {
+    reportTopicsError = schemaResult.error || 'Failed to initialize database';
+  } else {
+    if (requiresTopicSelection) {
+      try {
+        const readyTopics = await listReportReadyTopics(MIN_LINKED_DOCUMENTS_FOR_REPORT);
+        reportTopicOptions = readyTopics.map((entry) => ({
+          id: entry.topic.id,
+          name: entry.topic.name,
+          goal: entry.topic.goal,
+          focusTags: entry.topic.focus_tags ?? [],
+          linkedDocumentCount: entry.linkedDocumentCount,
+          lastReportAt: entry.lastReportAt,
+        }));
+      } catch (error) {
+        reportTopicsError =
+          error instanceof Error ? error.message : 'Failed to load report-ready topics';
+      }
+    }
+
+    if (topicId) {
+      try {
+        const topics = await getSavedTopicsByIds([topicId]);
+        selectedTopicName = topics[0]?.name ?? null;
+      } catch {
+        selectedTopicName = null;
+      }
+    }
+  }
+
   return (
     <>
       <TodayBackground />
@@ -12,10 +91,8 @@ export default function WebScoutPage() {
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 relative z-10">
           <header className="flex items-start justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">Web Scout Run</h1>
-              <p className="text-zinc-400 mt-1">
-                Live timeline of each step while Web Scout is processing.
-              </p>
+              <h1 className="text-3xl font-bold text-white tracking-tight">{pageTitle}</h1>
+              <p className="text-zinc-400 mt-1">{pageDescription}</p>
             </div>
             <Link
               href="/agent-control-center"
@@ -24,9 +101,21 @@ export default function WebScoutPage() {
               Back to Agent Control Center
             </Link>
           </header>
-          <SourceWatchlistPanel />
-          <div className="h-5" />
-          <WebScoutRunClient />
+          <Suspense
+            fallback={
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-sm text-zinc-400">
+                Preparing workflow run...
+              </div>
+            }
+          >
+            <WebScoutRunClient
+              requiresTopicSelection={requiresTopicSelection}
+              reportTopicOptions={reportTopicOptions}
+              reportTopicsError={reportTopicsError}
+              selectedTopicName={selectedTopicName}
+              minimumLinkedDocumentsForReport={MIN_LINKED_DOCUMENTS_FOR_REPORT}
+            />
+          </Suspense>
         </div>
       </main>
     </>

@@ -1,8 +1,10 @@
 'use server';
 
+import type { EasyInputMessage } from 'openai/resources/responses/responses';
 import { client, ensureSchema } from '@/db';
-import { createChatModel } from '@/server/langchain/models';
-import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { openAIExecutionService } from '@/server/ai/openai-execution-service';
+import { buildPrompt } from '@/server/ai/prompt-builder';
+import { AI_TASKS } from '@/server/ai/tasks';
 import * as chatHistoryService from '@/server/services/chatHistory.service';
 import { publicErrorMessage } from '@/server/security/publicError';
 
@@ -51,19 +53,35 @@ Format these suggestions in an XML block like this:
   <reply>What else is related?</reply>
 </suggested_replies>
 Do not mention the suggestions in your main response text.`;
-
-    const model = createChatModel({ temperature: 0.7 });
-
-    const messages = [
-      new SystemMessage(systemPrompt),
-      ...historyWithoutLast.map(msg =>
-        msg.role === 'user' ? new HumanMessage(msg.content) : new AIMessage(msg.content)
-      ),
-      new HumanMessage(input.message)
-    ];
-
-    const response = await model.invoke(messages);
-    let content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+    const historyMessages: EasyInputMessage[] = historyWithoutLast.map((message) => ({
+      role: message.role === 'user' ? 'user' : 'assistant',
+      content: message.content,
+    }));
+    const prompt = buildPrompt({
+      task: AI_TASKS.chatAssistant,
+      systemInstructions: [
+        {
+          heading: 'Role',
+          content: systemPrompt,
+        },
+      ],
+      inputMessages: [
+        ...historyMessages,
+        {
+          role: 'user' as const,
+          content: input.message,
+        },
+      ],
+    });
+    const response = await openAIExecutionService.executeText({
+      task: AI_TASKS.chatAssistant,
+      prompt,
+      temperature: 0.7,
+      attribution: {
+        jobId: session.id,
+      },
+    });
+    let content = response.output;
     let suggestedReplies: string[] = [];
 
     // Parse suggested replies

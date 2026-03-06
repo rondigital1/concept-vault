@@ -1,8 +1,12 @@
 import Link from 'next/link';
-import { getTodayView } from '@/server/services/today.service';
+import { getAgentControlCenterView } from '@/server/services/today.service';
 import { listSavedTopics, type SavedTopicRow } from '@/server/repos/savedTopics.repo';
+import { listReportReadyTopics } from '@/server/services/topicWorkflow.service';
 import { TodayClient } from './TodayClient';
 import { TodayBackground } from './TodayBackground';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 // ---------- Types ----------
 type Run = {
@@ -22,11 +26,18 @@ type Run = {
 
 type Artifact = {
   id: string;
+  runId: string | null;
+  day: string;
   agent: string;
   kind: string;
   status: 'proposed' | 'approved' | 'rejected' | 'active';
   title: string;
   preview?: string;
+  createdAt: string;
+  sourceUrl?: string;
+  sourceDocumentId?: string;
+  sourceRefs?: Record<string, unknown>;
+  content?: Record<string, unknown>;
 };
 
 type TodayData = {
@@ -36,31 +47,90 @@ type TodayData = {
   active?: Artifact[];
 };
 
+type ReportReadyTopic = {
+  id: string;
+  name: string;
+  goal: string;
+  focusTags: string[];
+  linkedDocumentCount: number;
+  lastReportAt: string | null;
+};
+
+type PageSearchParams = Record<string, string | string[] | undefined>;
+
+function firstQueryParam(value: string | string[] | undefined): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value) && typeof value[0] === 'string') {
+    return value[0];
+  }
+  return undefined;
+}
+
 // ---------- Local Components ----------
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    running: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-    ok: 'bg-green-500/20 text-green-400 border-green-500/30',
-    error: 'bg-red-500/20 text-red-400 border-red-500/30',
-    partial: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    proposed: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    approved: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-    rejected: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
-    active: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-    skipped: 'bg-zinc-500/20 text-zinc-500 border-zinc-500/30',
+    running: 'bg-amber-300/10 text-amber-200 border-amber-300/35',
+    ok: 'bg-emerald-300/10 text-emerald-200 border-emerald-300/35',
+    error: 'bg-rose-300/10 text-rose-200 border-rose-300/35',
+    partial: 'bg-yellow-300/10 text-yellow-200 border-yellow-300/35',
+    proposed: 'bg-sky-300/10 text-sky-200 border-sky-300/35',
+    approved: 'bg-emerald-300/10 text-emerald-200 border-emerald-300/35',
+    rejected: 'bg-zinc-300/10 text-zinc-200 border-zinc-300/25',
+    active: 'bg-cyan-300/10 text-cyan-200 border-cyan-300/35',
+    skipped: 'bg-zinc-300/10 text-zinc-300 border-zinc-300/20',
   };
 
   const isRunning = status === 'running';
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full border ${colors[status] || colors.proposed}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] ${colors[status] || colors.proposed}`}
     >
       {isRunning && (
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
       )}
       {status}
+    </span>
+  );
+}
+
+function formatAgentName(agent: string): string {
+  const aliases: Record<string, string> = {
+    curator: 'Curator',
+    distiller: 'Distiller',
+    webScout: 'WebScout',
+    research: 'Research',
+  };
+
+  if (aliases[agent]) {
+    return aliases[agent];
+  }
+
+  return agent
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function AgentBadge({ agent }: { agent: string }) {
+  const themes: Record<string, string> = {
+    curator: 'border-sky-300/35 text-sky-100 bg-sky-300/10',
+    distiller: 'border-emerald-300/35 text-emerald-100 bg-emerald-300/10',
+    webScout: 'border-amber-300/35 text-amber-100 bg-amber-300/10',
+    research: 'border-rose-300/35 text-rose-100 bg-rose-300/10',
+  };
+
+  const theme = themes[agent] || 'border-zinc-300/25 text-zinc-100 bg-zinc-300/10';
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] ${theme}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-75" />
+      {formatAgentName(agent)}
     </span>
   );
 }
@@ -101,6 +171,52 @@ function formatTime(dateStr?: string): string {
   });
 }
 
+function formatDateTime(dateStr?: string): string {
+  if (!dateStr) {
+    return '—';
+  }
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) {
+    return '—';
+  }
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatShortDate(dateStr?: string | null): string {
+  if (!dateStr) {
+    return 'No report yet';
+  }
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) {
+    return 'No report yet';
+  }
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return String(value ?? '');
+  }
+}
+
+function artifactDetailHref(item: Artifact): string {
+  if (item.kind === 'research-report') {
+    return `/reports/${item.id}`;
+  }
+  return `/artifacts/${item.id}`;
+}
+
 function formatDisplayDate(isoDate: string): string {
   const [yearStr, monthStr, dayStr] = isoDate.split('-');
   const year = Number(yearStr);
@@ -128,12 +244,23 @@ function formatDisplayDate(isoDate: string): string {
   });
 }
 
-function SectionHeader({ title, count }: { title: string; count?: number }) {
+function SectionHeader({
+  title,
+  count,
+  countId,
+}: {
+  title: string;
+  count?: number;
+  countId?: string;
+}) {
   return (
-    <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+    <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-200">
       {title}
       {typeof count === 'number' && (
-        <span className="text-xs font-normal bg-zinc-800 px-2 py-0.5 rounded-full">
+        <span
+          id={countId}
+          className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] font-medium tracking-normal text-zinc-100"
+        >
           {count}
         </span>
       )}
@@ -143,7 +270,9 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-zinc-900/50 border border-zinc-800 rounded-xl backdrop-blur-sm ${className}`}>
+    <div
+      className={`rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_16px_50px_rgba(0,0,0,0.32)] ${className}`}
+    >
       {children}
     </div>
   );
@@ -151,19 +280,57 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
 
 // ---------- Page Component ----------
 
-export default async function TodayPage() {
-  const today = (await getTodayView()) as TodayData;
-  let savedTopics: SavedTopicRow[] = [];
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams?: Promise<PageSearchParams> | PageSearchParams;
+}) {
+  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
+  const artifactActionError = firstQueryParam(resolvedSearchParams.artifactActionError);
+  const artifactActionInfo = firstQueryParam(resolvedSearchParams.artifactActionInfo);
 
-  try {
-    savedTopics = await listSavedTopics({ activeOnly: true });
-  } catch (error) {
-    console.error('Failed to load saved topics for Agent Control Center page:', error);
+  const [todayResult, topicsResult, reportReadyTopicsResult] = await Promise.allSettled([
+    getAgentControlCenterView(),
+    listSavedTopics({ activeOnly: true }),
+    listReportReadyTopics(),
+  ]);
+
+  const today: TodayData =
+    todayResult.status === 'fulfilled'
+      ? (todayResult.value as TodayData)
+      : { date: new Date().toISOString().slice(0, 10), runs: [], inbox: [], active: [] };
+  if (todayResult.status === 'rejected') {
+    console.error('Failed to load Agent Control Center view:', todayResult.reason);
+  }
+
+  const savedTopics: SavedTopicRow[] =
+    topicsResult.status === 'fulfilled' ? topicsResult.value : [];
+  if (topicsResult.status === 'rejected') {
+    console.error('Failed to load saved topics for Agent Control Center page:', topicsResult.reason);
+  }
+
+  const reportReadyTopics: ReportReadyTopic[] =
+    reportReadyTopicsResult.status === 'fulfilled'
+      ? reportReadyTopicsResult.value.map((entry) => ({
+          id: entry.topic.id,
+          name: entry.topic.name,
+          goal: entry.topic.goal,
+          focusTags: entry.topic.focus_tags ?? [],
+          linkedDocumentCount: entry.linkedDocumentCount,
+          lastReportAt: entry.lastReportAt,
+        }))
+      : [];
+  if (reportReadyTopicsResult.status === 'rejected') {
+    console.error('Failed to load report-ready topics for Agent Control Center page:', reportReadyTopicsResult.reason);
   }
 
   const runs = today.runs ?? [];
   const inbox = today.inbox ?? [];
   const active = today.active ?? [];
+  const articleInbox = inbox.filter((item) => item.kind === 'web-proposal');
+  const otherInbox = inbox.filter((item) => item.kind !== 'web-proposal');
+  const reportReadyTopicIds = new Set(reportReadyTopics.map((topic) => topic.id));
+  const topicsNeedingMoreSources = savedTopics.filter((topic) => !reportReadyTopicIds.has(topic.id));
   const displayDate = formatDisplayDate(today.date);
 
   return (
@@ -181,193 +348,189 @@ export default async function TodayPage() {
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">
                 Agent Control Center
               </h1>
-              <p className="text-zinc-300 mt-2 text-lg sm:text-xl">{displayDate}</p>
+              <p className="mt-2 text-lg text-zinc-200 sm:text-xl">{displayDate}</p>
             </div>
-            <nav className="flex items-center gap-3">
-              <Link
-                href="/library"
-                className="text-sm text-zinc-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-zinc-800"
-              >
-                Library
-              </Link>
-              <Link
-                href="/ingest"
-                className="text-sm text-zinc-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-zinc-800"
-              >
-                Ingest
-              </Link>
-              <Link
-                href="/agent-control-center"
-                className="text-sm text-zinc-300 bg-zinc-800 px-3 py-1.5 rounded-lg hover:bg-zinc-700 transition-colors flex items-center gap-1.5"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Refresh
-              </Link>
-            </nav>
           </header>
 
-          {/* Run Controls */}
+          {artifactActionError && (
+            <section className="mb-6">
+              <div className="rounded-xl border border-rose-700 bg-rose-950 px-4 py-3 text-sm text-rose-100">
+                {artifactActionError}
+              </div>
+            </section>
+          )}
+          {!artifactActionError && artifactActionInfo && (
+            <section className="mb-6">
+              <div className="rounded-xl border border-emerald-700 bg-emerald-950 px-4 py-3 text-sm text-emerald-100">
+                {artifactActionInfo}
+              </div>
+            </section>
+          )}
+
           <section className="mb-8">
             <Card className="p-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-                <SectionHeader title="Run Agents" />
-                <p className="text-xs text-zinc-500">
-                  Proposed → Approved → Active
+                <SectionHeader title="Simple Workflow" />
+                <p className="text-xs text-zinc-300">
+                  Choose a topic, review found articles, then open the finished report.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <form action="/api/runs/distill" method="POST">
-                  <button
-                    type="submit"
-                    className="group relative px-6 py-3 bg-white text-black font-semibold rounded-xl transition-all duration-200 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      Distill
-                    </span>
-                    <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      D
-                    </span>
-                  </button>
-                </form>
-                <form action="/api/runs/curate" method="POST">
-                  <button
-                    type="submit"
-                    className="group relative px-6 py-3 bg-zinc-800 text-white font-semibold rounded-xl border border-zinc-700 transition-all duration-200 hover:bg-zinc-700 hover:border-zinc-600 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-zinc-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
-                      </svg>
-                      Curate
-                    </span>
-                    <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      U
-                    </span>
-                  </button>
-                </form>
-                <form action="/api/runs/distill-curate" method="POST">
-                  <button
-                    type="submit"
-                    className="group relative px-6 py-3 bg-emerald-400 text-black font-semibold rounded-xl border border-emerald-300 transition-all duration-200 hover:bg-emerald-300 hover:border-emerald-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-emerald-200/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h10" />
-                      </svg>
-                      Distill + Curate
-                    </span>
-                    <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      A
-                    </span>
-                  </button>
-                </form>
-                <Link
-                  href="/web-scout"
-                  className="group relative px-6 py-3 bg-zinc-800 text-white font-semibold rounded-xl border border-zinc-700 transition-all duration-200 hover:bg-zinc-700 hover:border-zinc-600 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-zinc-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
-                >
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    Web Scout
-                  </span>
-                  <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                    W
-                  </span>
-                </Link>
-                <form action="/api/research" method="POST">
-                  <button
-                    type="submit"
-                    className="group relative px-6 py-3 bg-zinc-800 text-white font-semibold rounded-xl border border-zinc-700 transition-all duration-200 hover:bg-zinc-700 hover:border-zinc-600 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-zinc-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Research
-                    </span>
-                    <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      G
-                    </span>
-                  </button>
-                </form>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-sky-300">1. Choose Topic</p>
+                  <p className="mt-2 text-sm text-white">Start with a saved topic that already has enough material.</p>
+                  <p className="mt-2 text-xs text-zinc-400">
+                    Report-ready topics appear first below with a direct Generate Report button.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-amber-300">2. Review Articles</p>
+                  <p className="mt-2 text-sm text-white">Approve good sources to save them into Library.</p>
+                  <p className="mt-2 text-xs text-zinc-400">
+                    Approved articles are used by future topic refreshes and future reports.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-300">3. Read Report</p>
+                  <p className="mt-2 text-sm text-white">Open the report card when the run finishes.</p>
+                  <p className="mt-2 text-xs text-zinc-400">
+                    Reports stay available from the Reports page for later review.
+                  </p>
+                </div>
               </div>
             </Card>
           </section>
 
-          {/* Topic Controls */}
           <section className="mb-8" id="topic-management">
             <Card className="p-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <SectionHeader title="Topic Report Setup" count={savedTopics.length} />
-                <p className="text-xs text-zinc-500">
-                  Save topics once, then select them for report runs.
+                <SectionHeader title="Choose Topic" count={savedTopics.length} />
+                <p className="text-xs text-zinc-300">
+                  Topics ready for reports are listed first. Other topics can be refreshed until they are ready.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-sm font-semibold text-white mb-3">Select Saved Topics</h3>
-                  {savedTopics.length === 0 ? (
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-                      <p className="text-sm text-zinc-400">
-                        No saved topics yet. Create one using the form on the right.
-                      </p>
-                    </div>
-                  ) : (
-                    <form action="/api/runs/topic-report" method="POST" className="space-y-4">
-                      <p className="text-xs text-zinc-500">
-                        Select one or more topics. Leave all unchecked to run all active topics.
-                      </p>
-                      <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                        {savedTopics.map((topic) => (
-                          <label
+              <div className="grid grid-cols-1 xl:grid-cols-[1.4fr,0.9fr] gap-6">
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Ready For Reports</h3>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      These topics already have enough linked material for a solid report.
+                    </p>
+                    {reportReadyTopics.length === 0 ? (
+                      <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                        <p className="text-sm text-zinc-200">
+                          No topics are report-ready yet. Add a topic or refresh an existing one to gather more sources first.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                        {reportReadyTopics.map((topic) => (
+                          <div
                             key={topic.id}
-                            className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5 hover:border-zinc-700 transition-colors cursor-pointer"
+                            className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-4"
                           >
-                            <input
-                              type="checkbox"
-                              name="topicIds"
-                              value={topic.id}
-                              className="mt-1 h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-blue-400 focus:ring-blue-400/60"
-                            />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-white truncate">{topic.name}</p>
-                              <p className="text-xs text-zinc-400 line-clamp-2">{topic.goal}</p>
-                              {topic.focus_tags.length > 0 && (
-                                <p className="text-[11px] text-zinc-500 mt-1 truncate">
-                                  Tags: {topic.focus_tags.join(', ')}
-                                </p>
-                              )}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-semibold text-white">{topic.name}</p>
+                              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200">
+                                {topic.linkedDocumentCount} linked docs
+                              </span>
                             </div>
-                          </label>
+                            <p className="mt-2 text-sm text-zinc-300">{topic.goal}</p>
+                            <p className="mt-2 text-xs text-zinc-400">
+                              Last report: {formatShortDate(topic.lastReportAt)}
+                            </p>
+                            {topic.focusTags.length > 0 && (
+                              <p className="mt-2 text-xs text-zinc-500">
+                                Tags: {topic.focusTags.slice(0, 6).join(', ')}
+                              </p>
+                            )}
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Link
+                                href={`/web-scout?runMode=full_report&topicId=${topic.id}`}
+                                className="inline-flex items-center justify-center rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
+                              >
+                                Generate Report
+                              </Link>
+                              <Link
+                                href={`/web-scout?runMode=incremental_update&topicId=${topic.id}`}
+                                className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 transition-colors"
+                              >
+                                Refresh Topic
+                              </Link>
+                            </div>
+                          </div>
                         ))}
                       </div>
-                      <button
-                        type="submit"
-                        className="group relative px-6 py-3 bg-blue-400 text-black font-semibold rounded-xl border border-blue-300 transition-all duration-200 hover:bg-blue-300 hover:border-blue-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-200/50 focus:ring-offset-2 focus:ring-offset-zinc-900"
-                      >
-                        <span className="flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4V7m4 10V5a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2z" />
-                          </svg>
-                          Run Topic Report
-                        </span>
-                      </button>
-                    </form>
-                  )}
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Needs More Sources</h3>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Refresh these topics first. Once they gather enough linked material, they move into the report-ready list above.
+                    </p>
+                    {topicsNeedingMoreSources.length === 0 ? (
+                      <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                        <p className="text-sm text-zinc-200">
+                          Every saved topic is currently report-ready.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {topicsNeedingMoreSources.map((topic) => (
+                          <div
+                            key={topic.id}
+                            className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 p-4 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-semibold text-white">{topic.name}</p>
+                                <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">
+                                  Build topic first
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-zinc-400 line-clamp-2">{topic.goal}</p>
+                            </div>
+                            <Link
+                              href={`/web-scout?runMode=incremental_update&topicId=${topic.id}`}
+                              className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 transition-colors"
+                            >
+                              Refresh Topic
+                            </Link>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    <Link
+                      href="/web-scout?runMode=scout_only"
+                      className="inline-flex items-center justify-center rounded-lg bg-amber-300 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-200 transition-colors"
+                    >
+                      Find New Sources
+                    </Link>
+                    <Link
+                      href="/web-scout?runMode=concept_only"
+                      className="inline-flex items-center justify-center rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-black hover:bg-sky-300 transition-colors"
+                    >
+                      Refresh Concepts
+                    </Link>
+                    <Link
+                      href="/reports"
+                      className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 transition-colors"
+                    >
+                      Open Reports
+                    </Link>
+                  </div>
                 </div>
 
                 <div>
                   <h3 className="text-sm font-semibold text-white mb-3">Add Topic</h3>
                   <form action="/api/topics" method="POST" className="space-y-3">
                     <div>
-                      <label htmlFor="topic-name" className="block text-xs text-zinc-400 mb-1.5">
+                      <label htmlFor="topic-name" className="mb-1.5 block text-xs text-zinc-300">
                         Topic Name
                       </label>
                       <input
@@ -376,11 +539,11 @@ export default async function TodayPage() {
                         required
                         maxLength={80}
                         placeholder="e.g. Multi-agent systems"
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-400/40"
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-400 focus:border-blue-300/40 focus:outline-none focus:ring-2 focus:ring-blue-300/40"
                       />
                     </div>
                     <div>
-                      <label htmlFor="topic-goal" className="block text-xs text-zinc-400 mb-1.5">
+                      <label htmlFor="topic-goal" className="mb-1.5 block text-xs text-zinc-300">
                         Learning Goal
                       </label>
                       <textarea
@@ -390,11 +553,11 @@ export default async function TodayPage() {
                         maxLength={500}
                         rows={4}
                         placeholder="What should the agent focus on learning and finding?"
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-400/40"
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-400 focus:border-blue-300/40 focus:outline-none focus:ring-2 focus:ring-blue-300/40"
                       />
                     </div>
                     <div>
-                      <label htmlFor="topic-focus-tags" className="block text-xs text-zinc-400 mb-1.5">
+                      <label htmlFor="topic-focus-tags" className="mb-1.5 block text-xs text-zinc-300">
                         Focus Tags (optional)
                       </label>
                       <input
@@ -402,8 +565,33 @@ export default async function TodayPage() {
                         name="focusTags"
                         maxLength={240}
                         placeholder="llms, retrieval, langgraph"
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-400/40"
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-400 focus:border-blue-300/40 focus:outline-none focus:ring-2 focus:ring-blue-300/40"
                       />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2 text-xs text-zinc-300">
+                        <input
+                          type="checkbox"
+                          name="isTracked"
+                          value="true"
+                          className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-blue-400 focus:ring-blue-400/60"
+                        />
+                        Track on schedule
+                      </label>
+                      <div>
+                        <label htmlFor="topic-cadence" className="mb-1.5 block text-xs text-zinc-300">
+                          Cadence
+                        </label>
+                        <select
+                          id="topic-cadence"
+                          name="cadence"
+                          defaultValue="weekly"
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white focus:border-blue-300/40 focus:outline-none focus:ring-2 focus:ring-blue-300/40"
+                        >
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                        </select>
+                      </div>
                     </div>
                     <button
                       type="submit"
@@ -421,81 +609,189 @@ export default async function TodayPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left Column */}
             <div className="space-y-6">
-              {/* Review Inbox */}
-              <section>
-                <Card>
-                  <div className="p-4 border-b border-zinc-800">
-                    <SectionHeader title="Review Inbox" count={inbox.length} />
+              <section data-review-inbox className="space-y-4">
+                <Card className="p-4">
+                  <SectionHeader title="Review Inbox" count={inbox.length} countId="review-inbox-count" />
+                  <p className="mt-3 text-sm text-zinc-300">
+                    Found articles are reviewed here first. Approving an article saves it into Library and makes it available for future topic refreshes and report runs.
+                  </p>
+                </Card>
+
+                <Card className="border-zinc-700 bg-zinc-950">
+                  <div className="border-b border-zinc-700 p-4">
+                    <SectionHeader title="Found Articles" count={articleInbox.length} />
                   </div>
-                  <div className="divide-y divide-zinc-800/50">
-                    {inbox.length === 0 ? (
+                  <div className="divide-y divide-zinc-700/80">
+                    {articleInbox.length === 0 ? (
                       <EmptyState
-                        icon="📭"
-                        message="No items to review. Your agents are taking a break."
+                        icon="📰"
+                        message="No found articles waiting for review."
                       />
                     ) : (
-                      inbox.map((item) => (
-                        <div key={item.id} className="p-4 group" data-inbox-item={item.id}>
-                          <div className="flex items-start justify-between gap-3">
+                      articleInbox.map((item) => (
+                        <div
+                          key={item.id}
+                          className="group p-4 transition-colors hover:bg-zinc-900/70"
+                          data-inbox-item={item.id}
+                        >
+                          <div className="flex items-start gap-3">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
+                              <div className="mb-1.5 flex items-center gap-2">
                                 <StatusBadge status={item.status} />
-                                <span className="text-xs text-zinc-500">{item.agent}</span>
+                                <AgentBadge agent={item.agent} />
+                                <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-200">
+                                  Found article
+                                </span>
                               </div>
-                              <h3 className="text-sm font-medium text-white truncate">
+                              <h3 className="text-sm font-semibold text-zinc-50">
                                 {item.title}
                               </h3>
                               {item.preview ? (
-                                <p className="text-xs text-zinc-400 mt-1 line-clamp-2">
+                                <p className="mt-1 line-clamp-3 text-xs text-zinc-200">
                                   {item.preview}
                                 </p>
                               ) : (
-                                <p className="text-xs text-zinc-600 mt-1 italic">
+                                <p className="mt-1 text-xs italic text-zinc-400">
                                   No preview available
                                 </p>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <form action={`/api/artifacts/${item.id}/approve`} method="POST">
-                                <button
-                                  type="submit"
-                                  className="px-3 py-1.5 text-xs font-medium text-green-400 bg-green-500/10 border border-green-500/20 rounded-lg hover:bg-green-500/20 hover:border-green-500/30 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/30"
-                                >
-                                  Approve
-                                </button>
-                              </form>
-                              <form action={`/api/artifacts/${item.id}/reject`} method="POST">
-                                <button
-                                  type="submit"
-                                  className="px-3 py-1.5 text-xs font-medium text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 hover:border-red-500/30 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500/30"
-                                >
-                                  Reject
-                                </button>
-                              </form>
-                            </div>
                           </div>
-                          {/* Expandable details - toggled via client JS */}
+
+                          {item.sourceUrl && (
+                            <div className="mt-3">
+                              <p className="text-[11px] uppercase tracking-wider text-zinc-400">Source URL</p>
+                              <a
+                                href={item.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-1 inline-flex text-xs text-blue-300 underline decoration-blue-300/50 underline-offset-2 break-all hover:text-blue-200"
+                              >
+                                {item.sourceUrl}
+                              </a>
+                            </div>
+                          )}
+
+                          <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-200">What Approval Does</p>
+                            <p className="mt-2 text-xs text-emerald-100">
+                              Saves this article into Library, avoids duplicate imports if it is already there, and lets future topic refreshes and future reports use it.
+                            </p>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <form action={`/api/artifacts/${item.id}/approve`} method="POST">
+                              <button
+                                type="submit"
+                                className="rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-500/20 hover:border-green-500/40 focus:outline-none focus:ring-2 focus:ring-green-500/30"
+                              >
+                                Approve and Save to Library
+                              </button>
+                            </form>
+                            <form action={`/api/artifacts/${item.id}/reject`} method="POST">
+                              <button
+                                type="submit"
+                                className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 hover:border-red-500/40 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                              >
+                                Reject Source
+                              </button>
+                            </form>
+                          </div>
+
                           <details className="mt-3">
-                            <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-400 transition-colors">
-                              View details
+                            <summary className="cursor-pointer text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors">
+                              Show raw details
                             </summary>
-                            <div className="mt-2 p-3 bg-zinc-800/50 rounded-lg">
+                            <div className="mt-2 space-y-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3">
                               <dl className="text-xs space-y-1">
                                 <div className="flex gap-2">
-                                  <dt className="text-zinc-500">ID:</dt>
-                                  <dd className="text-zinc-300 font-mono">{item.id.slice(0, 8)}...</dd>
+                                  <dt className="text-zinc-400">Created:</dt>
+                                  <dd className="text-zinc-200">{formatDateTime(item.createdAt)}</dd>
                                 </div>
                                 <div className="flex gap-2">
-                                  <dt className="text-zinc-500">Kind:</dt>
-                                  <dd className="text-zinc-300">{item.kind}</dd>
-                                </div>
-                                <div className="flex gap-2">
-                                  <dt className="text-zinc-500">Agent:</dt>
-                                  <dd className="text-zinc-300">{item.agent}</dd>
+                                  <dt className="text-zinc-400">Run ID:</dt>
+                                  <dd className="font-mono text-zinc-200 break-all">{item.runId ?? '—'}</dd>
                                 </div>
                               </dl>
+                              {item.content && (
+                                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-[11px] text-zinc-100">
+                                  {safeJson(item.content)}
+                                </pre>
+                              )}
+                              <Link
+                                href={artifactDetailHref(item)}
+                                className="inline-flex text-xs text-blue-300 hover:text-blue-200 transition-colors"
+                              >
+                                Open full page
+                              </Link>
                             </div>
                           </details>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </Card>
+
+                <Card>
+                  <div className="border-b border-zinc-800 p-4">
+                    <SectionHeader title="Other Review Items" count={otherInbox.length} />
+                  </div>
+                  <div className="divide-y divide-zinc-800">
+                    {otherInbox.length === 0 ? (
+                      <EmptyState
+                        icon="🗂️"
+                        message="No other review items waiting."
+                      />
+                    ) : (
+                      otherInbox.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-4 transition-colors hover:bg-zinc-900/70"
+                          data-inbox-item={item.id}
+                        >
+                          <div className="mb-1.5 flex items-center gap-2">
+                            <StatusBadge status={item.status} />
+                            <AgentBadge agent={item.agent} />
+                          </div>
+                          <h3 className="text-sm font-semibold text-zinc-50">
+                            {item.title}
+                          </h3>
+                          {item.preview ? (
+                            <p className="mt-1 line-clamp-2 text-xs text-zinc-200">
+                              {item.preview}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-xs italic text-zinc-400">
+                              No preview available
+                            </p>
+                          )}
+                          <p className="mt-2 text-[11px] text-zinc-400">
+                            Approving marks this item as active.
+                          </p>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <form action={`/api/artifacts/${item.id}/approve`} method="POST">
+                              <button
+                                type="submit"
+                                className="rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-500/20 hover:border-green-500/40 focus:outline-none focus:ring-2 focus:ring-green-500/30"
+                              >
+                                Approve
+                              </button>
+                            </form>
+                            <form action={`/api/artifacts/${item.id}/reject`} method="POST">
+                              <button
+                                type="submit"
+                                className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 hover:border-red-500/40 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                              >
+                                Reject
+                              </button>
+                            </form>
+                            <Link
+                              href={artifactDetailHref(item)}
+                              className="inline-flex text-xs text-blue-300 hover:text-blue-200 transition-colors"
+                            >
+                              Open details
+                            </Link>
+                          </div>
                         </div>
                       ))
                     )}
@@ -509,10 +805,10 @@ export default async function TodayPage() {
               {/* Active */}
               <section>
                 <Card>
-                  <div className="p-4 border-b border-zinc-800">
+                  <div className="border-b border-zinc-800 p-4">
                     <SectionHeader title="Active" count={active.length} />
                   </div>
-                  <div className="divide-y divide-zinc-800/50">
+                  <div className="divide-y divide-zinc-800">
                     {active.length === 0 ? (
                       <EmptyState
                         icon="✨"
@@ -520,20 +816,27 @@ export default async function TodayPage() {
                       />
                     ) : (
                       active.map((item) => (
-                        <div key={item.id} className="p-4">
-                          <div className="flex items-center gap-2 mb-1">
+                        <Link
+                          key={item.id}
+                          href={artifactDetailHref(item)}
+                          className="block p-4 transition-colors hover:bg-zinc-900"
+                        >
+                          <div className="mb-1.5 flex items-center gap-2">
                             <StatusBadge status={item.status} />
-                            <span className="text-xs text-zinc-500">{item.agent}</span>
+                            <AgentBadge agent={item.agent} />
                           </div>
-                          <h3 className="text-sm font-medium text-white">
+                          <h3 className="text-sm font-semibold text-zinc-50">
                             {item.title}
                           </h3>
                           {item.preview && (
-                            <p className="text-xs text-zinc-400 mt-1 line-clamp-2">
+                            <p className="mt-1 line-clamp-2 text-xs text-zinc-200">
                               {item.preview}
                             </p>
                           )}
-                        </div>
+                          <p className="mt-2 text-[11px] text-zinc-300">
+                            Open details →
+                          </p>
+                        </Link>
                       ))
                     )}
                   </div>
@@ -543,10 +846,10 @@ export default async function TodayPage() {
               {/* Run Timeline */}
               <section>
                 <Card>
-                  <div className="p-4 border-b border-zinc-800">
+                  <div className="border-b border-zinc-800 p-4">
                     <SectionHeader title="Run Timeline" count={runs.length} />
                   </div>
-                  <div className="divide-y divide-zinc-800/50">
+                  <div className="divide-y divide-zinc-800">
                     {runs.length === 0 ? (
                       <EmptyState
                         icon="🚀"
@@ -573,18 +876,18 @@ export default async function TodayPage() {
                           {/* Steps */}
                           {run.steps && run.steps.length > 0 && (
                             <details className="mt-2">
-                              <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-400 transition-colors">
+                              <summary className="cursor-pointer text-xs text-zinc-300 transition-colors hover:text-zinc-100">
                                 {run.steps.length} step{run.steps.length !== 1 ? 's' : ''}
                               </summary>
                               <div className="mt-2 space-y-1.5">
                                 {run.steps.map((step, idx) => (
                                   <div
                                     key={idx}
-                                    className="flex items-center justify-between text-xs p-2 bg-zinc-800/30 rounded-lg"
+                                    className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 p-2 text-xs"
                                   >
                                     <div className="flex items-center gap-2">
                                       <StatusBadge status={step.status} />
-                                      <span className="text-zinc-300">{step.name}</span>
+                                      <span className="text-zinc-100">{step.name}</span>
                                     </div>
                                     <span className="text-zinc-500 font-mono">
                                       {formatDuration(step.startedAt, step.endedAt)}

@@ -4,6 +4,9 @@ import { listDocuments } from '@/server/repos/documents.repo';
 import { listCollections } from '@/server/repos/collections.repo';
 import { LibraryShell } from './components/LibraryShell';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function LibraryLayout({
   children,
 }: {

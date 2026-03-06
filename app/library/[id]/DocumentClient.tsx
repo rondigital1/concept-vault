@@ -243,7 +243,7 @@ export function DocumentClient({
           <div className="border-t border-white/5" />
 
           {/* Content */}
-          <div className="prose prose-invert prose-zinc prose-lg max-w-none">
+          <div className="max-w-3xl">
             <DocumentMarkdown content={document.content} />
           </div>
         </article>
