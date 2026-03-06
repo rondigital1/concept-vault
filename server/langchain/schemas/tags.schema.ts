@@ -8,11 +8,11 @@ export const TagExtractionSchema = z.object({
     .array(
       z
         .string()
-        .min(3)
-        .max(40)
+        .min(1)
+        .max(80)
         .describe('Lowercase tag, 1-3 words, no punctuation')
     )
-    .max(10)
+    .max(30)
     .describe('Topic tags extracted from the document'),
 });
 

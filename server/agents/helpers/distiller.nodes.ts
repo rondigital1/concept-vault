@@ -1,8 +1,9 @@
 /**
  * Node implementations for the Distiller agent.
  */
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { createExtractionModel, createGenerationModel } from '@/server/langchain/models';
+import { openAIExecutionService } from '@/server/ai/openai-execution-service';
+import { buildPrompt } from '@/server/ai/prompt-builder';
+import { AI_TASKS } from '@/server/ai/tasks';
 import { ConceptExtractionSchema } from '@/server/langchain/schemas/concept.schema';
 import { FlashcardGenerationSchema } from '@/server/langchain/schemas/flashcard.schema';
 import {
@@ -52,35 +53,53 @@ export async function extractConcepts(state: DistillerStateType): Promise<Partia
 
   const truncatedContent = doc.content.slice(0, 4000);
 
-  const model = createExtractionModel({ temperature: 0.3 }).withStructuredOutput(
-    ConceptExtractionSchema
-  );
-
   try {
-    const result = await model.invoke([
-      new SystemMessage(`You are extracting key concepts from a document for a knowledge management system.
+    const prompt = buildPrompt({
+      task: AI_TASKS.distillDocument,
+      systemInstructions: [
+        {
+          heading: 'Role',
+          content: 'You extract key concepts from a document for a knowledge management system.',
+        },
+        {
+          heading: 'Requirements',
+          content: [
+            'Extract 2-5 concepts.',
+            'Each concept needs a label, type, summary, and direct supporting quotes.',
+            'Only extract concepts directly supported by the text.',
+            'Quotes must match the source exactly.',
+            'Keep summaries concise and actionable.',
+          ].join('\n'),
+        },
+      ],
+      requestPayload: [
+        {
+          heading: 'Document Title',
+          content: doc.title,
+        },
+        {
+          heading: 'Document Content',
+          content: truncatedContent,
+        },
+      ],
+    });
+    const result = await openAIExecutionService.executeStructured({
+      task: AI_TASKS.distillDocument,
+      prompt,
+      schema: ConceptExtractionSchema,
+      schemaName: 'distilled_concepts',
+      allowEscalationOnValidationFailure: true,
+      attribution: {
+        jobId: state.runId,
+      },
+    });
 
-Extract 2-5 key concepts. For each concept, identify:
-- label: A short name (2-5 words)
-- type: One of: definition, principle, framework, procedure, fact
-- summary: A 1-2 sentence explanation
-- evidence: 1-2 direct quotes from the text
-
-IMPORTANT:
-- Only extract concepts directly supported by the text
-- Quotes must be exact matches from the document
-- Keep summaries concise and actionable`),
-      new HumanMessage(`DOCUMENT TITLE: "${doc.title}"
-DOCUMENT CONTENT:
-${truncatedContent}`),
-    ]);
-
-    const concepts: ExtractedConcept[] = result.concepts.map((c: { label: string; type: ExtractedConcept['type']; summary: string; evidence: ExtractedConcept['evidence'] }) => ({
+    const concepts: ExtractedConcept[] = result.output.concepts.map((c) => ({
       label: c.label.slice(0, 100),
       type: c.type,
       summary: c.summary.slice(0, 500),
       evidence: c.evidence.slice(0, 3),
-    }));
+    })) as ExtractedConcept[];
 
     return {
       processedDocs: [
@@ -170,28 +189,47 @@ export async function generateFlashcards(state: DistillerStateType): Promise<Par
     .map((c, i) => `${i + 1}. ${c.label} (${c.type}): ${c.summary}`)
     .join('\n');
 
-  const model = createGenerationModel({ temperature: 0.4 }).withStructuredOutput(
-    FlashcardGenerationSchema
-  );
-
   try {
-    const result = await model.invoke([
-      new SystemMessage(`You are generating flashcards for spaced repetition learning.
+    const prompt = buildPrompt({
+      task: AI_TASKS.generateFlashcards,
+      systemInstructions: [
+        {
+          heading: 'Role',
+          content: 'You generate flashcards for spaced repetition learning.',
+        },
+        {
+          heading: 'Requirements',
+          content: [
+            'Generate 1-2 flashcards per concept.',
+            'Mix qa and cloze formats when useful.',
+            'Keep questions clear and specific.',
+            'Keep answers concise but complete.',
+            'Use double braces for cloze deletions.',
+          ].join('\n'),
+        },
+      ],
+      requestPayload: [
+        {
+          heading: 'Document',
+          content: doc.title,
+        },
+        {
+          heading: 'Concepts',
+          content: conceptsText,
+        },
+      ],
+    });
+    const result = await openAIExecutionService.executeStructured({
+      task: AI_TASKS.generateFlashcards,
+      prompt,
+      schema: FlashcardGenerationSchema,
+      schemaName: 'generated_flashcards',
+      attribution: {
+        jobId: state.runId,
+      },
+    });
 
-Generate 1-2 flashcards per concept. Mix formats:
-- "qa": Question on front, answer on back
-- "cloze": Statement with {{cloze deletion}} on front, full statement on back
-
-IMPORTANT:
-- Keep questions clear and specific
-- Answers should be concise but complete
-- For cloze, use {{double braces}} for deletions`),
-      new HumanMessage(`DOCUMENT: "${doc.title}"
-CONCEPTS:
-${conceptsText}`),
-    ]);
-
-    const flashcards = result.flashcards.map((f: { format: 'qa' | 'cloze'; front: string; back: string; conceptLabel?: string }) => ({
+    const flashcards = result.output.flashcards.map((f) => ({
       format: f.format,
       front: f.front.slice(0, 1000),
       back: f.back.slice(0, 2000),

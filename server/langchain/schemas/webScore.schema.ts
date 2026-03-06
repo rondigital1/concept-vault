@@ -21,7 +21,7 @@ export const ScoredResultSchema = z.object({
     .describe('Relevance score from 0.0 (irrelevant) to 1.0 (highly relevant)'),
   relevanceReason: z
     .string()
-    .max(300)
+    .max(1200)
     .describe('Brief explanation of why this result is relevant'),
   contentType: ContentTypeSchema.describe('Classification of the content type'),
   topics: z
@@ -73,7 +73,7 @@ export const EvaluationResultSchema = z.object({
     .describe('Topic tags extracted from this result'),
   reasoning: z
     .string()
-    .max(300)
+    .max(1200)
     .describe('Brief explanation of the relevance assessment'),
 });
 

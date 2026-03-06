@@ -1,39 +1,39 @@
 /**
  * Node implementations for the WebScout ReAct agent.
  *
- * setup         – Build initial messages (system prompt + goal + vault context)
- * agent         – Invoke LLM with tools bound
- * executeTools  – Run tool calls, track structured state
- * finalize      – Convert quality results to proposals and save artifacts
+ * setup         - Build initial prompt sections and vault/watchlist context
+ * agent         - Invoke OpenAI Responses API with function tools
+ * executeTools  - Run tool calls, capture outputs, track structured state
+ * finalize      - Convert quality results to proposals and save artifacts
  */
-import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
-import { StructuredToolInterface } from '@langchain/core/tools';
-import { createChatModel } from '@/server/langchain/models';
+import type { EasyInputMessage } from 'openai/resources/responses/responses';
+import { openAIExecutionService, type AIFunctionToolOutputInput } from '@/server/ai/openai-execution-service';
+import { buildPrompt } from '@/server/ai/prompt-builder';
+import { AI_TASKS } from '@/server/ai/tasks';
 import {
-  checkUrlExists,
   getRecentDocumentsForQuery,
   getDocumentsByTags,
   insertWebProposalArtifact,
 } from '@/server/repos/webScout.repo';
 import { checkoutDueSources } from '@/server/services/sourceWatch.service';
-import { extractDocumentFromUrl } from '@/server/services/urlExtract.service';
-import { ingestDocument } from '@/server/services/ingest.service';
-import { setDocumentTags } from '@/server/services/document.service';
-import { webScoutTools } from '@/server/langchain/tools/webScout.tools';
+import {
+  getWebScoutTool,
+  webScoutToolDefinitions,
+} from '@/server/ai/tools/webScout.tools';
 import { ScoredResult, WebScoutProposal, WebScoutStateType } from './webScout.types';
 
 interface SearchToolArgs {
-  query?: string;
-  maxResults?: number | null;
-  includeDomains?: string[] | null;
   excludeDomains?: string[] | null;
-  urls?: string[];
-  url?: string;
-  title?: string;
-  snippet?: string;
-  goal?: string;
-  originalQuery?: string;
   feedback?: string;
+  goal?: string;
+  includeDomains?: string[] | null;
+  maxResults?: number | null;
+  originalQuery?: string;
+  query?: string;
+  snippet?: string;
+  title?: string;
+  url?: string;
+  urls?: string[];
 }
 
 function normalizeDomains(domains: string[]): string[] {
@@ -50,73 +50,20 @@ function normalizeDomains(domains: string[]): string[] {
   return normalized;
 }
 
-function normalizeTopics(topics: string[]): string[] {
-  const seen = new Set<string>();
-  const normalized: string[] = [];
-
-  for (const topic of topics) {
-    const clean = topic
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (!clean) {
-      continue;
-    }
-    if (clean.length < 3 || clean.length > 40) {
-      continue;
-    }
-    const words = clean.split(' ');
-    if (words.length > 3) {
-      continue;
-    }
-    if (seen.has(clean)) {
-      continue;
-    }
-    seen.add(clean);
-    normalized.push(clean);
-
-    if (normalized.length >= 8) {
-      break;
-    }
-  }
-
-  return normalized;
-}
-
 function coerceSearchToolArgs(args: unknown): SearchToolArgs {
   if (!args || typeof args !== 'object') {
     return {};
   }
+
   return { ...(args as SearchToolArgs) };
 }
 
-async function importProposalToLibrary(proposal: WebScoutProposal): Promise<boolean> {
-  const exists = await checkUrlExists(proposal.url);
-  if (exists) {
-    return false;
+function safeParseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
-
-  const extraction = await extractDocumentFromUrl(proposal.url);
-  const title = (extraction.title?.trim() || proposal.title || 'Untitled').slice(0, 200);
-  const ingestResult = await ingestDocument({
-    title,
-    source: proposal.url,
-    content: extraction.content,
-  });
-
-  if (!ingestResult.created) {
-    return false;
-  }
-
-  const tags = normalizeTopics(proposal.topics ?? []);
-  if (tags.length > 0) {
-    await setDocumentTags(ingestResult.documentId, tags);
-  }
-
-  return true;
 }
 
 // ---------- setup ----------
@@ -133,7 +80,9 @@ export async function setup(state: WebScoutStateType): Promise<Partial<WebScoutS
 
     if (docs.length > 0) {
       vaultContext = docs
-        .map(d => `- "${d.title}" (tags: ${d.tags.join(', ') || 'none'})\n  ${d.content.slice(0, 300)}`)
+        .map((document) => {
+          return `- "${document.title}" (tags: ${document.tags.join(', ') || 'none'})\n  ${document.content.slice(0, 300)}`;
+        })
         .join('\n');
     }
   }
@@ -143,7 +92,9 @@ export async function setup(state: WebScoutStateType): Promise<Partial<WebScoutS
     if (dueSources.length > 0) {
       watchSourceDomains = normalizeDomains(dueSources.map((source) => source.domain));
       watchSourceLines = dueSources
-        .map((source) => `- ${source.domain} (${source.kind}; every ${source.checkIntervalHours}h)`)
+        .map((source) => {
+          return `- ${source.domain} (${source.kind}; every ${source.checkIntervalHours}h)`;
+        })
         .join('\n');
     }
   } catch {
@@ -151,69 +102,117 @@ export async function setup(state: WebScoutStateType): Promise<Partial<WebScoutS
   }
 
   const vaultSection = vaultContext
-    ? `\nVAULT CONTEXT (user's existing documents):\n${vaultContext}\n\nUse this context to avoid suggesting resources the user already has and to find complementary material.`
-    : '';
+    ? `VAULT CONTEXT (user's existing documents):\n${vaultContext}\n\nUse this context to avoid suggesting resources the user already has and to find complementary material.`
+    : 'VAULT CONTEXT:\nnone';
   const watchSourceSection = watchSourceLines
-    ? `\nPERIODIC SOURCE WATCHLIST (check these first when relevant):\n${watchSourceLines}\n`
-    : '';
+    ? `PERIODIC SOURCE WATCHLIST:\n${watchSourceLines}\nPrioritize these domains when relevant.`
+    : 'PERIODIC SOURCE WATCHLIST:\nnone';
   const restrictDomainSection =
     state.restrictToWatchlistDomains && watchSourceDomains.length > 0
-      ? '\nTRUSTED SOURCE MODE: Restrict search results to watchlist domains only.\n'
-      : '';
+      ? 'TRUSTED SOURCE MODE: restrict search results to watchlist domains only.'
+      : 'TRUSTED SOURCE MODE: disabled.';
 
-  const systemPrompt = `You are a web research agent finding high-quality learning resources.
-
-GOAL: ${state.goal}
-${vaultSection}
-${watchSourceSection}
-${restrictDomainSection}
-TOOLS:
-- searchWeb: Search the web. Start here.
-- checkVaultDuplicate: Check which URLs are already in the user's vault. Call after searching.
-- evaluateResult: Score a result for relevance. Call on promising new URLs.
-- refineQuery: Get a better query when results are insufficient.
-
-STRATEGY:
-1. Search for resources related to the goal
-2. Check found URLs against the vault to avoid duplicates
-3. Evaluate promising new results for quality and relevance
-4. If you have fewer than ${state.minQualityResults} quality results (score >= ${state.minRelevanceScore}), refine your query and search again
-5. When satisfied, respond with a summary of what you found WITHOUT calling any tools
-6. If watchlist sources are present, prioritize queries constrained to those domains first (for example, include site:domain in your query)
-7. If TRUSTED SOURCE MODE is enabled, use only watchlist domains in searchWeb includeDomains
-
-QUALITY BAR: Find at least ${state.minQualityResults} results with relevance >= ${state.minRelevanceScore}.
-IMPORTANT: When calling evaluateResult, always pass the goal parameter as "${state.goal}".`;
-
-  const baseHumanMessage = state.mode === 'derive-from-vault'
-    ? `Find high-quality web resources that complement the user's vault. Goal: ${state.goal}`
-    : `Find high-quality web resources about: ${state.goal}`;
-  const watchSourceHint = watchSourceDomains.length > 0
-    ? `Start by checking recent interesting resources from these watched domains: ${watchSourceDomains.join(', ')}.`
-    : '';
-  const restrictDomainHint =
-    state.restrictToWatchlistDomains && watchSourceDomains.length > 0
-      ? 'Restrict searchWeb includeDomains to these watched domains for this run.'
-      : '';
-  const humanMessage = watchSourceHint
-    ? `${baseHumanMessage}\n${watchSourceHint}${restrictDomainHint ? `\n${restrictDomainHint}` : ''}`
-    : baseHumanMessage;
+  const prompt = buildPrompt({
+    task: AI_TASKS.webResearchAgent,
+    systemInstructions: [
+      {
+        heading: 'Role',
+        content: 'You are a web research agent finding high-quality learning resources.',
+      },
+      {
+        heading: 'Tools',
+        content: [
+          'searchWeb: search the web. Start here.',
+          'checkVaultDuplicate: remove URLs already in the vault.',
+          'evaluateResult: score promising URLs for quality and relevance.',
+          'refineQuery: improve the search query when results are insufficient.',
+        ].join('\n'),
+      },
+      {
+        heading: 'Strategy',
+        content: [
+          '1. Search for resources related to the goal.',
+          '2. Check found URLs against the vault to avoid duplicates.',
+          `3. Evaluate promising new results until you have at least ${state.minQualityResults} quality results with relevance >= ${state.minRelevanceScore}.`,
+          '4. Refine the query and search again if needed.',
+          '5. When satisfied, respond with a short summary and no tool calls.',
+          '6. If watchlist sources are present, prioritize them first.',
+          '7. If trusted source mode is enabled, only use watchlist domains in searchWeb includeDomains.',
+        ].join('\n'),
+      },
+      {
+        heading: 'Constraints',
+        content: `Always pass the goal parameter as "${state.goal}" when calling evaluateResult.`,
+      },
+    ],
+    sharedContext: [
+      {
+        heading: 'Goal',
+        content: state.goal,
+      },
+      {
+        heading: 'Quality Bar',
+        content: `Find at least ${state.minQualityResults} results with relevance >= ${state.minRelevanceScore}.`,
+      },
+      {
+        heading: 'Vault Context',
+        content: vaultSection,
+      },
+      {
+        heading: 'Watchlist Context',
+        content: `${watchSourceSection}\n${restrictDomainSection}`,
+      },
+    ],
+    inputMessages: [
+      {
+        role: 'user',
+        content:
+          state.mode === 'derive-from-vault'
+            ? `Find high-quality web resources that complement the user's vault. Goal: ${state.goal}`
+            : `Find high-quality web resources about: ${state.goal}`,
+      },
+    ],
+  });
 
   return {
-    messages: [new SystemMessage(systemPrompt), new HumanMessage(humanMessage)],
+    initialInput: prompt.input as EasyInputMessage[],
+    instructions: prompt.instructions,
+    promptCacheKey: prompt.promptCacheKey,
     vaultContext,
     watchSourceDomains,
+    previousResponseId: null,
+    pendingToolOutputs: [],
+    lastAgentResult: null,
   };
 }
 
 // ---------- agent ----------
 
 export async function agent(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
-  const model = createChatModel({ temperature: 0.3 }).bindTools!(webScoutTools);
-  const response = await model.invoke(state.messages);
+  const prompt = {
+    instructions: state.instructions,
+    promptCacheKey: state.promptCacheKey,
+    input: state.initialInput,
+    requestPayload: '',
+    stablePrefix: state.instructions,
+  };
+
+  const input = state.previousResponseId ? state.pendingToolOutputs : state.initialInput;
+  const response = await openAIExecutionService.executeToolRound({
+    task: AI_TASKS.webResearchAgent,
+    prompt,
+    input,
+    previousResponseId: state.previousResponseId,
+    tools: webScoutToolDefinitions,
+    attribution: {
+      jobId: state.runId,
+    },
+  });
 
   return {
-    messages: [...state.messages, response],
+    lastAgentResult: response,
+    previousResponseId: response.responseId,
+    pendingToolOutputs: [],
     iteration: state.iteration + 1,
   };
 }
@@ -221,30 +220,28 @@ export async function agent(state: WebScoutStateType): Promise<Partial<WebScoutS
 // ---------- executeTools ----------
 
 export async function executeTools(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
-  const lastMessage = state.messages[state.messages.length - 1];
-  if (!(lastMessage instanceof AIMessage) || !lastMessage.tool_calls?.length) {
+  const toolCalls = state.lastAgentResult?.toolCalls ?? [];
+  if (toolCalls.length === 0) {
     return {};
   }
 
-  const toolsByName = new Map<string, StructuredToolInterface>(
-    webScoutTools.map(t => [t.name, t as StructuredToolInterface]),
-  );
-  const toolMessages: ToolMessage[] = [];
+  const toolOutputs: AIFunctionToolOutputInput[] = [];
   let queriesExecuted = state.queriesExecuted;
   const qualityResults = [...state.qualityResults];
 
-  for (const call of lastMessage.tool_calls) {
-    const toolFn = toolsByName.get(call.name);
-    if (!toolFn) {
-      toolMessages.push(new ToolMessage({
-        tool_call_id: call.id!,
-        content: `Unknown tool: ${call.name}`,
-      }));
+  for (const call of toolCalls) {
+    const tool = getWebScoutTool(call.name);
+    if (!tool) {
+      toolOutputs.push({
+        type: 'function_call_output',
+        call_id: call.callId,
+        output: `Unknown tool: ${call.name}`,
+      });
       continue;
     }
 
     try {
-      const toolArgs = coerceSearchToolArgs(call.args);
+      const toolArgs = coerceSearchToolArgs(call.arguments);
       if (
         call.name === 'searchWeb' &&
         state.restrictToWatchlistDomains &&
@@ -253,45 +250,61 @@ export async function executeTools(state: WebScoutStateType): Promise<Partial<We
         toolArgs.includeDomains = state.watchSourceDomains;
       }
 
-      const result = await toolFn.invoke(toolArgs);
-      toolMessages.push(new ToolMessage({
-        tool_call_id: call.id!,
-        content: typeof result === 'string' ? result : JSON.stringify(result),
-      }));
+      const result = await tool.execute(toolArgs);
+      toolOutputs.push({
+        type: 'function_call_output',
+        call_id: call.callId,
+        output: result,
+      });
 
-      // Track side effects
       if (call.name === 'searchWeb') {
-        queriesExecuted++;
+        queriesExecuted += 1;
       }
 
       if (call.name === 'evaluateResult') {
-        const parsed = JSON.parse(typeof result === 'string' ? result : JSON.stringify(result));
-        if (parsed.relevanceScore >= state.minRelevanceScore) {
-          const url = typeof toolArgs.url === 'string' ? toolArgs.url : '';
-          if (!url) {
-            continue;
-          }
-          qualityResults.push({
-            url,
-            title: typeof toolArgs.title === 'string' ? toolArgs.title : 'Untitled',
-            snippet: typeof toolArgs.snippet === 'string' ? toolArgs.snippet : '',
-            relevanceScore: parsed.relevanceScore,
-            contentType: parsed.contentType ?? 'other',
-            topics: parsed.topics ?? [],
-            reasoning: [parsed.reasoning ?? ''],
-          });
+        const parsed = safeParseJson(result);
+        if (!parsed || typeof parsed !== 'object') {
+          continue;
         }
+
+        const parsedRecord = parsed as Record<string, unknown>;
+        const relevanceScore = parsedRecord.relevanceScore;
+        if (typeof relevanceScore !== 'number' || relevanceScore < state.minRelevanceScore) {
+          continue;
+        }
+
+        const url = typeof toolArgs.url === 'string' ? toolArgs.url : '';
+        if (!url) {
+          continue;
+        }
+
+        qualityResults.push({
+          url,
+          title: typeof toolArgs.title === 'string' ? toolArgs.title : 'Untitled',
+          snippet: typeof toolArgs.snippet === 'string' ? toolArgs.snippet : '',
+          relevanceScore,
+          contentType:
+            typeof parsedRecord.contentType === 'string'
+              ? (parsedRecord.contentType as ScoredResult['contentType'])
+              : 'other',
+          topics: Array.isArray(parsedRecord.topics)
+            ? parsedRecord.topics.filter((topic): topic is string => typeof topic === 'string')
+            : [],
+          reasoning:
+            typeof parsedRecord.reasoning === 'string' ? [parsedRecord.reasoning] : [''],
+        });
       }
-    } catch (err) {
-      toolMessages.push(new ToolMessage({
-        tool_call_id: call.id!,
-        content: `Error: ${err instanceof Error ? err.message : String(err)}`,
-      }));
+    } catch (error) {
+      toolOutputs.push({
+        type: 'function_call_output',
+        call_id: call.callId,
+        output: `Error: ${error instanceof Error ? error.message : String(error)}`,
+      });
     }
   }
 
   return {
-    messages: [...state.messages, ...toolMessages],
+    pendingToolOutputs: toolOutputs,
     queriesExecuted,
     qualityResults,
   };
@@ -300,21 +313,18 @@ export async function executeTools(state: WebScoutStateType): Promise<Partial<We
 // ---------- finalize ----------
 
 export async function finalize(state: WebScoutStateType): Promise<Partial<WebScoutStateType>> {
-  // Deduplicate quality results by URL
   const seen = new Set<string>();
   const uniqueResults: ScoredResult[] = [];
-  for (const r of state.qualityResults) {
-    if (!seen.has(r.url)) {
-      seen.add(r.url);
-      uniqueResults.push(r);
+  for (const result of state.qualityResults) {
+    if (!seen.has(result.url)) {
+      seen.add(result.url);
+      uniqueResults.push(result);
     }
   }
 
   const proposals: WebScoutProposal[] = [];
   const artifactIds: string[] = [];
   const reasoning: string[] = [];
-  let documentsImported = 0;
-  let documentsSkipped = 0;
 
   for (const result of uniqueResults) {
     const proposal: WebScoutProposal = {
@@ -350,22 +360,8 @@ export async function finalize(state: WebScoutStateType): Promise<Partial<WebSco
     } catch {
       // Continue on artifact save error
     }
-
-    if (state.importToLibrary) {
-      try {
-        const imported = await importProposalToLibrary(proposal);
-        if (imported) {
-          documentsImported += 1;
-        } else {
-          documentsSkipped += 1;
-        }
-      } catch {
-        documentsSkipped += 1;
-      }
-    }
   }
 
-  // Determine termination reason from what the routing logic set or default
   let terminationReason = state.terminationReason;
   if (!terminationReason) {
     const hasEnoughQuality = uniqueResults.length >= state.minQualityResults;
@@ -388,8 +384,6 @@ export async function finalize(state: WebScoutStateType): Promise<Partial<WebSco
       queriesExecuted: state.queriesExecuted,
       resultsEvaluated: state.qualityResults.length,
       proposalsCreated: proposals.length,
-      documentsImported,
-      documentsSkipped,
     },
   };
 }

@@ -2,13 +2,12 @@
  * WebScout ReAct Agent using LangGraph.
  *
  * Graph topology:
- *   __start__ → setup → agent ⟷ executeTools → finalize → __end__
+ *   __start__ -> setup -> agent <-> executeTools -> finalize -> __end__
  *
  * The agent iteratively searches, evaluates, and refines queries
  * until a quality threshold is met or limits are reached.
  */
 import { StateGraph, END } from '@langchain/langgraph';
-import { AIMessage } from '@langchain/core/messages';
 import { createRunStepCallback } from '@/server/langchain/callbacks/runStepAdapter';
 import { RunStep } from '@/server/observability/runTrace.types';
 import {
@@ -38,8 +37,7 @@ function clampScore(value: number | undefined, fallback: number): number {
 }
 
 function routeAfterAgent(state: WebScoutStateType): string {
-  const lastMessage = state.messages[state.messages.length - 1];
-  const hasToolCalls = lastMessage instanceof AIMessage && (lastMessage.tool_calls?.length ?? 0) > 0;
+  const hasToolCalls = (state.lastAgentResult?.toolCalls.length ?? 0) > 0;
 
   if (!hasToolCalls) {
     return 'finalize';
@@ -114,11 +112,15 @@ export async function webScoutGraph(
       maxIterations,
       maxQueries,
       runId,
-      importToLibrary: input.importToLibrary ?? false,
       restrictToWatchlistDomains: input.restrictToWatchlistDomains ?? false,
       // Working state defaults
-      messages: [],
+      initialInput: [],
+      instructions: '',
       iteration: 0,
+      lastAgentResult: null,
+      pendingToolOutputs: [],
+      previousResponseId: null,
+      promptCacheKey: '',
       queriesExecuted: 0,
       qualityResults: [],
       vaultContext: '',
@@ -133,8 +135,6 @@ export async function webScoutGraph(
         queriesExecuted: 0,
         resultsEvaluated: 0,
         proposalsCreated: 0,
-        documentsImported: 0,
-        documentsSkipped: 0,
       },
       error: null,
     },

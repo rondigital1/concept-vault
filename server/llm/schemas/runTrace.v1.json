@@ -10,11 +10,11 @@
     },
     "kind": {
       "type": "string",
-      "enum": ["distill", "curate"]
+      "enum": ["distill", "curate", "webScout", "research", "pipeline"]
     },
     "status": {
       "type": "string",
-      "enum": ["running", "completed", "failed"]
+      "enum": ["running", "ok", "error", "partial"]
     },
     "steps": {
       "type": "array",
@@ -35,7 +35,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["started", "completed", "failed"]
+            "enum": ["running", "ok", "error", "skipped"]
           }
         }
       }

@@ -9,15 +9,14 @@
  * - Persist tags
  */
 import { StateGraph, Annotation, END } from '@langchain/langgraph';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { createExtractionModel } from '@/server/langchain/models';
-import { CategorizationSchema, TagExtractionSchema } from '@/server/langchain/schemas/tags.schema';
 import { createRunStepCallback } from '@/server/langchain/callbacks/runStepAdapter';
 import { RunStep } from '@/server/observability/runTrace.types';
 import {
   getDocument,
   findRelatedDocs,
   setDocumentTags,
+  extractTags as extractTagsFromContent,
+  categorize,
   DocumentRow,
 } from '@/server/services/document.service';
 import { finalizeTags } from './helpers/tags';
@@ -71,27 +70,7 @@ async function extractTags(state: CuratorStateType): Promise<Partial<CuratorStat
   }
 
   const content = state.document.content.slice(0, 12_000);
-
-  const model = createExtractionModel({ temperature: 0.3 }).withStructuredOutput(
-    TagExtractionSchema
-  );
-
-  const result = await model.invoke([
-    new SystemMessage(`You are extracting topic tags from a document.
-
-RULES (STRICT)
-- Maximum 10 tags
-- Each tag must be: lowercase, 1-3 words, a noun or noun phrase
-- No punctuation, no explanations, no duplicates
-- No generic words like: introduction, overview, guide, article, notes, example, basics, concepts
-- Prefer concrete, commonly-used terms
-
-GOOD EXAMPLES: spaced repetition, retrieval practice, learning science, distributed systems
-BAD EXAMPLES: how to learn better, interesting ideas, modern technology`),
-    new HumanMessage(`Extract topic tags from this document:\n\n${content}`),
-  ]);
-
-  const rawTags = result.tags;
+  const rawTags = await extractTagsFromContent(content);
   const tags = finalizeTags(rawTags);
 
   return { rawTags, tags };
@@ -102,18 +81,9 @@ async function categorizeDocument(state: CuratorStateType): Promise<Partial<Cura
     return { category: 'uncategorized' };
   }
 
-  const model = createExtractionModel({ temperature: 0.2 }).withStructuredOutput(
-    CategorizationSchema
-  );
-
   try {
-    const result = await model.invoke([
-      new SystemMessage(`Choose exactly ONE category for the given tags.
-Allowed categories: learning, software engineering, ai systems, finance, productivity, other`),
-      new HumanMessage(`Tags: ${state.tags.join(', ')}`),
-    ]);
-
-    return { category: result.category };
+    const category = await categorize(state.tags);
+    return { category };
   } catch {
     return { category: 'uncategorized' };
   }

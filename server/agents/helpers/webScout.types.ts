@@ -2,12 +2,18 @@
  * Types for the WebScout ReAct agent.
  */
 import { Annotation } from '@langchain/langgraph';
-import { BaseMessage } from '@langchain/core/messages';
+import type {
+  EasyInputMessage,
+} from 'openai/resources/responses/responses';
+import type {
+  AIFunctionToolOutputInput,
+  AIToolRoundResult,
+} from '@/server/ai/openai-execution-service';
 
 // ---------- Enums / Literals ----------
 
 export type ContentType = 'article' | 'documentation' | 'paper' | 'tutorial' | 'video' | 'other';
-export type TerminationReason = 'satisfied' | 'max_iterations' | 'max_queries' | null;
+export type TerminationReason = 'satisfied' | 'max_iterations' | 'max_queries' | 'timeout' | null;
 
 // ---------- Input/Output Types ----------
 
@@ -20,7 +26,6 @@ export interface WebScoutInput {
   minRelevanceScore?: number;
   maxIterations?: number;
   maxQueries?: number;
-  importToLibrary?: boolean;
   restrictToWatchlistDomains?: boolean;
 }
 
@@ -29,8 +34,6 @@ export interface WebScoutCounts {
   queriesExecuted: number;
   resultsEvaluated: number;
   proposalsCreated: number;
-  documentsImported: number;
-  documentsSkipped: number;
 }
 
 export interface WebScoutOutput {
@@ -74,12 +77,16 @@ export const WebScoutState = Annotation.Root({
   maxIterations: Annotation<number>,
   maxQueries: Annotation<number>,
   runId: Annotation<string | undefined>,
-  importToLibrary: Annotation<boolean>,
   restrictToWatchlistDomains: Annotation<boolean>,
 
   // ReAct working state
-  messages: Annotation<BaseMessage[]>,
+  initialInput: Annotation<EasyInputMessage[]>,
+  instructions: Annotation<string>,
   iteration: Annotation<number>,
+  lastAgentResult: Annotation<AIToolRoundResult | null>,
+  pendingToolOutputs: Annotation<AIFunctionToolOutputInput[]>,
+  previousResponseId: Annotation<string | null>,
+  promptCacheKey: Annotation<string>,
   queriesExecuted: Annotation<number>,
   qualityResults: Annotation<ScoredResult[]>,
   vaultContext: Annotation<string>,
