@@ -33,7 +33,12 @@ export async function POST(request: Request) {
     const result = await ingestDocument({ title: title ?? "Untitled", source: origin.feature, content });
 
     return NextResponse.json(
-      { ok: true, documentId: result.documentId, created: result.created },
+      {
+        ok: true,
+        documentId: result.documentId,
+        created: result.created,
+        enrichmentRunId: result.enrichmentRunId,
+      },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

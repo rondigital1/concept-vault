@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { client, ensureSchema } from '@/db';
 import { createSavedTopic, listSavedTopics } from '@/server/repos/savedTopics.repo';
+import { pipelineFlow } from '@/server/flows/pipeline.flow';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
@@ -15,6 +16,8 @@ type CreateTopicBody = {
   maxIterations?: number;
   maxQueries?: number;
   isActive?: boolean;
+  isTracked?: boolean;
+  cadence?: 'daily' | 'weekly';
 };
 
 function isJsonRequest(contentType: string): boolean {
@@ -139,6 +142,8 @@ export async function POST(request: Request) {
       const rawMaxIterations = formString(form, 'maxIterations');
       const rawMaxQueries = formString(form, 'maxQueries');
       const rawIsActive = formString(form, 'isActive');
+      const rawIsTracked = formString(form, 'isTracked');
+      const rawCadence = formString(form, 'cadence');
 
       body = {
         name: rawName,
@@ -152,6 +157,8 @@ export async function POST(request: Request) {
         maxIterations: typeof rawMaxIterations === 'string' ? Number(rawMaxIterations) : undefined,
         maxQueries: typeof rawMaxQueries === 'string' ? Number(rawMaxQueries) : undefined,
         isActive: parseBoolean(rawIsActive, true),
+        isTracked: parseBoolean(rawIsTracked, false),
+        cadence: rawCadence === 'daily' || rawCadence === 'weekly' ? rawCadence : undefined,
       };
     }
 
@@ -181,13 +188,29 @@ export async function POST(request: Request) {
       maxIterations: clampInt(body.maxIterations, 5, 1, 20),
       maxQueries: clampInt(body.maxQueries, 10, 1, 50),
       isActive: body.isActive !== false,
+      isTracked: body.isTracked === true,
+      cadence: body.cadence === 'daily' ? 'daily' : 'weekly',
     });
+
+    let setupRunId: string | null = null;
+    try {
+      const setupResult = await pipelineFlow({
+        topicId: topic.id,
+        runMode: 'topic_setup',
+        trigger: 'auto_topic',
+        enableCategorization: false,
+        idempotencyKey: `topic_setup:${topic.id}:${new Date().toISOString().slice(0, 10)}`,
+      });
+      setupRunId = setupResult.runId;
+    } catch (setupError) {
+      console.error('Topic setup pipeline failed:', setupError);
+    }
 
     if (!expectsJson) {
       return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
     }
 
-    return NextResponse.json({ topic }, { status: 201 });
+    return NextResponse.json({ topic, setupRunId }, { status: 201 });
   } catch (error) {
     const internalMessage = error instanceof Error ? error.message : String(error);
     const isDuplicate = internalMessage.includes('saved_topics_name_key');

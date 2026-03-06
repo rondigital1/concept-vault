@@ -1,32 +1,18 @@
 import { NextResponse } from 'next/server';
-import { startResearchFlow } from '@/server/flows/research.flow';
-import { client, ensureSchema } from '@/db';
-import { publicErrorMessage } from '@/server/security/publicError';
+
+const MESSAGE =
+  'This endpoint has been removed. Use POST /api/runs/pipeline (canonical Curate → WebScout → Distill workflow).';
 
 export const runtime = 'nodejs';
 
-function isJsonRequest(contentType: string): boolean {
-  return contentType.includes('application/json');
+function gone() {
+  return NextResponse.json({ error: MESSAGE }, { status: 410 });
 }
 
-export async function POST(request: Request) {
-  const contentType = request.headers.get('content-type') ?? '';
-  const expectsJson = isJsonRequest(contentType);
+export async function GET() {
+  return gone();
+}
 
-  try {
-    await ensureSchema(client);
-    const { runId } = await startResearchFlow();
-
-    if (!expectsJson) {
-      return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
-    }
-
-    return NextResponse.json({ runId });
-  } catch (error) {
-    console.error('Error starting research flow:', error);
-    return NextResponse.json(
-      { error: publicErrorMessage(error, 'Failed to start research') },
-      { status: 500 },
-    );
-  }
+export async function POST() {
+  return gone();
 }

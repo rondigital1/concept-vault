@@ -295,6 +295,7 @@ export async function POST(request: Request) {
         ok: true,
         documentId: result.documentId,
         created: result.created,
+        enrichmentRunId: result.enrichmentRunId,
         extractedLength: content.length,
       },
       { status: 200, headers: { "Cache-Control": "no-store" } }

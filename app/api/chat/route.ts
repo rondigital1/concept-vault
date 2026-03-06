@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createChatModel } from '@/server/langchain/models';
-import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import type { EasyInputMessage } from 'openai/resources/responses/responses';
+import { openAIExecutionService } from '@/server/ai/openai-execution-service';
+import { buildPrompt } from '@/server/ai/prompt-builder';
+import { AI_TASKS } from '@/server/ai/tasks';
 import { localKbTool } from '@/server/tools/localKb.tool';
 import { publicErrorMessage } from '@/server/security/publicError';
 
@@ -45,10 +47,16 @@ export async function POST(request: Request) {
 
     // Convert chat history to LLM format (last 10 messages for context)
     const recentHistory = history.slice(-10);
-    const model = createChatModel({ temperature: 0.7, maxTokens: 1000 });
-
-    const messages = [
-      new SystemMessage(`You are a helpful knowledge assistant for a personal knowledge vault called Concept Vault. You help users explore and understand their stored documents and concepts.
+    const historyMessages: EasyInputMessage[] = recentHistory.map((msg) => ({
+      role: msg.role === 'user' ? 'user' : 'assistant',
+      content: msg.content,
+    }));
+    const prompt = buildPrompt({
+      task: AI_TASKS.chatAssistant,
+      systemInstructions: [
+        {
+          heading: 'Role',
+          content: `You are a helpful knowledge assistant for a personal knowledge vault called Concept Vault. You help users explore and understand their stored documents and concepts.
 
 Your responses should be:
 - Clear and concise
@@ -56,20 +64,33 @@ Your responses should be:
 - Based on the knowledge base when relevant
 - Conversational but professional
 
-When you don't have specific information from the knowledge base, you can still help the user think through their questions or provide general guidance.${contextText}`),
-      ...recentHistory.map((msg) =>
-        msg.role === 'user' ? new HumanMessage(msg.content) : new AIMessage(msg.content)
-      ),
-      new HumanMessage(message),
-    ];
-
-    // Call the LLM
-    const response = await model.invoke(messages);
-    const content = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+When you don't have specific information from the knowledge base, you can still help the user think through their questions or provide general guidance.${contextText}`,
+        },
+      ],
+      inputMessages: [
+        ...historyMessages,
+        {
+          role: 'user' as const,
+          content: message,
+        },
+      ],
+    });
+    const response = await openAIExecutionService.executeText({
+      task: AI_TASKS.chatAssistant,
+      prompt,
+      temperature: 0.7,
+      attribution: {
+        requestId: crypto.randomUUID(),
+      },
+      budget: {
+        maxRequestUsd: 0.05,
+      },
+    });
+    const content = response.output;
 
     return NextResponse.json({
       message: content,
-      usage: response.usage_metadata,
+      usage: response.usage,
     });
   } catch (error: unknown) {
     console.error('Chat API error:', error);
