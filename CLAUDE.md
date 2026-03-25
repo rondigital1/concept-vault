@@ -3,12 +3,13 @@
 Operational guide for agents in this repo. Keep this file short and contract-focused.
 Detailed implementation tutorials and reference tables live in:
 
+- `docs/current-agent-architecture.md`
 - `docs/agent-patterns.md`
 - `docs/system-reference.md`
 
 ## Quick Start
 
-- Stack: Next.js 15, React 19, TypeScript, PostgreSQL, LangChain/LangGraph
+- Stack: Next.js 15, React 19, TypeScript, PostgreSQL, LangChain/LangGraph, Tavily API
 - Dev server: `npm run dev` (localhost:3000)
 - Database reset: `npm run db:reset`
 - Lint: `npm run lint`
@@ -17,31 +18,32 @@ Detailed implementation tutorials and reference tables live in:
 ## Non-Negotiables
 
 - Agents are API-triggered workflows, not chat loops.
-- Proposal-first lifecycle: new outputs are written as `artifacts.status='proposed'`.
-- Human approval is required before outputs become active.
+- Proposal-first lifecycle applies to Curator/Distiller/WebScout review outputs: new artifacts are written as `artifacts.status='proposed'`.
+- Human approval is required before proposal artifacts become active; research reports are currently inserted as approved `research-report` artifacts.
 - Runs execute inline in the request path (no queue/background worker in MVP).
 - ReAct agents must capture reasoning in artifact content.
-- Never auto-import external URLs; WebScout only creates proposals.
+- Never auto-import external URLs from WebScout itself; URL import happens only on explicit approval.
 
 ## Architecture Snapshot
 
 ```
 app/              -> UI + API routes
 server/agents/    -> LangGraph graphs
+server/ai/        -> OpenAI execution, prompts, task policy
 server/flows/     -> orchestration + run tracing
 server/repos/     -> SQL-first data access
 server/services/  -> business logic
-server/langchain/ -> model factory, schemas, callbacks
+server/langchain/ -> schemas, callbacks, memory helpers
 db/               -> schema + postgres client
 ```
 
 Execution path:
 
 ```
-HTTP -> API route -> flow -> graph -> repos -> PostgreSQL
-                      |
-                   run tracing
-            (createRun -> appendStep -> finishRun)
+HTTP -> canonical pipeline route/wrapper -> pipeline flow -> graph -> repos -> PostgreSQL
+                                             |
+                                          run tracing
+                                 (createRun -> appendStep -> finishRun)
 ```
 
 ## Agent Contracts
@@ -94,12 +96,13 @@ HTTP -> API route -> flow -> graph -> repos -> PostgreSQL
   - auto-approve flashcards
   - process more than `limit`
 
-### WebScout (Target: ReAct)
+### WebScout
 
 - Purpose: iterative web research until quality threshold is met.
 - Files:
   - `server/agents/webScout.graph.ts`
-  - `server/langchain/tools/webScout.tools.ts`
+  - `server/agents/helpers/webScout.nodes.ts`
+  - `server/ai/tools/webScout.tools.ts`
 - Inputs:
   - `goal: string` (required)
   - `mode: 'explicit-query' | 'derive-from-vault'` (required)
@@ -129,7 +132,9 @@ HTTP -> API route -> flow -> graph -> repos -> PostgreSQL
   - auto-import URLs
   - exceed timeout without graceful partial return
 - Dependency: `TAVILY_API_KEY`
-- Current state: v1 remains deterministic; ReAct loop is target architecture.
+- Current state:
+  - implemented as a ReAct-style loop via the OpenAI Responses API and function tools
+  - creates `web-proposal` artifacts only; analysis and report synthesis happen in the pipeline layer
 
 ## Pattern Selection
 
@@ -143,14 +148,15 @@ For full code templates and examples, see `docs/agent-patterns.md`.
 State transitions:
 
 ```
-proposed -> approved -> active
+proposed -> approved
     \-> rejected
 approved -> superseded
 ```
 
-- Artifacts represent pending human-review outputs.
+- `approved` is the active state in the current implementation.
+- Artifacts represent pending human-review outputs plus approved research reports.
 - Constraint: one approved artifact per `(agent, kind, day)`.
-- Known gap: approval endpoints referenced by UI are not fully implemented yet.
+- Approval endpoints exist; approving a `web-proposal` can ingest the source into the library and trigger lightweight enrichment.
 
 ## Observability Contract
 
@@ -176,13 +182,22 @@ Debug flow:
 
 ## API Surface (Core)
 
-Agent triggers:
+Canonical pipeline trigger:
 
-- `POST /api/distill`
-- `POST /api/web-scout`
-- `POST /api/runs/distill`
-- `POST /api/runs/curate`
-- `POST /api/runs/web-scout`
+- `POST /api/runs/pipeline`
+
+Wrapper triggers:
+
+- `POST /api/runs/generate-report`
+- `POST /api/runs/refresh-topic`
+- `POST /api/runs/refresh-concepts`
+- `POST /api/runs/find-sources`
+
+Pipeline-adjacent triggers:
+
+- `POST /api/topics` (creates a topic and triggers `topic_setup`)
+- `GET /api/cron/pipeline`
+- `POST /api/cron/pipeline`
 
 Ingestion:
 
@@ -193,17 +208,22 @@ Ingestion:
 Observability:
 
 - `GET /api/runs/<runId>`
+- `GET /api/runs/<runId>/results`
+
+Deprecated compatibility routes:
+
+- legacy single-agent routes such as `POST /api/distill`, `POST /api/web-scout`, `POST /api/runs/distill`, and `POST /api/runs/curate` now return `410`
 
 Additional app routes and endpoint tables are in `docs/system-reference.md`.
 
 ## MVP Constraints
 
 - Single-user MVP (no auth/multi-tenancy)
-- Manual agent runs
+- Pipeline runs can be manual, cron-driven, topic-setup driven, or follow-on enrichment after ingest/approval
 - Inline execution only
 - No vector search in local KB yet
 - No document chunking yet
-- No automatic ingestion
+- No fully autonomous source crawling/import; new content still enters through explicit ingest or approval flows
 - No model fine-tuning
 
 ## Conventions
@@ -216,6 +236,8 @@ Additional app routes and endpoint tables are in `docs/system-reference.md`.
 
 ## Where Details Live
 
+- Current architecture diagrams and the end-to-end pipeline walkthrough:
+  - `docs/current-agent-architecture.md`
 - Pattern code examples, ToolNode templates, and "add new agent" checklist:
   - `docs/agent-patterns.md`
 - Database table inventory, full API map, env/scripts, TODO index, key files:

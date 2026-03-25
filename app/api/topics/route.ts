@@ -6,6 +6,9 @@ import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
+const RESEARCH_FALLBACK_PATH = '/today';
+const TOPIC_ACRONYMS = new Set(['ai', 'api', 'apis', 'css', 'html', 'js', 'json', 'llm', 'llms', 'sdk', 'sql', 'ui', 'ux']);
+
 type CreateTopicBody = {
   name?: string;
   goal?: string;
@@ -105,6 +108,46 @@ function normalizeFocusTags(value: unknown): string[] {
   return [...new Set(cleaned)].slice(0, 10);
 }
 
+function hasSuspiciousTopicCasing(value: string): boolean {
+  return /[A-Z]{2,}[a-z]|[a-z][A-Z]{2,}/.test(value);
+}
+
+function normalizeTopicToken(token: string): string {
+  return token
+    .split(/([+./-])/)
+    .map((part) => {
+      if (!part || ['+', '.', '/', '-'].includes(part)) {
+        return part;
+      }
+
+      const lower = part.toLowerCase();
+      if (TOPIC_ACRONYMS.has(lower)) {
+        return lower.toUpperCase();
+      }
+      if (/^\d+$/.test(part)) {
+        return part;
+      }
+
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join('');
+}
+
+function normalizeTopicName(value: string): string {
+  const collapsed = value.replace(/\s+/g, ' ').trim();
+  if (!collapsed) {
+    return '';
+  }
+  if (!hasSuspiciousTopicCasing(collapsed)) {
+    return collapsed;
+  }
+
+  return collapsed
+    .split(' ')
+    .map((token) => normalizeTopicToken(token))
+    .join(' ');
+}
+
 export async function GET(request: Request) {
   try {
     await ensureSchema(client);
@@ -162,18 +205,18 @@ export async function POST(request: Request) {
       };
     }
 
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const name = typeof body.name === 'string' ? normalizeTopicName(body.name) : '';
     const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
 
     if (!name) {
       if (!expectsJson) {
-        return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
+        return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
       }
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
     if (!goal) {
       if (!expectsJson) {
-        return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
+        return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
       }
       return NextResponse.json({ error: 'goal is required' }, { status: 400 });
     }
@@ -207,7 +250,7 @@ export async function POST(request: Request) {
     }
 
     if (!expectsJson) {
-      return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
+      return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
     }
 
     return NextResponse.json({ topic, setupRunId }, { status: 201 });
@@ -216,7 +259,7 @@ export async function POST(request: Request) {
     const isDuplicate = internalMessage.includes('saved_topics_name_key');
 
     if (!expectsJson) {
-      return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
+      return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
     }
 
     return NextResponse.json(

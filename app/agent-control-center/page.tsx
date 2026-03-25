@@ -1,4 +1,8 @@
+import { redirect } from 'next/navigation';
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export { default } from '@/app/today/page';
+export default function AgentControlCenterPage() {
+  redirect('/today');
+}

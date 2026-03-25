@@ -5,6 +5,8 @@ import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
+const RESEARCH_FALLBACK_PATH = '/today';
+
 type PipelineRequestBody = {
   day?: string;
   topicId?: string;
@@ -174,7 +176,7 @@ export async function POST(request: Request) {
     const result = await pipelineFlow(input);
 
     if (!expectsJson) {
-      return NextResponse.redirect(new URL('/agent-control-center', request.url), { status: 303 });
+      return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
     }
 
     return NextResponse.json(result);
@@ -183,7 +185,7 @@ export async function POST(request: Request) {
     const message = publicErrorMessage(error, 'Failed to run pipeline');
     if (!expectsJson) {
       return NextResponse.redirect(
-        new URL(`/agent-control-center?pipelineError=${encodeURIComponent(message)}`, request.url),
+        new URL(`${RESEARCH_FALLBACK_PATH}?pipelineError=${encodeURIComponent(message)}`, request.url),
         { status: 303 },
       );
     }

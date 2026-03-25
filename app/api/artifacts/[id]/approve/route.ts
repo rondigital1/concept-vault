@@ -7,12 +7,14 @@ import { ingestDocument } from '@/server/services/ingest.service';
 
 export const runtime = 'nodejs';
 
+const RESEARCH_FALLBACK_PATH = '/today';
+
 function isJsonRequest(contentType: string): boolean {
   return contentType.includes('application/json');
 }
 
 function buildRedirectUrl(request: Request, options?: { errorMessage?: string; infoMessage?: string }): URL {
-  const fallback = new URL('/agent-control-center', request.url);
+  const fallback = new URL(RESEARCH_FALLBACK_PATH, request.url);
   const referer = request.headers.get('referer');
   let target = fallback;
 
@@ -191,7 +193,6 @@ export async function POST(
 
     revalidatePath('/library');
     revalidatePath('/today');
-    revalidatePath('/agent-control-center');
 
     if (!expectsJson) {
       const infoMessage = artifact.kind === 'web-proposal'
