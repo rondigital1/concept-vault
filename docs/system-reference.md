@@ -2,15 +2,16 @@
 
 Expanded reference for schema, routes, observability, env, and file map.
 Operational rules remain in `AGENTS.md` (`CLAUDE.md`).
+For diagrams and the full current workflow, see `docs/current-agent-architecture.md`.
 
 ## Artifact Lifecycle
 
-Artifacts track agent outputs pending review.
+Artifacts track both pending-review agent outputs and approved research reports.
 
 State flow:
 
 ```text
-proposed -> approved -> active
+proposed -> approved
     \-> rejected
 approved -> superseded
 ```
@@ -18,7 +19,7 @@ approved -> superseded
 Status meanings:
 
 - `proposed`: waiting for human review
-- `approved`: accepted by human
+- `approved`: accepted by human or inserted as an already-approved report
 - `rejected`: declined by human
 - `superseded`: replaced by a newer approved artifact
 
@@ -26,8 +27,8 @@ Status meanings:
 
 - `id` UUID primary key
 - `run_id` foreign key to `runs`
-- `agent` (`curator` | `distiller` | `webScout`)
-- `kind` (`concept` | `flashcard` | `web-proposal`)
+- `agent` commonly includes `distiller`, `webScout`, and `research`
+- `kind` currently includes `concept`, `flashcard`, `web-proposal`, `web-analysis`, `research-report`
 - `day` for inbox grouping
 - `content` JSONB structured payload
 - `source_refs` JSONB linkage
@@ -35,8 +36,9 @@ Status meanings:
 - `created_at`, `reviewed_at`
 
 Unique rule: one approved artifact per `(agent, kind, day)`.
+In the current implementation, `approved` is the active state.
 
-Known gap: UI references `/api/artifacts/{id}/approve` and `/api/artifacts/{id}/reject`; approval APIs are incomplete.
+Approval endpoints exist. Approving a `web-proposal` can ingest the source into `documents` and trigger a `lightweight_enrichment` pipeline run.
 
 ## Database Reference
 
@@ -45,7 +47,7 @@ Core tables:
 - `documents`: ingested source text + tags + dedupe hash
 - `concepts`: extracted concepts tied to documents
 - `flashcards`: generated cards with review state
-- `artifacts`: proposal records from agents
+- `artifacts`: proposal, analysis, and report records
 
 Observability tables:
 
@@ -62,31 +64,39 @@ Supporting tables:
 
 - `document_tags`
 - `related_documents`
+- `saved_topics`
+- `topic_documents`
+- `source_watchlist`
 - `chat_sessions`
 - `chat_history`
 
 Key enums:
 
 - `runs.status`: `running | ok | error | partial`
-- `runs.kind`: `distill | curate | webScout`
+- `runs.kind`: `distill | curate | webScout | research | pipeline`
+- `artifacts.status`: `proposed | approved | rejected | superseded`
 - `flashcards.status`: `proposed | approved | edited | rejected`
 - `concepts.type`: `definition | principle | framework | procedure | fact`
 
+Current-state note: `pipeline` is the canonical run kind in practice. Wrapper routes and cron entrypoints all funnel into `pipelineFlow(...)`.
+
 ## Observability Reference
 
-Per run:
+Per canonical run:
 
-1. create run row (`createRun`)
-2. append step events (`appendStep`)
-3. close run (`finishRun`)
+1. create a `pipeline` run row (`createRun`)
+2. append flow steps and nested agent steps (`appendStep`)
+3. close the run (`finishRun`)
 
 Flow pattern:
 
 ```typescript
-const runId = await createRun('distill');
-await appendStep(runId, { type: 'flow', name: 'distill', status: 'running' });
-await distillerGraph(input, async (step) => await appendStep(runId, step), runId);
-await finishRun(runId, 'ok');
+const runId = await createRun('pipeline');
+await appendStep(runId, { type: 'flow', name: 'pipeline', status: 'running' });
+await appendStep(runId, { type: 'flow', name: 'pipeline_resolve_targets', status: 'running' });
+// invoke curatorGraph / webScoutGraph / distillerGraph as needed,
+// forwarding emitted agent steps into appendStep(...)
+await finishRun(runId, status);
 ```
 
 `RunStep` shape:
@@ -110,6 +120,12 @@ Inspect a run:
 GET /api/runs/<runId>
 ```
 
+Fetch resolved results for a run:
+
+```bash
+GET /api/runs/<runId>/results
+```
+
 Common failure modes:
 
 - run stuck in `running`: crash before `finishRun`
@@ -126,13 +142,22 @@ Debug loop:
 
 ## API Route Reference
 
-Agent triggers:
+Canonical pipeline trigger:
 
-- `POST /api/distill`
-- `POST /api/web-scout`
-- `POST /api/runs/distill`
-- `POST /api/runs/curate`
-- `POST /api/runs/web-scout`
+- `POST /api/runs/pipeline`
+
+Wrapper triggers:
+
+- `POST /api/runs/generate-report` (`runMode='full_report'`)
+- `POST /api/runs/refresh-topic` (defaults to `runMode='incremental_update'`)
+- `POST /api/runs/refresh-concepts` (`runMode='concept_only'`)
+- `POST /api/runs/find-sources` (`runMode='scout_only'`)
+
+Topic and scheduler integration:
+
+- `POST /api/topics` creates a topic and triggers a `topic_setup` pipeline run
+- `GET /api/cron/pipeline`
+- `POST /api/cron/pipeline`
 
 Ingestion:
 
@@ -140,14 +165,24 @@ Ingestion:
 - `POST /api/ingest/llm` (LLM-generated content)
 - `POST /api/ingest/upload` (PDF/DOCX/TXT/MD/CSV)
 
+Approval side effects:
+
+- `POST /api/artifacts/{id}/approve`
+- `POST /api/artifacts/{id}/reject`
+
 Observability:
 
 - `GET /api/runs/<runId>`
+- `GET /api/runs/<runId>/results`
 
 Other:
 
 - `POST /api/chat`
 - `GET /api/today`
+
+Deprecated compatibility routes:
+
+- Legacy single-agent entrypoints such as `POST /api/distill`, `POST /api/web-scout`, `POST /api/runs/distill`, `POST /api/runs/curate`, and related historical aliases remain as `410` stubs.
 
 ## Code Conventions
 
@@ -184,11 +219,11 @@ npm run lint
 ## MVP Constraints
 
 - single user (no auth/multi-tenancy)
-- manual runs (no scheduler)
+- runs can be manual, cron-driven, topic-setup driven, or follow-on enrichment after ingest/approval
 - inline execution (no queue)
 - no vector search yet (`localKb.tool.ts` placeholder)
 - no chunking (single text blob per document)
-- no auto-ingestion
+- no fully autonomous source crawling/import; new content still enters via explicit ingest or approval flows
 - no fine-tuning
 
 ## Known TODO Index
@@ -197,17 +232,18 @@ npm run lint
 - `server/tools/localKb.tool.ts`: pgvector search
 - `server/tools/webSearch.tool.ts`: web search integration
 - `server/tools/ingest.tool.ts`: chunking
-- `app/api/distill/route.ts`: GET/PUT/DELETE
-- `app/today/page.tsx`: approval route integration
 
 ## Key Files
 
+- Current architecture walkthrough: `docs/current-agent-architecture.md`
 - Agent graphs: `server/agents/*.graph.ts`
 - Agent nodes: `server/agents/helpers/*.nodes.ts`
+- WebScout tools: `server/ai/tools/webScout.tools.ts`
 - Flows: `server/flows/*.flow.ts`
 - Run tracing store: `server/observability/runTrace.store.ts`
 - Callback adapter: `server/langchain/callbacks/runStepAdapter.ts`
-- LLM factory: `server/langchain/models.ts`
+- LLM execution: `server/ai/openai-execution-service.ts`
+- Prompt builder: `server/ai/prompt-builder.ts`
 - Zod schemas: `server/langchain/schemas/*.ts`
 - DB schema: `db/schema.ts`
 - Repositories: `server/repos/*.repo.ts`
