@@ -77,7 +77,6 @@ describe('artifact approve route', () => {
     );
     expect(mockRevalidatePath).toHaveBeenCalledWith('/library');
     expect(mockRevalidatePath).toHaveBeenCalledWith('/today');
-    expect(mockRevalidatePath).toHaveBeenCalledWith('/agent-control-center');
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({

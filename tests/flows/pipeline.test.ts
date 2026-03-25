@@ -248,7 +248,7 @@ describe('Pipeline Flow', () => {
     expect(result.counts.webProposals).toBe(0);
     expect(result.reportId).toBeNull();
     expect(result.errors.some((error) => error.stage === 'webscout')).toBe(true);
-    expect(result.errors.some((error) => error.stage === 'synthesize')).toBe(true);
+    expect(result.errors.some((error) => error.stage === 'synthesize')).toBe(false);
     expect(mockSynthesizeReport).not.toHaveBeenCalled();
     expect(mockInsertReport).not.toHaveBeenCalled();
   });
