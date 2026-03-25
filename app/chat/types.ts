@@ -12,12 +12,12 @@ export type Message = {
 export const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: "Hello! I'm ready to help you explore your knowledge base. Ask me about your documents or concepts.",
+  content: "Ask about the documents, reports, and concepts already stored in your vault. This is best for follow-up questions after you add content or run research workflows.",
   suggestedReplies: [
-    'What is in my vault?',
-    'Summarize my recent documents',
-    'Help me organize my notes',
-    'Show me random facts',
+    'What is in my vault right now?',
+    'Summarize my latest report',
+    'Show documents about ai systems',
+    'Help me clean up my notes',
   ],
   timestamp: new Date(),
 };

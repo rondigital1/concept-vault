@@ -6,9 +6,9 @@ export default function ChatPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex flex-col h-screen bg-stone-50 items-center justify-center">
-          <div className="flex items-center gap-3 text-stone-500">
-            <LoadingSpinner className="h-5 w-5 border-stone-300 border-t-stone-600" />
+        <div className="flex h-screen flex-col items-center justify-center bg-gradient-to-b from-black via-zinc-950 to-black">
+          <div className="flex items-center gap-3 text-zinc-400">
+            <LoadingSpinner className="h-5 w-5 border-zinc-700 border-t-zinc-200" />
             <span>Loading...</span>
           </div>
         </div>

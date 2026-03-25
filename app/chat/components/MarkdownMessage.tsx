@@ -1,13 +1,32 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
 
 type CodeCopyState = {
   copiedKey: string | null;
 };
+
+type MarkdownChildrenProps = {
+  children?: ReactNode;
+};
+
+type AnchorProps = ComponentPropsWithoutRef<'a'> & MarkdownChildrenProps;
+type CodeProps = ComponentPropsWithoutRef<'code'> &
+  MarkdownChildrenProps & {
+    inline?: boolean;
+  };
+type TableCellProps = ComponentPropsWithoutRef<'td'> & MarkdownChildrenProps;
+type TableHeaderCellProps = ComponentPropsWithoutRef<'th'> & MarkdownChildrenProps;
+type TableRowProps = ComponentPropsWithoutRef<'tr'> & MarkdownChildrenProps;
+type TableSectionProps = ComponentPropsWithoutRef<'thead'> &
+  ComponentPropsWithoutRef<'tbody'> &
+  MarkdownChildrenProps;
+type TableProps = ComponentPropsWithoutRef<'table'> & MarkdownChildrenProps;
 
 function isProbablyInlineCode(className?: string) {
   if (!className) {
@@ -46,13 +65,11 @@ function normalizeMarkdownForDisplay(raw: string | undefined | null) {
 export function MarkdownMessage(props: { content: string }) {
   const [copyState, setCopyState] = useState<CodeCopyState>({ copiedKey: null });
 
-  const md = useMemo(() => {
-    return normalizeMarkdownForDisplay(props.content);
-  }, [props.content]);
+  const md = useMemo(() => normalizeMarkdownForDisplay(props.content), [props.content]);
 
-  const components = useMemo(() => {
+  const components = useMemo<Components>(() => {
     return {
-      a: ({ href, children }: any) => {
+      a: ({ href, children }: AnchorProps) => {
         const safeHref = typeof href === 'string' ? href : '';
 
         return (
@@ -60,47 +77,31 @@ export function MarkdownMessage(props: { content: string }) {
             href={safeHref}
             target="_blank"
             rel="noreferrer"
-            className="text-[#c66849] underline decoration-[#c66849]/40 underline-offset-2 hover:decoration-[#c66849]"
+            className="text-[#e39a7d] underline decoration-[#e39a7d]/40 underline-offset-2 hover:decoration-[#e39a7d]"
           >
             {children}
           </a>
         );
       },
-      p: ({ children }: any) => {
-        return <p className="my-3 whitespace-pre-wrap">{children}</p>;
-      },
-      ul: ({ children }: any) => {
-        return <ul className="my-3 list-disc pl-6">{children}</ul>;
-      },
-      ol: ({ children }: any) => {
-        return <ol className="my-3 list-decimal pl-6">{children}</ol>;
-      },
-      li: ({ children }: any) => {
-        return <li className="my-1">{children}</li>;
-      },
-      h1: ({ children }: any) => {
-        return <h1 className="mt-5 mb-2 text-xl font-semibold">{children}</h1>;
-      },
-      h2: ({ children }: any) => {
-        return <h2 className="mt-5 mb-2 text-lg font-semibold">{children}</h2>;
-      },
-      h3: ({ children }: any) => {
-        return <h3 className="mt-4 mb-2 text-base font-semibold">{children}</h3>;
-      },
-      blockquote: ({ children }: any) => {
-        return (
-          <blockquote className="my-3 border-l-2 border-stone-200 pl-4 text-stone-700">
-            {children}
-          </blockquote>
-        );
-      },
-      code: ({ inline, className, children }: any) => {
+      p: ({ children }: MarkdownChildrenProps) => <p className="my-3 whitespace-pre-wrap">{children}</p>,
+      ul: ({ children }: MarkdownChildrenProps) => <ul className="my-3 list-disc pl-6">{children}</ul>,
+      ol: ({ children }: MarkdownChildrenProps) => <ol className="my-3 list-decimal pl-6">{children}</ol>,
+      li: ({ children }: MarkdownChildrenProps) => <li className="my-1">{children}</li>,
+      h1: ({ children }: MarkdownChildrenProps) => <h1 className="mb-2 mt-5 text-xl font-semibold">{children}</h1>,
+      h2: ({ children }: MarkdownChildrenProps) => <h2 className="mb-2 mt-5 text-lg font-semibold">{children}</h2>,
+      h3: ({ children }: MarkdownChildrenProps) => <h3 className="mb-2 mt-4 text-base font-semibold">{children}</h3>,
+      blockquote: ({ children }: MarkdownChildrenProps) => (
+        <blockquote className="my-3 border-l-2 border-zinc-700 pl-4 text-zinc-300">
+          {children}
+        </blockquote>
+      ),
+      code: ({ inline, className, children }: CodeProps) => {
         const text = String(children ?? '');
 
         if (inline || isProbablyInlineCode(className)) {
           return (
             <code
-              className="rounded bg-stone-100 px-1 py-0.5 font-mono text-[0.9em] text-stone-900 [&::selection]:bg-[#d97757]/30 [&::selection]:text-stone-900"
+              className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.9em] text-zinc-100 [&::selection]:bg-[#d97757]/30 [&::selection]:text-white"
               style={{ userSelect: 'text' }}
             >
               {text}
@@ -113,12 +114,14 @@ export function MarkdownMessage(props: { content: string }) {
         const isCopied = copyState.copiedKey === codeKey;
 
         return (
-          <div className="my-4 overflow-hidden rounded-lg border border-stone-200 bg-white [&_*::selection]:bg-[#d97757]/30 [&_*::selection]:text-stone-900">
-            <div className="flex items-center justify-between gap-3 border-b border-stone-200 bg-stone-50 px-3 py-2">
-              <div className="text-xs font-semibold text-stone-600">{lang}</div>
+          <div className="my-4 overflow-hidden rounded-xl border border-white/10 bg-black/30 [&_*::selection]:bg-[#d97757]/30 [&_*::selection]:text-white">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/[0.04] px-3 py-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                {lang}
+              </div>
               <button
                 type="button"
-                className="rounded-md border border-stone-200 bg-white px-2 py-1 text-xs font-semibold text-stone-700 shadow-sm hover:bg-stone-50"
+                className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs font-semibold text-zinc-200 transition-colors hover:bg-white/10"
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(text);
@@ -136,45 +139,37 @@ export function MarkdownMessage(props: { content: string }) {
               </button>
             </div>
             <pre className="max-w-full overflow-x-auto px-4 py-3 text-sm leading-6" style={{ userSelect: 'text' }}>
-              <code className="font-mono text-stone-900" style={{ userSelect: 'text' }}>{text}</code>
+              <code className="font-mono text-zinc-100" style={{ userSelect: 'text' }}>
+                {text}
+              </code>
             </pre>
           </div>
         );
       },
-      table: ({ children }: any) => {
-        return (
-          <div className="my-4 overflow-x-auto">
-            <table className="min-w-full border-collapse text-sm">{children}</table>
-          </div>
-        );
-      },
-      thead: ({ children }: any) => {
-        return <thead className="bg-stone-50">{children}</thead>;
-      },
-      tbody: ({ children }: any) => {
-        return <tbody className="bg-white">{children}</tbody>;
-      },
-      tr: ({ children }: any) => {
-        return <tr className="border-b border-stone-200">{children}</tr>;
-      },
-      th: ({ children }: any) => {
-        return <th className="px-3 py-2 text-left text-xs font-semibold text-stone-700">{children}</th>;
-      },
-      td: ({ children }: any) => {
-        return <td className="px-3 py-2 align-top text-stone-800">{children}</td>;
-      },
+      table: ({ children }: TableProps) => (
+        <div className="my-4 overflow-x-auto">
+          <table className="min-w-full border-collapse text-sm">{children}</table>
+        </div>
+      ),
+      thead: ({ children }: TableSectionProps) => <thead className="bg-white/[0.04]">{children}</thead>,
+      tbody: ({ children }: TableSectionProps) => <tbody className="bg-transparent">{children}</tbody>,
+      tr: ({ children }: TableRowProps) => <tr className="border-b border-white/10">{children}</tr>,
+      th: ({ children }: TableHeaderCellProps) => (
+        <th className="px-3 py-2 text-left text-xs font-semibold text-zinc-400">{children}</th>
+      ),
+      td: ({ children }: TableCellProps) => <td className="px-3 py-2 align-top text-zinc-200">{children}</td>,
     };
   }, [copyState.copiedKey]);
 
   return (
     <div
-      className="text-stone-800 [&_*::selection]:bg-[#d97757]/30 [&_*::selection]:text-stone-900"
+      className="text-zinc-100 [&_*::selection]:bg-[#d97757]/30 [&_*::selection]:text-white"
       style={{ userSelect: 'text', cursor: 'text' }}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeSanitize]}
-        components={components as any}
+        components={components}
       >
         {md}
       </ReactMarkdown>

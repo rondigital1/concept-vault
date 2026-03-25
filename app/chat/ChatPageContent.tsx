@@ -22,7 +22,7 @@ type ContextMenuState = {
 const MarkdownMessage = dynamic(
   () => import('./components/MarkdownMessage').then((mod) => mod.MarkdownMessage),
   {
-    loading: () => <div className="animate-pulse h-4 bg-stone-200 rounded" />,
+    loading: () => <div className="h-4 animate-pulse rounded bg-zinc-800" />,
   }
 );
 
@@ -324,7 +324,7 @@ export function ChatPageContent() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-73px)] bg-stone-50">
+    <div className="flex h-[calc(100vh-73px)] bg-gradient-to-b from-black via-zinc-950 to-black text-zinc-100">
       <ChatHistorySidebar
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
@@ -332,48 +332,57 @@ export function ChatPageContent() {
         onNewChat={handleNewChatClick}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex-none flex items-center justify-between px-6 py-4 bg-white border-b border-stone-200">
-          <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex-none border-b border-white/5 bg-black/40 px-6 py-4 backdrop-blur-xl">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
+                title="Toggle chat history"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#d97757]/20 bg-[#d97757]/10 shadow-sm">
+                <svg className="h-5 w-5 text-[#f1b39a]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-lg font-semibold text-white">Ask Vault</h1>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+                    Secondary tool
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Use chat for follow-up questions about saved documents, reports, and concepts.
+                </p>
+              </div>
+            </div>
             <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 text-stone-500 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
-              title="Toggle chat history"
+              type="button"
+              onClick={() => setIsOutlineDrawerOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/10 xl:hidden"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+              <span>Prompts</span>
+              <span className="rounded-md bg-white px-1.5 py-0.5 text-xs text-black">
+                {messageOutlineLinks.length}
+              </span>
             </button>
-            <div className="h-10 w-10 rounded-lg bg-[#d97757] flex items-center justify-center shadow-sm">
-              <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-stone-800">Knowledge Assistant</h1>
-              <p className="text-sm text-stone-500">Ask about your vault</p>
-            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsOutlineDrawerOpen(true)}
-            className="xl:hidden inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 transition-colors"
-          >
-            <span>Messages</span>
-            <span className="rounded-md bg-stone-900 px-1.5 py-0.5 text-xs text-white">
-              {messageOutlineLinks.length}
-            </span>
-          </button>
         </div>
 
         <div ref={messageScrollContainerRef} className="flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-7xl gap-8 px-6 py-8">
             <div className="min-w-0 flex-1">
-              <div className="max-w-4xl mx-auto space-y-8">
+              <div className="mx-auto max-w-4xl space-y-8">
                 {isLoadingSession ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="flex items-center gap-3 text-stone-500">
-                      <LoadingSpinner className="h-5 w-5 border-stone-300 border-t-stone-600" />
+                    <div className="flex items-center gap-3 text-zinc-500">
+                      <LoadingSpinner className="h-5 w-5 border-zinc-700 border-t-zinc-200" />
                       <span>Loading conversation...</span>
                     </div>
                   </div>
@@ -397,24 +406,25 @@ export function ChatPageContent() {
                       className={`flex gap-4 scroll-mt-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       {msg.role === 'assistant' && (
-                        <div className="shrink-0 h-8 w-8 rounded-full bg-[#f0f0ed] flex items-center justify-center mt-1">
-                          <svg className="h-4 w-4 text-stone-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                          <svg className="h-4 w-4 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a1 1 0 1 1 1-1 1 1 0 0 1-1 1zm2.36-5.24a2 2 0 0 0 .64-1.76 2 2 0 0 0-4 0c0 .53.21 1.04.59 1.41a2 2 0 0 1 .59 1.41V12h2.36v-.36a4 4 0 0 0-1.18-2.88z" />
                           </svg>
                         </div>
                       )}
 
-                      <div className={`max-w-[85%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'text-stone-800 px-1 py-0.5'}`}>
-                        <div className={`text-xs font-medium ${msg.role === 'user' ? 'text-stone-500' : 'text-stone-900'}`}>
-                          {msg.role === 'user' ? 'You' : 'Assistant'}
+                      <div className={`flex max-w-[85%] flex-col space-y-1 ${msg.role === 'user' ? 'items-end' : ''}`}>
+                        <div className={`text-xs font-medium ${msg.role === 'user' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                          {msg.role === 'user' ? 'You' : 'Vault'}
                         </div>
                         <div
-                          className={`text-[15px] leading-7 ${msg.role === 'user'
-                            ? 'bg-[#EAEAE8] text-stone-800 px-4 py-2.5 rounded-2xl rounded-tr-sm [&::selection]:bg-[#d97757]/30 [&::selection]:text-stone-900'
-                            : msg.status === 'failed'
-                              ? 'text-red-700 px-1 py-0.5'
-                              : 'text-stone-800 px-1 py-0.5'
-                            }`}
+                          className={`text-[15px] leading-7 ${
+                            msg.role === 'user'
+                              ? 'rounded-2xl rounded-tr-sm border border-[#d97757]/25 bg-[#d97757]/10 px-4 py-3 text-zinc-100 [&::selection]:bg-[#d97757]/30 [&::selection]:text-white'
+                              : msg.status === 'failed'
+                                ? 'px-1 py-0.5 text-red-300'
+                                : 'px-1 py-0.5 text-zinc-100'
+                          }`}
                           onContextMenu={(e) => handleContextMenu(e, msg)}
                           style={{ userSelect: 'text', cursor: 'text' }}
                         >
@@ -430,7 +440,7 @@ export function ChatPageContent() {
                               type="button"
                               onClick={() => retryFailedMessage(msg.id)}
                               disabled={isLoading}
-                              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="inline-flex items-center gap-1 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {isLoading ? 'Retrying...' : 'Retry'}
                             </button>
@@ -438,12 +448,12 @@ export function ChatPageContent() {
                         )}
                         {msg.suggestedReplies && msg.suggestedReplies.length > 0 && (
                           <div className="mt-3 w-full">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-medium text-stone-500">Suggested prompts</span>
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-xs font-medium text-zinc-500">Suggested prompts</span>
                               <button
                                 onClick={refreshSuggestions}
                                 disabled={isRefreshingSuggestions}
-                                className="flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300 disabled:opacity-50"
                                 title="Get new suggestions"
                               >
                                 <svg
@@ -462,14 +472,14 @@ export function ChatPageContent() {
                                 {isRefreshingSuggestions ? 'Refreshing...' : 'Refresh'}
                               </button>
                             </div>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                               {msg.suggestedReplies.map((reply, idx) => (
                                 <button
                                   key={idx}
                                   onClick={() => {
                                     handleSubmit(undefined, reply);
                                   }}
-                                  className="text-sm bg-stone-900 hover:bg-black text-white px-4 py-3 rounded-xl transition-all shadow-sm text-left flex items-center"
+                                  className="flex items-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-zinc-100 transition-all hover:bg-white/10"
                                 >
                                   {reply}
                                 </button>
@@ -483,16 +493,16 @@ export function ChatPageContent() {
                 )}
 
                 {!isLoadingSession && isTyping && (
-                  <div className="flex gap-4 justify-start">
-                    <div className="shrink-0 h-8 w-8 rounded-full bg-[#f0f0ed] flex items-center justify-center mt-1">
-                      <svg className="h-4 w-4 text-stone-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <div className="flex justify-start gap-4">
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                      <svg className="h-4 w-4 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a1 1 0 1 1 1-1 1 1 0 0 1-1 1zm2.36-5.24a2 2 0 0 0 .64-1.76 2 2 0 0 0-4 0c0 .53.21 1.04.59 1.41a2 2 0 0 1 .59 1.41V12h2.36v-.36a4 4 0 0 0-1.18-2.88z" />
                       </svg>
                     </div>
-                    <div className="flex items-center gap-1.5 h-8">
-                      <div className="h-1.5 w-1.5 rounded-full bg-stone-400 animate-bounce [animation-delay:-0.3s]" />
-                      <div className="h-1.5 w-1.5 rounded-full bg-stone-400 animate-bounce [animation-delay:-0.15s]" />
-                      <div className="h-1.5 w-1.5 rounded-full bg-stone-400 animate-bounce" />
+                    <div className="flex h-8 items-center gap-1.5">
+                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:-0.3s]" />
+                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:-0.15s]" />
+                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500" />
                     </div>
                   </div>
                 )}
@@ -501,15 +511,16 @@ export function ChatPageContent() {
             </div>
 
             <aside className="hidden xl:block xl:w-72 xl:shrink-0">
-              <div className="sticky top-4 rounded-xl border border-stone-200 bg-white p-3 shadow-sm">
+              <div className="sticky top-4 rounded-2xl border border-white/10 bg-zinc-950/80 p-3">
                 <div className="px-2 pb-2">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
                     Prompt Timeline
                   </h2>
+                  <p className="mt-1 text-xs text-zinc-600">Quick jumps through your questions</p>
                 </div>
 
                 {messageOutlineLinks.length === 0 ? (
-                  <p className="px-2 pb-2 text-sm text-stone-500">
+                  <p className="px-2 pb-2 text-sm text-zinc-500">
                     Send a message to build quick links.
                   </p>
                 ) : (
@@ -518,10 +529,10 @@ export function ChatPageContent() {
                       <button
                         key={link.id}
                         onClick={() => handleJumpToMessage(link.id)}
-                        className={`w-full rounded-lg border-l-4 px-2 py-2 text-left text-sm transition-colors ${
+                        className={`w-full rounded-xl border-l-4 px-2 py-2 text-left text-sm transition-colors ${
                           highlightedMessageId === link.id
-                            ? 'border-[#d97757] bg-stone-900 text-white'
-                            : 'border-transparent text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+                            ? 'border-[#d97757] bg-[#d97757]/10 text-white'
+                            : 'border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
                         }`}
                       >
                         <span className="mr-2 text-[11px] font-medium opacity-70">{index + 1}.</span>
@@ -535,28 +546,22 @@ export function ChatPageContent() {
           </div>
         </div>
 
-        <div className="flex-none bg-white border-t border-stone-200 px-6 py-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="relative flex items-end gap-2 p-2 bg-stone-50 rounded-xl border border-stone-200">
-              <button
-                type="button"
-                className="p-2 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-lg transition-colors mb-0.5"
-                title="Attach file"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                </svg>
-              </button>
-
-              <div className="flex-1 relative">
+        <div className="flex-none border-t border-white/5 bg-black/40 px-6 py-4 backdrop-blur-xl">
+          <div className="mx-auto max-w-4xl">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+              <span>Ask about saved documents, reports, or concepts already in your vault.</span>
+              <span>Use Research for new runs and approvals.</span>
+            </div>
+            <div className="relative flex items-end gap-2 rounded-2xl border border-white/10 bg-black/30 p-2">
+              <div className="relative flex-1">
                 <textarea
                   ref={textareaRef}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Message..."
+                  placeholder="Ask about your saved material..."
                   rows={1}
-                  className="w-full resize-none border-0 bg-transparent py-3 text-[15px] text-stone-900 placeholder:text-stone-400 focus:ring-0 focus:outline-none max-h-[200px]"
+                  className="max-h-[200px] w-full resize-none border-0 bg-transparent py-3 text-[15px] text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-0"
                   style={{ minHeight: '44px' }}
                 />
               </div>
@@ -564,10 +569,11 @@ export function ChatPageContent() {
               <button
                 onClick={() => handleSubmit()}
                 disabled={!message.trim() || isLoading}
-                className={`mb-1 p-2 rounded-lg transition-all duration-200 ${message.trim() && !isLoading
-                  ? 'bg-[#d97757] text-white shadow-sm hover:bg-[#c66849]'
-                  : 'bg-stone-200 text-stone-400 cursor-not-allowed'
-                  }`}
+                className={`mb-1 rounded-lg p-2 transition-all duration-200 ${
+                  message.trim() && !isLoading
+                    ? 'bg-[#d97757] text-white shadow-sm hover:bg-[#c66849]'
+                    : 'cursor-not-allowed bg-white/5 text-zinc-500'
+                }`}
               >
                 {isLoading ? (
                   <LoadingSpinner className="h-5 w-5 border-white/40 border-t-white p-0.5" />
@@ -578,8 +584,10 @@ export function ChatPageContent() {
                 )}
               </button>
             </div>
-            <div className="text-center pt-2">
-              <p className="text-xs text-stone-400">Markdown supported (code blocks, lists, tables). AI Agent can make mistakes. Please verify important info.</p>
+            <div className="pt-2 text-center">
+              <p className="text-xs text-zinc-600">
+                Markdown supported. The assistant can make mistakes, so verify important information before acting on it.
+              </p>
             </div>
           </div>
         </div>
@@ -609,21 +617,21 @@ export function ChatPageContent() {
           <button
             type="button"
             aria-label="Close message links"
-            className="absolute inset-0 bg-black/30"
+            className="absolute inset-0 bg-black/60"
             onClick={() => setIsOutlineDrawerOpen(false)}
           />
 
-          <aside className="absolute right-0 top-0 h-full w-[86vw] max-w-sm border-l border-stone-200 bg-white shadow-xl">
+          <aside className="absolute right-0 top-0 h-full w-[86vw] max-w-sm border-l border-white/10 bg-zinc-950 shadow-xl">
             <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between border-b border-stone-200 px-4 py-4">
+              <div className="flex items-center justify-between border-b border-white/5 px-4 py-4">
                 <div>
-                  <h2 className="text-sm font-semibold text-stone-800">Prompt Timeline</h2>
-                  <p className="text-xs text-stone-500">Jump through your prompts</p>
+                  <h2 className="text-sm font-semibold text-white">Prompt Timeline</h2>
+                  <p className="text-xs text-zinc-500">Jump through your recent questions</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsOutlineDrawerOpen(false)}
-                  className="rounded-md p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition-colors"
+                  className="rounded-md p-2 text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
                   title="Close message links"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -634,7 +642,7 @@ export function ChatPageContent() {
 
               <div className="flex-1 overflow-y-auto px-3 py-3">
                 {messageOutlineLinks.length === 0 ? (
-                  <p className="rounded-lg bg-stone-50 px-3 py-3 text-sm text-stone-500">
+                  <p className="rounded-xl border border-white/5 bg-white/[0.03] px-3 py-3 text-sm text-zinc-500">
                     Send a message to build quick links.
                   </p>
                 ) : (
@@ -643,10 +651,10 @@ export function ChatPageContent() {
                       <button
                         key={link.id}
                         onClick={() => handleJumpToMessageFromDrawer(link.id)}
-                        className={`w-full rounded-lg border-l-4 px-3 py-2 text-left text-sm transition-colors ${
+                        className={`w-full rounded-xl border-l-4 px-3 py-2 text-left text-sm transition-colors ${
                           highlightedMessageId === link.id
-                            ? 'border-[#d97757] bg-stone-900 text-white'
-                            : 'border-transparent text-stone-700 hover:bg-stone-100 hover:text-stone-900'
+                            ? 'border-[#d97757] bg-[#d97757]/10 text-white'
+                            : 'border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
                         }`}
                       >
                         <span className="mr-2 text-[11px] font-medium opacity-70">{index + 1}.</span>
