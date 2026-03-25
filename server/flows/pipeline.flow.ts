@@ -909,17 +909,23 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
       }
     } else {
       if (shouldSynthesize(mode)) {
-        errors.push({
-          stage: 'synthesize',
-          message: 'No analyzed findings available to synthesize into a report',
+        const hasUpstreamFindingError = errors.some((error) => {
+          return error.stage === 'webscout' || error.stage === 'analyze_findings';
         });
+
+        if (!hasUpstreamFindingError) {
+          errors.push({
+            stage: 'synthesize',
+            message: 'No analyzed findings available to synthesize into a report',
+          });
+        }
       }
       await appendFlowStep(runId, {
         name: 'pipeline_synthesize',
         status: 'skipped',
         output: {
           reason: shouldSynthesize(mode)
-            ? 'No analyzed findings available to synthesize'
+            ? 'Skipped because no analyzed findings were available'
             : 'Mode does not include report synthesis',
         },
       });

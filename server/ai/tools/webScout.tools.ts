@@ -40,6 +40,19 @@ const LOW_QUALITY_DOMAINS = new Set([
   'reddit.com',
 ]);
 
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+const httpUrlSchema = z.string().min(1).refine(isValidHttpUrl, {
+  message: 'Expected a valid http(s) URL',
+});
+
 export const searchWebArgsSchema = z.object({
   query: z.string().min(1),
   maxResults: z.number().int().min(1).max(20).nullable(),
@@ -48,14 +61,14 @@ export const searchWebArgsSchema = z.object({
 });
 
 export const evaluateResultArgsSchema = z.object({
-  url: z.string().url(),
+  url: httpUrlSchema,
   title: z.string().min(1),
   snippet: z.string(),
   goal: z.string().min(1),
 });
 
 export const checkVaultDuplicateArgsSchema = z.object({
-  urls: z.array(z.string().url()).min(1),
+  urls: z.array(httpUrlSchema).min(1),
 });
 
 export const refineQueryArgsSchema = z.object({
