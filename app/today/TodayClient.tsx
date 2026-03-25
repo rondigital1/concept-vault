@@ -2,7 +2,6 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useKeyboardShortcuts, KeyboardShortcutsHelp } from '@/app/components/KeyboardShortcuts';
 import { toast, ToastContainer } from '@/app/components/Toast';
 
 export function TodayClient() {
@@ -106,74 +105,5 @@ export function TodayClient() {
     };
   }, [router]);
 
-  // Set up copy-to-clipboard for error messages
-  useEffect(() => {
-    function handleCopyClick(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      const copyBtn = target.closest('[data-copy-error]') as HTMLElement | null;
-      if (copyBtn) {
-        const errorText = copyBtn.getAttribute('data-copy-error');
-        if (errorText) {
-          navigator.clipboard.writeText(errorText).then(() => {
-            toast.success('Error copied to clipboard');
-          }).catch(() => {
-            toast.error('Failed to copy');
-          });
-        }
-      }
-    }
-
-    document.addEventListener('click', handleCopyClick);
-    return () => {
-      document.removeEventListener('click', handleCopyClick);
-    };
-  }, []);
-
-  const shortcuts = [
-    {
-      key: 'r',
-      description: 'Refresh page',
-      action: () => {
-        router.refresh();
-        toast.success('Page refreshed!');
-      },
-    },
-    {
-      key: 'p',
-      description: 'Choose Report Topic',
-      action: () => {
-        router.push('/web-scout?runMode=full_report');
-      },
-    },
-    {
-      key: 'o',
-      description: 'Go to Reports',
-      action: () => {
-        router.push('/reports');
-      },
-    },
-    {
-      key: 'i',
-      description: 'Go to Ingest',
-      action: () => {
-        router.push('/ingest');
-      },
-    },
-    {
-      key: 'l',
-      description: 'Go to Library',
-      action: () => {
-        router.push('/library');
-      },
-    },
-  ];
-
-  useKeyboardShortcuts(shortcuts);
-
-  return (
-    <>
-      <ToastContainer />
-      <KeyboardShortcutsHelp shortcuts={shortcuts} />
-    </>
-  );
+  return <ToastContainer />;
 }

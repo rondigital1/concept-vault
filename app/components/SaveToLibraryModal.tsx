@@ -10,15 +10,19 @@ interface SaveToLibraryModalProps {
   defaultTitle: string;
 }
 
-export function SaveToLibraryModal({ isOpen, onClose, onSave, defaultText, defaultTitle }: SaveToLibraryModalProps) {
+export function SaveToLibraryModal({
+  isOpen,
+  onClose,
+  onSave,
+  defaultText,
+  defaultTitle,
+}: SaveToLibraryModalProps) {
   const [title, setTitle] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
-      // Use the provided default title (user's original prompt)
       setTitle(defaultTitle);
-      // Focus the input and select all text for easy editing
       setTimeout(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
@@ -45,21 +49,18 @@ export function SaveToLibraryModal({ isOpen, onClose, onSave, defaultText, defau
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-300 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-stone-900/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md border border-stone-200">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100">
-          <h3 className="text-lg font-semibold text-stone-800">Save to Library</h3>
+      <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/5 px-6 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Save to Library</h3>
+            <p className="mt-1 text-sm text-zinc-500">Store this answer as a new document.</p>
+          </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-lg transition-colors"
+            className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -67,10 +68,9 @@ export function SaveToLibraryModal({ isOpen, onClose, onSave, defaultText, defau
           </button>
         </div>
 
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-stone-700 mb-2">
+            <label htmlFor="title" className="mb-2 block text-sm font-medium text-zinc-200">
               Title
             </label>
             <input
@@ -80,29 +80,28 @@ export function SaveToLibraryModal({ isOpen, onClose, onSave, defaultText, defau
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Enter a title for this content..."
-              className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-[#d97757] focus:border-transparent outline-none transition-all text-stone-900 placeholder:text-stone-400"
+              placeholder="Enter a title for this content"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-zinc-100 outline-none transition-all placeholder:text-zinc-500 focus:border-transparent focus:ring-2 focus:ring-[#d97757]"
             />
           </div>
 
-          <div className="bg-stone-50 rounded-lg p-3 max-h-32 overflow-y-auto">
-            <p className="text-xs text-stone-500 mb-1 font-medium">Content preview:</p>
-            <p className="text-sm text-stone-700 line-clamp-4">{defaultText}</p>
+          <div className="max-h-32 overflow-y-auto rounded-xl border border-white/5 bg-black/20 p-3">
+            <p className="mb-1 text-xs font-medium text-zinc-500">Content preview</p>
+            <p className="line-clamp-4 text-sm text-zinc-300">{defaultText}</p>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 text-sm font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors"
+              className="flex-1 rounded-lg bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/10"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!title.trim()}
-              className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-[#d97757] hover:bg-[#c66849] disabled:bg-stone-300 disabled:cursor-not-allowed rounded-lg transition-colors"
+              className="flex-1 rounded-lg bg-[#d97757] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#c66849] disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
             >
               Save to Library
             </button>
