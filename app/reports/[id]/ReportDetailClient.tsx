@@ -7,7 +7,7 @@ import { Badge } from '@/app/components/Badge';
 
 const DocumentMarkdown = dynamic(
   () => import('@/app/library/[id]/DocumentMarkdown'),
-  { loading: () => <div className="animate-pulse h-96 bg-white/5 rounded-lg" /> },
+  { loading: () => <div className="animate-pulse h-96 rounded-lg bg-white/5" /> },
 );
 
 interface ReportDetailClientProps {
@@ -18,6 +18,19 @@ interface ReportDetailClientProps {
   sourcesCount: number;
   topicsCovered: string[];
   isRead: boolean;
+}
+
+function formatDate(dateString: string): string {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 export default function ReportDetailClient({
@@ -40,7 +53,7 @@ export default function ReportDetailClient({
         setIsRead(true);
       }
     } catch {
-      // Silently fail — not critical
+      // Silently fail. The report remains readable either way.
     } finally {
       setMarking(false);
     }
@@ -48,53 +61,68 @@ export default function ReportDetailClient({
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black">
-      {/* Header */}
-      <div className="border-b border-white/5 bg-black/50 backdrop-blur-xl sticky top-0 z-10">
-        <div className="mx-auto max-w-4xl px-6 py-6">
-          <Link
-            href="/reports"
-            className="text-sm text-zinc-400 hover:text-white transition-colors mb-4 inline-block"
-          >
-            ← All Reports
-          </Link>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">{title}</h1>
-              <div className="flex items-center gap-3 mt-2 text-sm text-zinc-400">
-                <span>{day}</span>
-                <span className="text-zinc-600">|</span>
-                <span>{sourcesCount} source{sourcesCount !== 1 ? 's' : ''}</span>
-              </div>
-            </div>
-            {!isRead && (
-              <button
-                onClick={handleMarkRead}
-                disabled={marking}
-                className="shrink-0 px-4 py-2 text-sm font-medium text-white bg-zinc-800 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
-              >
-                {marking ? 'Marking...' : 'Mark as read'}
-              </button>
-            )}
-            {isRead && (
-              <span className="shrink-0 px-4 py-2 text-sm text-zinc-500">Read</span>
-            )}
+      <div className="sticky top-0 z-10 border-b border-white/5 bg-black/50 backdrop-blur-xl">
+        <div className="mx-auto max-w-5xl px-6 py-6">
+          <div className="flex flex-wrap gap-3 text-sm">
+            <Link href="/reports" className="text-zinc-400 transition-colors hover:text-white">
+              ← All Reports
+            </Link>
+            <Link href="/today" className="text-zinc-400 transition-colors hover:text-white">
+              Back to Research
+            </Link>
           </div>
-          {topicsCovered.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {topicsCovered.map((topic) => (
-                <Badge key={topic} variant="secondary" className="text-xs">
-                  {topic}
-                </Badge>
-              ))}
+
+          <div className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                Research Report
+              </p>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-white">{title}</h1>
+              <p className="mt-3 text-sm leading-6 text-zinc-300">
+                Generated on {formatDate(day)} from {sourcesCount} approved source{sourcesCount === 1 ? '' : 's'}.
+                Use this as the finished output for your topic, then return to Research when you are ready to review new proposals or generate the next report.
+              </p>
+              {topicsCovered.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {topicsCovered.map((topic) => (
+                    <Badge key={topic} variant="secondary" className="text-xs text-zinc-300">
+                      {topic}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              {!isRead ? (
+                <button
+                  onClick={handleMarkRead}
+                  disabled={marking}
+                  className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {marking ? 'Marking...' : 'Mark as read'}
+                </button>
+              ) : (
+                <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-100">
+                  Read
+                </span>
+              )}
+              <Link
+                href="/today"
+                className="inline-flex items-center justify-center rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5"
+              >
+                Continue in Research
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="mx-auto max-w-4xl px-6 py-12">
-        <div className="max-w-3xl">
-          <DocumentMarkdown content={markdown} />
+      <div className="mx-auto max-w-5xl px-6 py-10">
+        <div className="rounded-2xl border border-white/5 bg-zinc-950/50 p-6">
+          <div className="max-w-3xl">
+            <DocumentMarkdown content={markdown} />
+          </div>
         </div>
       </div>
     </main>
