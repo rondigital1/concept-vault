@@ -25,7 +25,7 @@ export type TodayView = {
   randomFact?: { fact: string; source?: string };
 };
 
-export type AgentControlStep = {
+export type ResearchStep = {
   name: string;
   status: 'running' | 'ok' | 'error' | 'skipped';
   startedAt?: string;
@@ -33,16 +33,16 @@ export type AgentControlStep = {
   error?: string;
 };
 
-export type AgentControlRun = {
+export type ResearchRun = {
   id: string;
   kind: string;
   status: 'running' | 'ok' | 'error' | 'partial';
   startedAt: string;
   endedAt?: string;
-  steps: AgentControlStep[];
+  steps: ResearchStep[];
 };
 
-export type AgentControlArtifact = {
+export type ResearchArtifact = {
   id: string;
   runId: string | null;
   day: string;
@@ -58,11 +58,11 @@ export type AgentControlArtifact = {
   content?: Record<string, unknown>;
 };
 
-export type AgentControlCenterView = {
+export type ResearchView = {
   date: string;
-  runs: AgentControlRun[];
-  inbox: AgentControlArtifact[];
-  active: AgentControlArtifact[];
+  runs: ResearchRun[];
+  inbox: ResearchArtifact[];
+  active: ResearchArtifact[];
 };
 
 let todaySchemaInitialized = false;
@@ -120,7 +120,7 @@ export async function getTopTags(
   } catch (error) {
     // Handle AggregateError (which may contain multiple errors)
     if (error instanceof AggregateError) {
-      const messages = error.errors.map((e: any) => 
+      const messages = error.errors.map((e: unknown) => 
         e instanceof Error ? e.message : String(e)
       ).join('; ');
       console.error('[getTopTags] AggregateError:', {
@@ -207,15 +207,19 @@ async function tavilySearch(params: {
     return [];
   }
 
-  const json: any = await res.json();
-  const results: any[] = Array.isArray(json?.results) ? json.results : [];
+  const json: unknown = await res.json();
+  const results =
+    typeof json === 'object' && json !== null && Array.isArray((json as { results?: unknown }).results)
+      ? ((json as { results: unknown[] }).results ?? [])
+      : [];
 
   return results
     .map((r) => {
-      const url = String(r?.url ?? '');
-      const title = String(r?.title ?? '');
-      const snippet = String(r?.content ?? r?.snippet ?? '');
-      const domain = safeDomainFromUrl(url) || String(r?.domain ?? '');
+      const record = typeof r === 'object' && r !== null ? (r as Record<string, unknown>) : {};
+      const url = String(record.url ?? '');
+      const title = String(record.title ?? '');
+      const snippet = String(record.content ?? record.snippet ?? '');
+      const domain = safeDomainFromUrl(url) || String(record.domain ?? '');
       return { title, url, snippet, domain } as WebSearchResult;
     })
     .filter((r) => r.title && r.url && isHttpsUrl(r.url));
@@ -734,17 +738,17 @@ function toErrorText(error: unknown): string | undefined {
 function toArtifactStatus(
   status: 'proposed' | 'approved' | 'rejected' | 'superseded',
   mapApprovedToActive = false,
-): AgentControlArtifact['status'] {
+): ResearchArtifact['status'] {
   if (status === 'superseded') return 'rejected';
   if (status === 'approved' && mapApprovedToActive) return 'active';
   return status;
 }
 
 /**
- * Lightweight view for /agent-control-center.
+ * Lightweight view for /today.
  * This intentionally avoids web search and LLM calls so the page loads quickly.
  */
-export async function getAgentControlCenterView(): Promise<AgentControlCenterView> {
+export async function getResearchView(): Promise<ResearchView> {
   await ensureTodaySchema();
   const date = todayISODate();
 
@@ -765,8 +769,7 @@ export async function getAgentControlCenterView(): Promise<AgentControlCenterVie
     >`
       SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
       FROM artifacts
-      WHERE day = ${date}
-        AND status = 'proposed'
+      WHERE status = 'proposed'
       ORDER BY created_at DESC
     `,
     sql<
@@ -785,8 +788,7 @@ export async function getAgentControlCenterView(): Promise<AgentControlCenterVie
     >`
       SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
       FROM artifacts
-      WHERE day = ${date}
-        AND status = 'approved'
+      WHERE status = 'approved'
       ORDER BY COALESCE(reviewed_at, created_at) DESC
     `,
     sql<
@@ -829,7 +831,7 @@ export async function getAgentControlCenterView(): Promise<AgentControlCenterVie
       `
     : [];
 
-  const stepsByRun = new Map<string, AgentControlStep[]>();
+  const stepsByRun = new Map<string, ResearchStep[]>();
   for (const row of stepRows) {
     const existing = stepsByRun.get(row.run_id) ?? [];
     if (existing.length >= 40) {
@@ -882,7 +884,7 @@ export async function getAgentControlCenterView(): Promise<AgentControlCenterVie
       created_at: string;
     },
     mapApprovedToActive = false,
-  ): AgentControlArtifact {
+  ): ResearchArtifact {
     const sourceDocumentId = readSourceDocumentId(artifact.source_refs ?? {});
     return {
       id: artifact.id,
@@ -920,6 +922,12 @@ export async function getAgentControlCenterView(): Promise<AgentControlCenterVie
     active: activeRows.map((artifact) => mapArtifact(artifact, true)),
   };
 }
+
+export const getAgentControlCenterView = getResearchView;
+export type AgentControlStep = ResearchStep;
+export type AgentControlRun = ResearchRun;
+export type AgentControlArtifact = ResearchArtifact;
+export type AgentControlCenterView = ResearchView;
 
 export async function getTodayView(): Promise<TodayView> {
   const date = todayISODate();

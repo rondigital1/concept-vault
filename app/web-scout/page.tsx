@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { TodayBackground } from '@/app/today/TodayBackground';
 import { WebScoutRunClient } from './WebScoutRunClient';
 import { client, ensureSchema } from '@/db';
 import { getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
@@ -26,6 +25,17 @@ function firstQueryParam(value: string | string[] | undefined): string | undefin
   return undefined;
 }
 
+function getRunModeTitle(runMode: string): string {
+  const labels: Record<string, string> = {
+    full_report: 'Generate Report',
+    incremental_update: 'Refresh Topic',
+    scout_only: 'Find Sources',
+    concept_only: 'Extract Concepts',
+  };
+
+  return labels[runMode] ?? 'Run Details';
+}
+
 export default async function WebScoutPage({
   searchParams,
 }: {
@@ -35,11 +45,16 @@ export default async function WebScoutPage({
   const runMode = firstQueryParam(resolvedSearchParams.runMode) ?? 'full_report';
   const topicId = firstQueryParam(resolvedSearchParams.topicId);
   const requiresTopicSelection = runMode === 'full_report' && !topicId;
-  const pageTitle = runMode === 'full_report' ? 'Generate Report' : 'Run Output';
+  const pageTitle = requiresTopicSelection ? 'Generate Report' : getRunModeTitle(runMode);
+  const pageDescriptionMap: Record<string, string> = {
+    full_report: 'Choose a ready topic, run the report, then open the finished result.',
+    incremental_update: 'Refresh a topic to gather more usable sources and keep it ready for the next report.',
+    scout_only: 'Find new source candidates to review and save into your library.',
+    concept_only: 'Extract concepts and flashcards from the latest source material.',
+  };
   const pageDescription =
-    runMode === 'full_report'
-      ? 'Choose a topic, run the report, then open the finished result.'
-      : 'Live status plus a clear summary of exactly what this run generated.';
+    pageDescriptionMap[runMode] ??
+    'Live progress plus a clear summary of what this run created.';
 
   let reportTopicsError: string | null = null;
   let selectedTopicName: string | null = null;
@@ -69,7 +84,7 @@ export default async function WebScoutPage({
         }));
       } catch (error) {
         reportTopicsError =
-          error instanceof Error ? error.message : 'Failed to load report-ready topics';
+          error instanceof Error ? error.message : 'Failed to load ready-to-generate topics';
       }
     }
 
@@ -85,9 +100,8 @@ export default async function WebScoutPage({
 
   return (
     <>
-      <TodayBackground />
       <main className="min-h-screen pb-16 relative">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-white/3 blur-[100px] rounded-full pointer-events-none" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[220px] w-[480px] -translate-x-1/2 rounded-full bg-sky-500/5 blur-[90px]" />
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 relative z-10">
           <header className="flex items-start justify-between gap-4 mb-6">
             <div>
@@ -95,10 +109,10 @@ export default async function WebScoutPage({
               <p className="text-zinc-400 mt-1">{pageDescription}</p>
             </div>
             <Link
-              href="/agent-control-center"
+              href="/today"
               className="text-sm text-zinc-300 bg-zinc-800 px-3 py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
             >
-              Back to Agent Control Center
+              Back to Research
             </Link>
           </header>
           <Suspense
