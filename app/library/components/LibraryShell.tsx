@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { LibrarySidebar } from './LibrarySidebar';
 import type { DocumentListItem } from '@/server/repos/documents.repo';
 import type { CollectionRow } from '@/server/repos/collections.repo';
+import { getDocumentTitleIssue } from '../documentPresentation';
 
 type Props = {
   documents: DocumentListItem[];
@@ -35,6 +36,10 @@ export function LibraryShell({ documents, collections, children }: Props) {
     () => filteredDocs.filter((d) => d.is_favorite),
     [filteredDocs],
   );
+  const cleanupCount = useMemo(
+    () => documents.filter((d) => getDocumentTitleIssue(d.title)).length,
+    [documents],
+  );
 
   return (
     <div className="flex h-[calc(100vh-57px)]">
@@ -45,6 +50,7 @@ export function LibraryShell({ documents, collections, children }: Props) {
           collections={collections}
           selectedId={selectedId}
           searchQuery={searchQuery}
+          cleanupCount={cleanupCount}
           onSearchChange={setSearchQuery}
           onToggleSidebar={() => setSidebarOpen(false)}
         />

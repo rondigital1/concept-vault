@@ -58,7 +58,7 @@ export default async function CollectionPage(props: PageProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
           {validDocs.map((doc) => (
             <Link key={doc!.id} href={`/library/${doc!.id}`} className="group block h-full min-w-0">
-              <Card className="h-full overflow-hidden flex flex-col p-5 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] cursor-pointer">
+              <Card className="flex h-full flex-col overflow-hidden border-white/10 bg-zinc-950/90 p-5 transition-all duration-300 hover:scale-[1.02] hover:border-white/20 cursor-pointer">
                 <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
                   <h3 className="text-base font-semibold text-white leading-tight line-clamp-3 break-words group-hover:text-[#d97757] transition-colors">
                     {doc!.title}

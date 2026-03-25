@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useTransition } from 'react';
 import { toggleFavoriteAction } from '@/app/actions/libraryActions';
 import type { DocumentListItem as DocItem } from '@/server/repos/documents.repo';
+import { getDocumentTitleIssue } from '../documentPresentation';
 
 type Props = {
   document: DocItem;
@@ -12,6 +13,7 @@ type Props = {
 
 export function DocumentListItem({ document, isSelected }: Props) {
   const [isPending, startTransition] = useTransition();
+  const titleIssue = getDocumentTitleIssue(document.title);
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -43,7 +45,10 @@ export function DocumentListItem({ document, isSelected }: Props) {
           d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
         />
       </svg>
-      <span className="truncate flex-1 min-w-0">{document.title}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {titleIssue && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title={titleIssue.label} />}
+        <span className="truncate">{document.title}</span>
+      </div>
       <button
         onClick={handleFavoriteClick}
         className={`shrink-0 p-0.5 transition-all ${

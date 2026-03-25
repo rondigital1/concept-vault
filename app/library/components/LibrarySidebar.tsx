@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { DocumentListItem } from './DocumentListItem';
 import { CollectionSection } from './CollectionSection';
@@ -12,6 +13,7 @@ type Props = {
   collections: CollectionRow[];
   selectedId: string | null;
   searchQuery: string;
+  cleanupCount: number;
   onSearchChange: (query: string) => void;
   onToggleSidebar: () => void;
 };
@@ -22,6 +24,7 @@ export function LibrarySidebar({
   collections,
   selectedId,
   searchQuery,
+  cleanupCount,
   onSearchChange,
   onToggleSidebar,
 }: Props) {
@@ -33,7 +36,10 @@ export function LibrarySidebar({
     <aside className="w-72 border-r border-white/5 bg-zinc-950 flex flex-col overflow-hidden shrink-0">
       {/* Header */}
       <div className="p-3 border-b border-white/5 flex items-center justify-between">
-        <span className="text-sm font-semibold text-zinc-300">Library</span>
+        <div>
+          <span className="text-sm font-semibold text-zinc-300">Library</span>
+          <p className="mt-0.5 text-xs text-zinc-500">Search, organize, and clean up imports</p>
+        </div>
         <button
           onClick={onToggleSidebar}
           className="p-1 text-zinc-500 hover:text-white rounded transition-colors"
@@ -47,6 +53,14 @@ export function LibrarySidebar({
 
       {/* Search */}
       <div className="p-3">
+        {cleanupCount > 0 && (
+          <Link
+            href="/library#needs-cleanup"
+            className="mb-3 block rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 transition-colors hover:bg-amber-500/15"
+          >
+            {cleanupCount} title{cleanupCount === 1 ? '' : 's'} need cleanup
+          </Link>
+        )}
         <div className="relative">
           <svg
             className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
@@ -58,7 +72,7 @@ export function LibrarySidebar({
           </svg>
           <input
             type="text"
-            placeholder="Search documents..."
+            placeholder="Search titles or tags"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-sm bg-white/5 border border-white/10 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-white/20 transition-colors"
@@ -130,7 +144,7 @@ export function LibrarySidebar({
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            All Documents ({documents.length})
+            Browse All ({documents.length})
           </button>
           {allDocsExpanded &&
             documents.map((doc) => (
