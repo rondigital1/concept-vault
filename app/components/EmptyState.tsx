@@ -13,7 +13,7 @@ export function EmptyState({
 }) {
   return (
     <div
-      className={`rounded-lg border border-dashed border-white/10 bg-white/5 p-12 text-center ${className}`}
+      className={`rounded-lg border border-dashed border-zinc-800 bg-zinc-900 p-12 text-center ${className}`}
     >
       {icon && <div className="mb-4 text-4xl">{icon}</div>}
       {title && <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>}

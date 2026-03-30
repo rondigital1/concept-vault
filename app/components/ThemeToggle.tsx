@@ -135,7 +135,7 @@ export function ThemeToggle() {
     <div className="flex justify-center sm:justify-end">
       <div
         aria-label="Theme selector"
-        className="inline-flex items-center rounded-full border border-white/10 bg-white/5 p-1"
+        className="inline-flex items-center rounded-full border border-black/8 bg-white/80 p-1 shadow-[0_10px_24px_rgba(28,48,64,0.06)]"
         role="tablist"
       >
         {OPTIONS.map((option) => {
@@ -148,8 +148,8 @@ export function ThemeToggle() {
               className={[
                 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
                 isActive
-                  ? 'bg-white/10 text-zinc-100 shadow-sm'
-                  : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100',
+                  ? 'bg-[#153d4c] text-white shadow-sm'
+                  : 'text-[#5b6e77] hover:bg-white hover:text-[#10242c]',
               ].join(' ')}
               onClick={() => setTheme(option.value)}
               type="button"

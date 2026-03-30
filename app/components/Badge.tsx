@@ -4,7 +4,7 @@ export function Badge({
   className = ''
 }: {
   children: React.ReactNode;
-  variant?: 'default' | 'primary' | 'success' | 'warning' | 'secondary';
+  variant?: 'default' | 'primary' | 'success' | 'warning' | 'secondary' | 'accent' | 'info';
   className?: string;
 }) {
   const variants = {
@@ -12,7 +12,9 @@ export function Badge({
     primary: 'border-blue-200 bg-blue-50 text-blue-700',
     success: 'border-green-200 bg-green-50 text-green-700',
     warning: 'border-amber-200 bg-amber-50 text-amber-700',
-    secondary: 'border-white/10 bg-white/5 text-zinc-400',
+    secondary: 'border-zinc-700 bg-zinc-900 text-zinc-400',
+    accent: 'border-[#5a3020] bg-[#2a1810] text-[#d97757]',
+    info: 'border-sky-800 bg-sky-950 text-sky-200',
   };
 
   return (

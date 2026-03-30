@@ -37,7 +37,7 @@ export function ContextMenu({ x, y, onClose, onSaveToLibrary }: ContextMenuProps
   return (
     <div
       ref={menuRef}
-      className="fixed z-[200] min-w-[200px] rounded-lg border border-white/10 bg-zinc-950 py-1 shadow-xl"
+      className="fixed z-[200] min-w-[200px] rounded-lg border border-zinc-800 bg-zinc-950 py-1 shadow-xl"
       style={{ top: y, left: x }}
     >
       <button
@@ -45,7 +45,7 @@ export function ContextMenu({ x, y, onClose, onSaveToLibrary }: ContextMenuProps
           onSaveToLibrary();
           onClose();
         }}
-        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-white/5"
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
       >
         <svg className="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />

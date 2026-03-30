@@ -5,17 +5,17 @@ type StatusBadgeProps = {
 };
 
 const STATUS_THEMES: Record<string, string> = {
-  running: 'border-amber-300/35 bg-amber-300/10 text-amber-200',
-  ok: 'border-emerald-300/35 bg-emerald-300/10 text-emerald-200',
-  error: 'border-rose-300/35 bg-rose-300/10 text-rose-200',
-  partial: 'border-yellow-300/35 bg-yellow-300/10 text-yellow-200',
-  proposed: 'border-sky-300/35 bg-sky-300/10 text-sky-200',
-  approved: 'border-emerald-300/35 bg-emerald-300/10 text-emerald-200',
-  rejected: 'border-zinc-300/25 bg-zinc-300/10 text-zinc-200',
-  active: 'border-cyan-300/35 bg-cyan-300/10 text-cyan-200',
-  skipped: 'border-zinc-300/20 bg-zinc-300/10 text-zinc-300',
+  running: 'border-amber-800 bg-amber-950 text-amber-200',
+  ok: 'border-emerald-800 bg-emerald-950 text-emerald-200',
+  error: 'border-rose-800 bg-rose-950 text-rose-200',
+  partial: 'border-yellow-800 bg-yellow-950 text-yellow-200',
+  proposed: 'border-sky-800 bg-sky-950 text-sky-200',
+  approved: 'border-emerald-800 bg-emerald-950 text-emerald-200',
+  rejected: 'border-zinc-700 bg-zinc-800 text-zinc-200',
+  active: 'border-cyan-800 bg-cyan-950 text-cyan-200',
+  skipped: 'border-zinc-700 bg-zinc-800 text-zinc-300',
   pending: 'border-zinc-700 bg-zinc-800 text-zinc-300',
-  done: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200',
+  done: 'border-emerald-800 bg-emerald-950 text-emerald-200',
 };
 
 export function StatusBadge({ status, label, className = '' }: StatusBadgeProps) {
