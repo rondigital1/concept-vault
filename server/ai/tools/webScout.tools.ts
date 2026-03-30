@@ -71,7 +71,7 @@ export const evaluateResultArgsSchema = z.object({
   title: z.string().min(1),
   snippet: z.string(),
   goal: z.string().min(1),
-  publishedDate: z.string().optional(),
+  publishedDate: z.string().nullable().optional(),
 });
 
 export const checkVaultDuplicateArgsSchema = z.object({
