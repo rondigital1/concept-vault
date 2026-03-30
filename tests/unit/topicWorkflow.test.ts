@@ -286,3 +286,136 @@ describe('topicWorkflow report readiness', () => {
     expect(mockCountTopicLinkedDocuments).toHaveBeenCalledWith('topic-a');
   });
 });
+
+describe('topicWorkflow topics needing sources', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetLatestReportForTopic.mockResolvedValue(null);
+  });
+
+  it('returns only active topics below the linked-document threshold', async () => {
+    mockListSavedTopics.mockResolvedValue([
+      {
+        id: 'topic-a',
+        name: 'Agents',
+        goal: 'Track agent systems',
+        focus_tags: ['agents'],
+        max_docs_per_run: 5,
+        min_quality_results: 3,
+        min_relevance_score: 0.8,
+        max_iterations: 5,
+        max_queries: 10,
+        is_active: true,
+        is_tracked: false,
+        cadence: 'weekly',
+        last_run_at: null,
+        last_run_mode: null,
+        last_signal_at: null,
+        metadata: {},
+        created_at: '2026-03-01T00:00:00.000Z',
+        updated_at: '2026-03-04T00:00:00.000Z',
+      },
+      {
+        id: 'topic-b',
+        name: 'Inference',
+        goal: 'Track inference systems',
+        focus_tags: ['inference'],
+        max_docs_per_run: 5,
+        min_quality_results: 3,
+        min_relevance_score: 0.8,
+        max_iterations: 5,
+        max_queries: 10,
+        is_active: true,
+        is_tracked: false,
+        cadence: 'weekly',
+        last_run_at: null,
+        last_run_mode: null,
+        last_signal_at: null,
+        metadata: {},
+        created_at: '2026-03-01T00:00:00.000Z',
+        updated_at: '2026-03-05T00:00:00.000Z',
+      },
+      {
+        id: 'topic-c',
+        name: 'Evaluation',
+        goal: 'Track eval systems',
+        focus_tags: ['evals'],
+        max_docs_per_run: 5,
+        min_quality_results: 3,
+        min_relevance_score: 0.8,
+        max_iterations: 5,
+        max_queries: 10,
+        is_active: true,
+        is_tracked: false,
+        cadence: 'weekly',
+        last_run_at: null,
+        last_run_mode: null,
+        last_signal_at: null,
+        metadata: {},
+        created_at: '2026-03-01T00:00:00.000Z',
+        updated_at: '2026-03-03T00:00:00.000Z',
+      },
+    ]);
+
+    mockCountTopicLinkedDocuments.mockImplementation(async (topicId: string) => {
+      if (topicId === 'topic-a') return 1;
+      if (topicId === 'topic-b') return 3;
+      return 0;
+    });
+
+    mockGetLatestReportForTopic.mockImplementation(async (topicId: string) => {
+      if (topicId === 'topic-a') {
+        return { created_at: '2026-03-02T10:00:00.000Z' };
+      }
+      return null;
+    });
+
+    const { listTopicsNeedingSources } = await import('@/server/services/topicWorkflow.service');
+
+    const topics = await listTopicsNeedingSources(3);
+
+    expect(mockListSavedTopics).toHaveBeenCalledWith({ activeOnly: true });
+    expect(topics).toEqual([
+      expect.objectContaining({
+        topic: expect.objectContaining({ id: 'topic-a', name: 'Agents' }),
+        linkedDocumentCount: 1,
+        lastReportAt: '2026-03-02T10:00:00.000Z',
+      }),
+      expect.objectContaining({
+        topic: expect.objectContaining({ id: 'topic-c', name: 'Evaluation' }),
+        linkedDocumentCount: 0,
+        lastReportAt: null,
+      }),
+    ]);
+  });
+
+  it('returns an empty list when all active topics are report-ready', async () => {
+    mockListSavedTopics.mockResolvedValue([
+      {
+        id: 'topic-a',
+        name: 'Agents',
+        goal: 'Track agent systems',
+        focus_tags: ['agents'],
+        max_docs_per_run: 5,
+        min_quality_results: 3,
+        min_relevance_score: 0.8,
+        max_iterations: 5,
+        max_queries: 10,
+        is_active: true,
+        is_tracked: false,
+        cadence: 'weekly',
+        last_run_at: null,
+        last_run_mode: null,
+        last_signal_at: null,
+        metadata: {},
+        created_at: '2026-03-01T00:00:00.000Z',
+        updated_at: '2026-03-04T00:00:00.000Z',
+      },
+    ]);
+    mockCountTopicLinkedDocuments.mockResolvedValue(3);
+
+    const { listTopicsNeedingSources } = await import('@/server/services/topicWorkflow.service');
+
+    await expect(listTopicsNeedingSources(3)).resolves.toEqual([]);
+  });
+});

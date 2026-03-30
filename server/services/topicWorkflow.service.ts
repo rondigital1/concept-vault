@@ -10,6 +10,7 @@ import {
   upsertTopicSetup,
 } from '@/server/repos/savedTopics.repo';
 import { getLatestReportForTopic } from '@/server/repos/report.repo';
+import { GOAL_STOP_WORDS } from '@/server/ai/tools/scoring.utils';
 
 export type ScheduledRunMode = 'full_report' | 'incremental_update' | 'concept_only' | 'skip';
 
@@ -36,34 +37,13 @@ export interface ReportReadyTopic {
   lastReportAt: string | null;
 }
 
-export const MIN_LINKED_DOCUMENTS_FOR_REPORT = 3;
+export interface TopicNeedingSources {
+  topic: SavedTopicRow;
+  linkedDocumentCount: number;
+  lastReportAt: string | null;
+}
 
-const GOAL_STOP_WORDS = new Set([
-  'the',
-  'and',
-  'with',
-  'that',
-  'this',
-  'from',
-  'into',
-  'about',
-  'for',
-  'what',
-  'when',
-  'where',
-  'which',
-  'should',
-  'could',
-  'would',
-  'your',
-  'their',
-  'our',
-  'learn',
-  'learning',
-  'focus',
-  'find',
-  'build',
-]);
+export const MIN_LINKED_DOCUMENTS_FOR_REPORT = 3;
 
 function normalizeTag(tag: string): string | null {
   const clean = tag.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -290,4 +270,32 @@ export async function listReportReadyTopics(
 
       return b.topic.updated_at.localeCompare(a.topic.updated_at);
     });
+}
+
+export async function listTopicsNeedingSources(
+  minLinkedDocuments = MIN_LINKED_DOCUMENTS_FOR_REPORT,
+): Promise<TopicNeedingSources[]> {
+  const minimum = Math.max(1, Math.floor(minLinkedDocuments));
+  const topics = await listSavedTopics({ activeOnly: true });
+
+  const evaluated = await Promise.all(
+    topics.map(async (topic) => {
+      const [linkedDocumentCount, latestReport] = await Promise.all([
+        countTopicLinkedDocuments(topic.id),
+        getLatestReportForTopic(topic.id),
+      ]);
+
+      if (linkedDocumentCount >= minimum) {
+        return null;
+      }
+
+      return {
+        topic,
+        linkedDocumentCount,
+        lastReportAt: latestReport?.created_at ?? null,
+      } satisfies TopicNeedingSources;
+    }),
+  );
+
+  return evaluated.filter((entry): entry is TopicNeedingSources => entry !== null);
 }
