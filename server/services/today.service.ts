@@ -39,6 +39,10 @@ export type ResearchRun = {
   status: 'running' | 'ok' | 'error' | 'partial';
   startedAt: string;
   endedAt?: string;
+  metadata?: {
+    topicId?: string | null;
+    runMode?: string | null;
+  };
   steps: ResearchStep[];
 };
 
@@ -61,6 +65,15 @@ export type ResearchArtifact = {
 export type ResearchView = {
   date: string;
   runs: ResearchRun[];
+  inbox: ResearchArtifact[];
+  active: ResearchArtifact[];
+};
+
+export type EvidenceReviewRun = Omit<ResearchRun, 'steps'>;
+
+export type EvidenceReviewView = {
+  date: string;
+  runs: EvidenceReviewRun[];
   inbox: ResearchArtifact[];
   active: ResearchArtifact[];
 };
@@ -798,9 +811,10 @@ export async function getResearchView(): Promise<ResearchView> {
         status: 'running' | 'ok' | 'error' | 'partial';
         started_at: string;
         ended_at: string | null;
+        metadata: Record<string, unknown>;
       }>
     >`
-      SELECT id, kind, status, started_at, ended_at
+      SELECT id, kind, status, started_at, ended_at, metadata
       FROM runs
       ORDER BY started_at DESC
       LIMIT 12
@@ -916,7 +930,162 @@ export async function getResearchView(): Promise<ResearchView> {
       status: run.status,
       startedAt: run.started_at,
       endedAt: run.ended_at ?? undefined,
+      metadata: {
+        topicId:
+          typeof run.metadata?.topicId === 'string' && run.metadata.topicId.trim().length > 0
+            ? run.metadata.topicId.trim()
+            : null,
+        runMode:
+          typeof run.metadata?.runMode === 'string' && run.metadata.runMode.trim().length > 0
+            ? run.metadata.runMode.trim()
+            : null,
+      },
       steps: stepsByRun.get(run.id) ?? [],
+    })),
+    inbox: inboxRows.map((artifact) => mapArtifact(artifact)),
+    active: activeRows.map((artifact) => mapArtifact(artifact, true)),
+  };
+}
+
+export async function getEvidenceReviewView(): Promise<EvidenceReviewView> {
+  await ensureTodaySchema();
+  const date = todayISODate();
+
+  const [inboxRows, activeRows, runRows] = await Promise.all([
+    sql<
+      Array<{
+        id: string;
+        run_id: string | null;
+        agent: string;
+        kind: string;
+        day: string;
+        title: string;
+        content: Record<string, unknown>;
+        source_refs: Record<string, unknown>;
+        status: 'proposed' | 'approved' | 'rejected' | 'superseded';
+        created_at: string;
+      }>
+    >`
+      SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
+      FROM artifacts
+      WHERE status = 'proposed'
+      ORDER BY created_at DESC
+    `,
+    sql<
+      Array<{
+        id: string;
+        run_id: string | null;
+        agent: string;
+        kind: string;
+        day: string;
+        title: string;
+        content: Record<string, unknown>;
+        source_refs: Record<string, unknown>;
+        status: 'proposed' | 'approved' | 'rejected' | 'superseded';
+        created_at: string;
+      }>
+    >`
+      SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
+      FROM artifacts
+      WHERE status = 'approved'
+      ORDER BY COALESCE(reviewed_at, created_at) DESC
+    `,
+    sql<
+      Array<{
+        id: string;
+        kind: string;
+        status: 'running' | 'ok' | 'error' | 'partial';
+        started_at: string;
+        ended_at: string | null;
+        metadata: Record<string, unknown>;
+      }>
+    >`
+      SELECT id, kind, status, started_at, ended_at, metadata
+      FROM runs
+      ORDER BY started_at DESC
+      LIMIT 12
+    `,
+  ]);
+
+  const documentIds = new Set<string>();
+  for (const artifact of [...inboxRows, ...activeRows]) {
+    const documentId = readSourceDocumentId(artifact.source_refs ?? {});
+    if (documentId) {
+      documentIds.add(documentId);
+    }
+  }
+
+  const documentSourceRows = documentIds.size
+    ? await sql<Array<{ id: string; source: string }>>`
+        SELECT id, source
+        FROM documents
+        WHERE id = ANY(${Array.from(documentIds)})
+      `
+    : [];
+
+  const documentSourceById = new Map<string, string>();
+  for (const row of documentSourceRows) {
+    if (typeof row.source === 'string' && row.source.trim()) {
+      documentSourceById.set(row.id, row.source.trim());
+    }
+  }
+
+  function mapArtifact(
+    artifact: {
+      id: string;
+      run_id: string | null;
+      agent: string;
+      kind: string;
+      day: string;
+      title: string;
+      content: Record<string, unknown>;
+      source_refs: Record<string, unknown>;
+      status: 'proposed' | 'approved' | 'rejected' | 'superseded';
+      created_at: string;
+    },
+    mapApprovedToActive = false,
+  ): ResearchArtifact {
+    const sourceDocumentId = readSourceDocumentId(artifact.source_refs ?? {});
+    return {
+      id: artifact.id,
+      runId: artifact.run_id,
+      day: artifact.day,
+      agent: artifact.agent,
+      kind: artifact.kind,
+      status: toArtifactStatus(artifact.status, mapApprovedToActive),
+      title: artifact.title,
+      preview: asShortPreview(artifact.content, artifact.kind),
+      createdAt: artifact.created_at,
+      sourceDocumentId,
+      sourceUrl: resolveArtifactSourceUrl({
+        content: artifact.content ?? {},
+        sourceRefs: artifact.source_refs ?? {},
+        sourceDocumentId,
+        documentSourceById,
+      }),
+      sourceRefs: artifact.source_refs,
+      content: artifact.content,
+    };
+  }
+
+  return {
+    date,
+    runs: runRows.map((run) => ({
+      id: run.id,
+      kind: run.kind,
+      status: run.status,
+      startedAt: run.started_at,
+      endedAt: run.ended_at ?? undefined,
+      metadata: {
+        topicId:
+          typeof run.metadata?.topicId === 'string' && run.metadata.topicId.trim().length > 0
+            ? run.metadata.topicId.trim()
+            : null,
+        runMode:
+          typeof run.metadata?.runMode === 'string' && run.metadata.runMode.trim().length > 0
+            ? run.metadata.runMode.trim()
+            : null,
+      },
     })),
     inbox: inboxRows.map((artifact) => mapArtifact(artifact)),
     active: activeRows.map((artifact) => mapArtifact(artifact, true)),
