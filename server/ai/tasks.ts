@@ -26,6 +26,7 @@ export const AI_TASKS = {
   generateFlashcards: 'generate_flashcards',
   chatAssistant: 'chat_assistant',
   generatePromptSuggestions: 'generate_prompt_suggestions',
+  evaluateWebResult: 'evaluate_web_result',
   webResearchAgent: 'web_research_agent',
 } as const;
 

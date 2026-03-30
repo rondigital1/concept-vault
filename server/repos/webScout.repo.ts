@@ -89,6 +89,31 @@ export async function filterExistingUrls(urls: string[]): Promise<string[]> {
   return urls.filter((url) => !existingUrls.has(url));
 }
 
+/**
+ * Filter out URLs that were previously proposed or rejected as web-proposal artifacts.
+ * Returns only URLs that have NOT been previously proposed/rejected.
+ */
+export async function filterPreviouslyProposedUrls(urls: string[]): Promise<{
+  newUrls: string[];
+  previouslyProposed: string[];
+}> {
+  if (urls.length === 0) return { newUrls: [], previouslyProposed: [] };
+
+  const rows = await sql<Array<{ url: string }>>`
+    SELECT DISTINCT content->>'url' AS url
+    FROM artifacts
+    WHERE kind = 'web-proposal'
+      AND content->>'url' = ANY(${urls})
+      AND status IN ('proposed', 'rejected')
+  `;
+
+  const proposedSet = new Set(rows.map((r) => r.url));
+  return {
+    newUrls: urls.filter((url) => !proposedSet.has(url)),
+    previouslyProposed: urls.filter((url) => proposedSet.has(url)),
+  };
+}
+
 // ---------- Artifact Operations ----------
 
 /**

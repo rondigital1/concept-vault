@@ -133,6 +133,15 @@ export const AI_TASK_POLICY: Record<AITaskType, AITaskPolicy> = {
     retryCount: 1,
     structuredOutput: false,
   },
+  [AI_TASKS.evaluateWebResult]: {
+    defaultModel: DEFAULT_MODEL,
+    allowedEscalationModel: PREMIUM_MODEL,
+    reasoningEffort: 'medium',
+    maxOutputTokens: 800,
+    timeoutMs: 15_000,
+    retryCount: 1,
+    structuredOutput: true,
+  },
   [AI_TASKS.webResearchAgent]: {
     defaultModel: DEFAULT_MODEL,
     allowedEscalationModel: null,

@@ -5,7 +5,8 @@ import { buildPrompt } from '@/server/ai/prompt-builder';
 import { AI_TASKS } from '@/server/ai/tasks';
 import { executeTavilySearch } from '@/server/langchain/tools/tavily.tool';
 import { EvaluationResultSchema } from '@/server/langchain/schemas/webScore.schema';
-import { filterExistingUrls } from '@/server/repos/webScout.repo';
+import { filterExistingUrls, filterPreviouslyProposedUrls } from '@/server/repos/webScout.repo';
+import { extractSearchTerms } from '@/server/ai/tools/scoring.utils';
 
 interface WebScoutTool {
   definition: AIToolDefinition;
@@ -33,12 +34,17 @@ const HIGH_QUALITY_DOMAINS = new Set([
 const LOW_QUALITY_DOMAINS = new Set([
   'pinterest.com',
   'facebook.com',
-  'twitter.com',
-  'x.com',
   'tiktok.com',
   'instagram.com',
-  'reddit.com',
 ]);
+
+const NEUTRAL_DOMAINS = new Set([
+  'reddit.com',
+  'twitter.com',
+  'x.com',
+]);
+
+const SIX_MONTHS_MS = 180 * 24 * 60 * 60 * 1000;
 
 function isValidHttpUrl(value: string): boolean {
   try {
@@ -65,6 +71,7 @@ export const evaluateResultArgsSchema = z.object({
   title: z.string().min(1),
   snippet: z.string(),
   goal: z.string().min(1),
+  publishedDate: z.string().optional(),
 });
 
 export const checkVaultDuplicateArgsSchema = z.object({
@@ -85,7 +92,13 @@ function domainOf(url: string): string {
   }
 }
 
-function computeHeuristicScore(url: string, title: string, snippet: string, goal: string): number {
+function computeHeuristicScore(
+  url: string,
+  title: string,
+  snippet: string,
+  goal: string,
+  publishedDate?: string,
+): number {
   let score = 0.5;
 
   const domain = domainOf(url);
@@ -95,15 +108,23 @@ function computeHeuristicScore(url: string, title: string, snippet: string, goal
   if (LOW_QUALITY_DOMAINS.has(domain)) {
     score -= 0.3;
   }
+  // NEUTRAL_DOMAINS (reddit, twitter/x) get no bonus or penalty — they proceed to LLM evaluation on merit.
 
-  const goalWords = goal.toLowerCase().split(/\s+/);
+  const terms = extractSearchTerms(goal);
   const titleLower = title.toLowerCase();
   const snippetLower = snippet.toLowerCase();
-  const matchCount = goalWords.filter((word) => {
-    return titleLower.includes(word) || snippetLower.includes(word);
+  const matchCount = terms.filter((term) => {
+    return titleLower.includes(term) || snippetLower.includes(term);
   }).length;
-  const matchRatio = goalWords.length > 0 ? matchCount / goalWords.length : 0;
+  const matchRatio = terms.length > 0 ? matchCount / terms.length : 0;
   score += matchRatio * 0.3;
+
+  if (publishedDate) {
+    const published = Date.parse(publishedDate);
+    if (Number.isFinite(published) && Date.now() - published < SIX_MONTHS_MS) {
+      score += 0.05;
+    }
+  }
 
   return Math.max(0, Math.min(1, score));
 }
@@ -125,8 +146,9 @@ async function searchWebTool(args: unknown): Promise<string> {
   const results = response.results.map((result) => ({
     url: result.url,
     title: result.title,
-    snippet: result.content.slice(0, 500),
+    snippet: result.content.slice(0, 1000),
     score: result.score,
+    ...(result.publishedDate ? { publishedDate: result.publishedDate } : {}),
   }));
 
   return JSON.stringify(results);
@@ -134,9 +156,9 @@ async function searchWebTool(args: unknown): Promise<string> {
 
 async function evaluateResultTool(args: unknown): Promise<string> {
   const parsed = evaluateResultArgsSchema.parse(args);
-  const heuristic = computeHeuristicScore(parsed.url, parsed.title, parsed.snippet, parsed.goal);
+  const heuristic = computeHeuristicScore(parsed.url, parsed.title, parsed.snippet, parsed.goal, parsed.publishedDate);
 
-  if (heuristic > 0.7) {
+  if (heuristic > 0.8) {
     return JSON.stringify({
       relevanceScore: heuristic,
       contentType: 'article',
@@ -155,12 +177,21 @@ async function evaluateResultTool(args: unknown): Promise<string> {
   }
 
   try {
+    const candidateLines = [
+      `URL: ${parsed.url}`,
+      `TITLE: ${parsed.title}`,
+      `SNIPPET: ${parsed.snippet}`,
+    ];
+    if (parsed.publishedDate) {
+      candidateLines.push(`PUBLISHED: ${parsed.publishedDate}`);
+    }
+
     const prompt = buildPrompt({
-      task: AI_TASKS.compareDocuments,
+      task: AI_TASKS.evaluateWebResult,
       systemInstructions: [
         {
           heading: 'Role',
-          content: 'Evaluate a web resource for relevance to the user goal.',
+          content: 'Evaluate a web resource for relevance and quality relative to the user goal.',
         },
         {
           heading: 'Requirements',
@@ -168,7 +199,11 @@ async function evaluateResultTool(args: unknown): Promise<string> {
             'Score relevance from 0.0 to 1.0.',
             'Classify the content type as article, documentation, paper, tutorial, video, or other.',
             'Extract up to 5 topic tags.',
-            'Keep the reasoning concise.',
+            'Evaluate content depth: is this a substantive resource or a thin listicle/SEO page?',
+            'Consider technical quality: does it contain code examples, citations, data, or detailed explanations?',
+            'Consider source credibility: author reputation, publication quality, domain authority.',
+            'If a published date is available, factor in recency for the topic area.',
+            'Keep the reasoning concise but include your depth and credibility assessment.',
           ].join('\n'),
         },
       ],
@@ -179,12 +214,12 @@ async function evaluateResultTool(args: unknown): Promise<string> {
         },
         {
           heading: 'Candidate',
-          content: `URL: ${parsed.url}\nTITLE: ${parsed.title}\nSNIPPET: ${parsed.snippet}`,
+          content: candidateLines.join('\n'),
         },
       ],
     });
     const response = await openAIExecutionService.executeStructured({
-      task: AI_TASKS.compareDocuments,
+      task: AI_TASKS.evaluateWebResult,
       prompt,
       schema: EvaluationResultSchema,
       schemaName: 'web_result_evaluation',
@@ -202,12 +237,12 @@ async function evaluateResultTool(args: unknown): Promise<string> {
 
 async function checkVaultDuplicateTool(args: unknown): Promise<string> {
   const parsed = checkVaultDuplicateArgsSchema.parse(args);
-  const newUrls = await filterExistingUrls(parsed.urls);
-  const existingUrls = parsed.urls.filter((url) => {
-    return !newUrls.includes(url);
-  });
+  const notInVault = await filterExistingUrls(parsed.urls);
+  const existingUrls = parsed.urls.filter((url) => !notInVault.includes(url));
 
-  return JSON.stringify({ newUrls, existingUrls });
+  const { newUrls, previouslyProposed } = await filterPreviouslyProposedUrls(notInVault);
+
+  return JSON.stringify({ newUrls, existingUrls, previouslyProposed });
 }
 
 async function refineQueryTool(args: unknown): Promise<string> {
@@ -252,7 +287,7 @@ export const webScoutTools: WebScoutTool[] = [
     definition: {
       name: 'searchWeb',
       description:
-        'Search the web for resources. Returns a JSON array of { url, title, snippet, score }.',
+        'Search the web for resources. Returns a JSON array of { url, title, snippet, score, publishedDate? }.',
       schema: searchWebArgsSchema,
     },
     execute: searchWebTool,
@@ -261,7 +296,7 @@ export const webScoutTools: WebScoutTool[] = [
     definition: {
       name: 'checkVaultDuplicate',
       description:
-        "Check which URLs already exist in the user's vault. Returns { newUrls, existingUrls }.",
+        "Check URLs against the vault and past proposals. Returns { newUrls, existingUrls, previouslyProposed }.",
       schema: checkVaultDuplicateArgsSchema,
     },
     execute: checkVaultDuplicateTool,
