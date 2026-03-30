@@ -5,6 +5,7 @@ import { client, ensureSchema } from '@/db';
 import { getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
 import {
   listReportReadyTopics,
+  listTopicsNeedingSources,
   MIN_LINKED_DOCUMENTS_FOR_REPORT,
 } from '@/server/services/topicWorkflow.service';
 
@@ -43,7 +44,9 @@ export default async function WebScoutPage({
 }) {
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
   const runMode = firstQueryParam(resolvedSearchParams.runMode) ?? 'full_report';
+  const scope = firstQueryParam(resolvedSearchParams.scope);
   const topicId = firstQueryParam(resolvedSearchParams.topicId);
+  const isBatchFindSources = runMode === 'scout_only' && scope === 'all_topics';
   const requiresTopicSelection = runMode === 'full_report' && !topicId;
   const pageTitle = requiresTopicSelection ? 'Generate Report' : getRunModeTitle(runMode);
   const pageDescriptionMap: Record<string, string> = {
@@ -52,11 +55,13 @@ export default async function WebScoutPage({
     scout_only: 'Find new source candidates to review and save into your library.',
     concept_only: 'Extract concepts and flashcards from the latest source material.',
   };
-  const pageDescription =
-    pageDescriptionMap[runMode] ??
-    'Live progress plus a clear summary of what this run created.';
+  const pageDescription = isBatchFindSources
+    ? 'Run Find Sources across active topics that still need more material before they are ready for a report.'
+    : pageDescriptionMap[runMode] ??
+      'Live progress plus a clear summary of what this run created.';
 
   let reportTopicsError: string | null = null;
+  let batchTopicsError: string | null = null;
   let selectedTopicName: string | null = null;
   let reportTopicOptions: Array<{
     id: string;
@@ -66,10 +71,19 @@ export default async function WebScoutPage({
     linkedDocumentCount: number;
     lastReportAt: string | null;
   }> = [];
+  let batchTopicOptions: Array<{
+    id: string;
+    name: string;
+    goal: string;
+    focusTags: string[];
+    linkedDocumentCount: number;
+  }> = [];
 
   const schemaResult = await ensureSchema(client);
   if (!schemaResult.ok) {
-    reportTopicsError = schemaResult.error || 'Failed to initialize database';
+    const schemaError = schemaResult.error || 'Failed to initialize database';
+    reportTopicsError = schemaError;
+    batchTopicsError = schemaError;
   } else {
     if (requiresTopicSelection) {
       try {
@@ -88,6 +102,24 @@ export default async function WebScoutPage({
       }
     }
 
+    if (isBatchFindSources) {
+      try {
+        const topicsNeedingSources = await listTopicsNeedingSources(
+          MIN_LINKED_DOCUMENTS_FOR_REPORT,
+        );
+        batchTopicOptions = topicsNeedingSources.map((entry) => ({
+          id: entry.topic.id,
+          name: entry.topic.name,
+          goal: entry.topic.goal,
+          focusTags: entry.topic.focus_tags ?? [],
+          linkedDocumentCount: entry.linkedDocumentCount,
+        }));
+      } catch (error) {
+        batchTopicsError =
+          error instanceof Error ? error.message : 'Failed to load topics that need more sources';
+      }
+    }
+
     if (topicId) {
       try {
         const topics = await getSavedTopicsByIds([topicId]);
@@ -101,7 +133,7 @@ export default async function WebScoutPage({
   return (
     <>
       <main className="min-h-screen pb-16 relative">
-        <div className="pointer-events-none absolute left-1/2 top-0 h-[220px] w-[480px] -translate-x-1/2 rounded-full bg-sky-500/5 blur-[90px]" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[220px] w-[480px] -translate-x-1/2 rounded-full bg-zinc-900 blur-[90px]" />
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 relative z-10">
           <header className="flex items-start justify-between gap-4 mb-6">
             <div>
@@ -117,12 +149,15 @@ export default async function WebScoutPage({
           </header>
           <Suspense
             fallback={
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-sm text-zinc-400">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 text-sm text-zinc-400">
                 Preparing workflow run...
               </div>
             }
           >
             <WebScoutRunClient
+              isBatchFindSources={isBatchFindSources}
+              batchTopicOptions={batchTopicOptions}
+              batchTopicsError={batchTopicsError}
               requiresTopicSelection={requiresTopicSelection}
               reportTopicOptions={reportTopicOptions}
               reportTopicsError={reportTopicsError}
