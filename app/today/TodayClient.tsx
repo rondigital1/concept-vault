@@ -9,12 +9,7 @@ export function TodayClient() {
 
   useEffect(() => {
     function isArtifactActionForm(form: HTMLFormElement): boolean {
-      const action = form.getAttribute('action') ?? form.action;
-      return /\/api\/artifacts\/[^/]+\/(approve|reject)(?:\?.*)?$/.test(action);
-    }
-
-    function decisionFromAction(action: string): 'approved' | 'rejected' {
-      return /\/approve(?:\?|$)/.test(action) ? 'approved' : 'rejected';
+      return form.dataset.artifactAction === 'approve' || form.dataset.artifactAction === 'reject';
     }
 
     async function handleArtifactActionSubmit(event: Event) {
@@ -31,10 +26,11 @@ export function TodayClient() {
       const fallbackButton = form.querySelector<HTMLButtonElement>('button[type="submit"]');
       const button = submitter ?? fallbackButton;
       const previousLabel = button?.textContent ?? '';
+      const action = form.dataset.artifactAction ?? 'approve';
 
       if (button) {
         button.disabled = true;
-        button.textContent = 'Saving...';
+        button.textContent = action === 'approve' ? 'Saving...' : 'Rejecting...';
       }
 
       try {
@@ -46,7 +42,7 @@ export function TodayClient() {
           body: JSON.stringify({}),
         });
 
-        const payload = await response.json().catch(() => null) as
+        const payload = (await response.json().catch(() => null)) as
           | {
               error?: string;
               libraryImport?: {
@@ -63,30 +59,16 @@ export function TodayClient() {
           throw new Error(errorMessage);
         }
 
-        const decision = decisionFromAction(form.action);
-        const itemElement = form.closest('[data-inbox-item]');
-        if (itemElement instanceof HTMLElement) {
-          itemElement.setAttribute('data-reviewed', 'true');
-          itemElement.style.display = 'none';
-        }
-
-        const countElement = document.getElementById('review-inbox-count');
-        if (countElement) {
-          const current = Number.parseInt((countElement.textContent ?? '').trim(), 10);
-          if (Number.isFinite(current) && current > 0) {
-            countElement.textContent = String(current - 1);
-          }
-        }
-
-        if (decision === 'approved' && payload?.libraryImport) {
+        if (action === 'approve' && payload?.libraryImport) {
           toast.success(
             payload.libraryImport.created
-              ? 'Approved. Saved to Library and future topic reports can use it.'
-              : 'Approved. This source was already in Library and will stay available for future topic reports.',
+              ? 'Saved. Added to Library and available for future topic reports.'
+              : 'Saved. This source was already in Library and will stay available for future topic reports.',
           );
         } else {
-          toast.success(`Artifact ${decision}`);
+          toast.success(action === 'approve' ? 'Evidence saved' : 'Evidence rejected');
         }
+
         router.refresh();
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Action failed';

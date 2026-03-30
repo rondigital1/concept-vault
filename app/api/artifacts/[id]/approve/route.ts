@@ -197,9 +197,9 @@ export async function POST(
     if (!expectsJson) {
       const infoMessage = artifact.kind === 'web-proposal'
         ? webImportResult?.created
-          ? 'Approved. Added to Library and available for future topic reports.'
-          : 'Approved. Source was already in Library and remains available for future topic reports.'
-        : 'Artifact approved.';
+          ? 'Evidence saved. Added to Library and available for future topic reports.'
+          : 'Evidence saved. Source was already in Library and remains available for future topic reports.'
+        : 'Evidence saved.';
       return NextResponse.redirect(buildRedirectUrl(request, { infoMessage }), { status: 303 });
     }
 
