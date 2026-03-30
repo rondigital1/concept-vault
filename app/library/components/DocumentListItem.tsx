@@ -28,8 +28,8 @@ export function DocumentListItem({ document, isSelected }: Props) {
       href={`/library/${document.id}`}
       className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
         isSelected
-          ? 'bg-white/10 text-white'
-          : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+          ? 'bg-zinc-800 text-white'
+          : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
       }`}
     >
       <svg

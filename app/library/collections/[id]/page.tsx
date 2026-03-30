@@ -58,7 +58,7 @@ export default async function CollectionPage(props: PageProps) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
           {validDocs.map((doc) => (
             <Link key={doc!.id} href={`/library/${doc!.id}`} className="group block h-full min-w-0">
-              <Card className="flex h-full flex-col overflow-hidden border-white/10 bg-zinc-950/90 p-5 transition-all duration-300 hover:scale-[1.02] hover:border-white/20 cursor-pointer">
+              <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950 p-5 transition-all duration-300 hover:scale-[1.02] hover:border-zinc-700 cursor-pointer">
                 <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
                   <h3 className="text-base font-semibold text-white leading-tight line-clamp-3 break-words group-hover:text-[#d97757] transition-colors">
                     {doc!.title}
@@ -73,7 +73,7 @@ export default async function CollectionPage(props: PageProps) {
                     </div>
                   )}
                 </div>
-                <div className="mt-auto pt-4 border-t border-white/5">
+                <div className="mt-auto pt-4 border-t border-zinc-800">
                   <div className="flex items-center gap-2 text-xs text-zinc-500">
                     <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />

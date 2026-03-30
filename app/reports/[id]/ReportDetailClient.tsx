@@ -7,7 +7,7 @@ import { Badge } from '@/app/components/Badge';
 
 const DocumentMarkdown = dynamic(
   () => import('@/app/library/[id]/DocumentMarkdown'),
-  { loading: () => <div className="animate-pulse h-96 rounded-lg bg-white/5" /> },
+  { loading: () => <div className="animate-pulse h-96 rounded-lg bg-zinc-900" /> },
 );
 
 interface ReportDetailClientProps {
@@ -61,7 +61,7 @@ export default function ReportDetailClient({
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black">
-      <div className="sticky top-0 z-10 border-b border-white/5 bg-black/50 backdrop-blur-xl">
+      <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950">
         <div className="mx-auto max-w-5xl px-6 py-6">
           <div className="flex flex-wrap gap-3 text-sm">
             <Link href="/reports" className="text-zinc-400 transition-colors hover:text-white">
@@ -103,13 +103,13 @@ export default function ReportDetailClient({
                   {marking ? 'Marking...' : 'Mark as read'}
                 </button>
               ) : (
-                <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-100">
+                <span className="rounded-lg border border-emerald-800 bg-emerald-950 px-4 py-2 text-sm font-medium text-emerald-100">
                   Read
                 </span>
               )}
               <Link
                 href="/today"
-                className="inline-flex items-center justify-center rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5"
+                className="inline-flex items-center justify-center rounded-lg border border-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
               >
                 Continue in Research
               </Link>
@@ -119,7 +119,7 @@ export default function ReportDetailClient({
       </div>
 
       <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="rounded-2xl border border-white/5 bg-zinc-950/50 p-6">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
           <div className="max-w-3xl">
             <DocumentMarkdown content={markdown} />
           </div>

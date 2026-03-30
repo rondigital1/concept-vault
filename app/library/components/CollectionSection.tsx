@@ -87,7 +87,7 @@ export function CollectionSection({ collections, expanded, onToggle }: Props) {
               if (!newName.trim()) setIsCreating(false);
             }}
             placeholder="Collection name..."
-            className="w-full px-2 py-1 text-sm bg-white/5 border border-white/10 rounded text-white placeholder-zinc-500 focus:outline-none focus:border-white/20"
+            className="w-full px-2 py-1 text-sm bg-zinc-900 border border-zinc-800 rounded text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
             autoFocus
             disabled={isPending}
           />
@@ -103,8 +103,8 @@ export function CollectionSection({ collections, expanded, onToggle }: Props) {
                 href={`/library/collections/${c.id}`}
                 className={`flex-1 flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
                   isActive
-                    ? 'bg-white/10 text-white'
-                    : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                    ? 'bg-zinc-800 text-white'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
                 }`}
               >
                 <svg className="w-4 h-4 shrink-0 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

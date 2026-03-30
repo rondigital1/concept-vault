@@ -33,9 +33,9 @@ export function LibrarySidebar({
   const [allDocsExpanded, setAllDocsExpanded] = useState(true);
 
   return (
-    <aside className="w-72 border-r border-white/5 bg-zinc-950 flex flex-col overflow-hidden shrink-0">
+    <aside className="w-72 border-r border-zinc-800 bg-zinc-950 flex flex-col overflow-hidden shrink-0">
       {/* Header */}
-      <div className="p-3 border-b border-white/5 flex items-center justify-between">
+      <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
         <div>
           <span className="text-sm font-semibold text-zinc-300">Library</span>
           <p className="mt-0.5 text-xs text-zinc-500">Search, organize, and clean up imports</p>
@@ -56,7 +56,7 @@ export function LibrarySidebar({
         {cleanupCount > 0 && (
           <Link
             href="/library#needs-cleanup"
-            className="mb-3 block rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 transition-colors hover:bg-amber-500/15"
+            className="mb-3 block rounded-xl border border-amber-800 bg-amber-950 px-3 py-2 text-xs text-amber-100 transition-colors hover:bg-amber-900"
           >
             {cleanupCount} title{cleanupCount === 1 ? '' : 's'} need cleanup
           </Link>
@@ -75,7 +75,7 @@ export function LibrarySidebar({
             placeholder="Search titles or tags"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-sm bg-white/5 border border-white/10 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-white/20 transition-colors"
+            className="w-full pl-8 pr-3 py-1.5 text-sm bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
           />
           {searchQuery && (
             <button

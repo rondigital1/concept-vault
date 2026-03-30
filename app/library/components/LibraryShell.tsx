@@ -59,7 +59,7 @@ export function LibraryShell({ documents, collections, children }: Props) {
         {!sidebarOpen && (
           <button
             onClick={() => setSidebarOpen(true)}
-            className="fixed left-2 top-[72px] z-20 p-2 bg-zinc-900 border border-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"
+            className="fixed left-2 top-[72px] z-20 p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-colors"
             aria-label="Open sidebar"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

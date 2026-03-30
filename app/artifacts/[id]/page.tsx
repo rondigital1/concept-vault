@@ -99,8 +99,8 @@ function formatKindLabel(kind: string): string {
 
 function statusTheme(status: ArtifactRow['status']): string {
   const themes: Record<ArtifactRow['status'], string> = {
-    proposed: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-    approved: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+    proposed: 'border-amber-800 bg-amber-950 text-amber-200',
+    approved: 'border-emerald-800 bg-emerald-950 text-emerald-200',
     rejected: 'border-zinc-700 bg-zinc-900 text-zinc-300',
     superseded: 'border-zinc-700 bg-zinc-900 text-zinc-300',
   };
@@ -110,10 +110,10 @@ function statusTheme(status: ArtifactRow['status']): string {
 
 function kindTheme(kind: string): string {
   const themes: Record<string, string> = {
-    'web-proposal': 'border-sky-500/30 bg-sky-500/10 text-sky-200',
-    concept: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
-    flashcard: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-    'research-report': 'border-rose-500/30 bg-rose-500/10 text-rose-200',
+    'web-proposal': 'border-sky-800 bg-sky-950 text-sky-200',
+    concept: 'border-emerald-800 bg-emerald-950 text-emerald-200',
+    flashcard: 'border-amber-800 bg-amber-950 text-amber-200',
+    'research-report': 'border-rose-800 bg-rose-950 text-rose-200',
   };
 
   return themes[kind] ?? 'border-zinc-700 bg-zinc-900 text-zinc-300';
@@ -147,7 +147,7 @@ function renderArtifactSummary(args: {
     const sourcesCount = readNumber(content.sourcesCount);
 
     return (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
         <p className="mt-3 text-sm text-zinc-300">
           Use the report view for reading and sharing. This page keeps the report context and technical payload together in one place.
@@ -158,13 +158,13 @@ function renderArtifactSummary(args: {
           </p>
         )}
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Sources Used</p>
             <p className="mt-2 text-lg font-semibold text-white">
               {typeof sourcesCount === 'number' ? sourcesCount : '—'}
             </p>
           </div>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Topics Covered</p>
             <p className="mt-2 text-sm text-zinc-100">
               {topicsCovered.length > 0 ? topicsCovered.join(', ') : 'No topics listed'}
@@ -180,20 +180,20 @@ function renderArtifactSummary(args: {
     const contentType = readString(content.contentType);
 
     return (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
         <p className="mt-3 text-sm leading-7 text-zinc-100">
           {summary ?? 'No summary was saved for this source candidate.'}
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Source</p>
             {sourceUrl ? (
               <a
                 href={sourceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-2 inline-flex text-sm text-blue-300 underline decoration-blue-300/40 underline-offset-2 break-all hover:text-blue-200"
+                className="mt-2 inline-flex text-sm text-blue-300 underline decoration-blue-400 underline-offset-2 break-all hover:text-blue-200"
               >
                 {sourceUrl}
               </a>
@@ -201,7 +201,7 @@ function renderArtifactSummary(args: {
               <p className="mt-2 text-sm text-zinc-300">No source URL saved</p>
             )}
           </div>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Why It Matters</p>
             <p className="mt-2 text-sm text-zinc-100">
               {typeof relevanceScore === 'number'
@@ -217,7 +217,7 @@ function renderArtifactSummary(args: {
               {topics.map((topic) => (
                 <span
                   key={topic}
-                  className="rounded-full border border-zinc-700 bg-zinc-950/70 px-2.5 py-1 text-xs text-zinc-200"
+                  className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-200"
                 >
                   {topic}
                 </span>
@@ -249,17 +249,17 @@ function renderArtifactSummary(args: {
     const documentTitle = readString(content.documentTitle);
 
     return (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
         <p className="mt-3 text-sm leading-7 text-zinc-100">
           {summary ?? 'No concept summary was saved for this item.'}
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Type</p>
             <p className="mt-2 text-sm text-zinc-100">{type ?? 'Concept'}</p>
           </div>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">From Document</p>
             <p className="mt-2 text-sm text-zinc-100">{documentTitle ?? 'Unknown document'}</p>
           </div>
@@ -269,7 +269,7 @@ function renderArtifactSummary(args: {
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Supporting Evidence</p>
             <ul className="mt-2 space-y-2 text-sm text-zinc-300">
               {evidence.map((entry) => (
-                <li key={entry} className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                <li key={entry} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
                   {entry}
                 </li>
               ))}
@@ -287,16 +287,16 @@ function renderArtifactSummary(args: {
     const documentTitle = readString(content.documentTitle);
 
     return (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Prompt</p>
             <p className="mt-3 text-sm leading-7 text-zinc-100">
               {front ?? artifact.title}
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Answer</p>
             <p className="mt-3 text-sm leading-7 text-zinc-100">
               {back ?? 'No answer was saved for this flashcard.'}
@@ -312,7 +312,7 @@ function renderArtifactSummary(args: {
   }
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
       <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
       <p className="mt-3 text-sm text-zinc-300">
         This item does not have a specialized summary view yet. Technical details remain available below.
@@ -419,7 +419,7 @@ export default async function ArtifactDetailPage({
         )}
 
         {artifact.status === 'proposed' && (
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Review Actions</h2>
             <p className="mt-3 text-sm text-zinc-300">
               Review this item here, or return to Research to continue the broader queue.
@@ -428,7 +428,7 @@ export default async function ArtifactDetailPage({
               <form action={`/api/artifacts/${artifact.id}/approve`} method="POST">
                 <button
                   type="submit"
-                  className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2 text-sm font-medium text-green-300 hover:bg-green-500/20 transition-colors"
+                  className="rounded-lg border border-green-800 bg-green-950 px-4 py-2 text-sm font-medium text-green-300 hover:bg-green-900 transition-colors"
                 >
                   {artifact.kind === 'web-proposal' ? 'Save Source' : 'Approve'}
                 </button>
@@ -436,7 +436,7 @@ export default async function ArtifactDetailPage({
               <form action={`/api/artifacts/${artifact.id}/reject`} method="POST">
                 <button
                   type="submit"
-                  className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/20 transition-colors"
+                  className="rounded-lg border border-red-800 bg-red-950 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-900 transition-colors"
                 >
                   {artifact.kind === 'web-proposal' ? 'Dismiss' : 'Reject'}
                 </button>
@@ -451,22 +451,22 @@ export default async function ArtifactDetailPage({
           sourceDocumentId,
         })}
 
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
           <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Context</h2>
           <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
               <dt className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Day</dt>
               <dd className="mt-2 text-sm text-zinc-100">{artifact.day}</dd>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
               <dt className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Agent</dt>
               <dd className="mt-2 text-sm text-zinc-100">{artifact.agent}</dd>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
               <dt className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Reviewed</dt>
               <dd className="mt-2 text-sm text-zinc-100">{formatDateTime(artifact.reviewed_at)}</dd>
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
               <dt className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Run</dt>
               <dd className="mt-2 text-sm text-zinc-100">{artifact.run_id ?? 'No run linked'}</dd>
             </div>
@@ -475,7 +475,7 @@ export default async function ArtifactDetailPage({
 
         <details
           id="technical-details"
-          className="rounded-xl border border-zinc-800 bg-zinc-900/50"
+          className="rounded-xl border border-zinc-800 bg-zinc-900"
         >
           <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-zinc-300 hover:text-white transition-colors">
             Technical Details

@@ -62,7 +62,7 @@ function ModeButton({
       className={`rounded-2xl border p-4 text-left transition-all ${
         selected
           ? 'border-[#d97757]/50 bg-[#d97757]/10 shadow-[0_12px_30px_rgba(217,119,87,0.12)]'
-          : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]'
+          : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-800'
       }`}
     >
       <p className="text-sm font-semibold text-white">{config.label}</p>
@@ -85,7 +85,7 @@ function ActionFooter({
   onClick?: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-4 border-t border-white/5 pt-6 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-4 border-t border-zinc-900 pt-6 sm:flex-row sm:items-center sm:justify-between">
       <p className="max-w-2xl text-sm text-zinc-500">{note}</p>
       <button
         type={onClick ? 'button' : 'submit'}
@@ -93,13 +93,13 @@ function ActionFooter({
         disabled={disabled || loading}
         className={`inline-flex items-center justify-center rounded-lg px-6 py-3 text-sm font-semibold transition-all ${
           disabled || loading
-            ? 'cursor-not-allowed bg-white/5 text-zinc-500'
+            ? 'cursor-not-allowed bg-zinc-900 text-zinc-500'
             : 'bg-[#d97757] text-white hover:bg-[#c66849] shadow-lg hover:shadow-xl'
         }`}
       >
         {loading ? (
           <span className="flex items-center gap-2">
-            <LoadingSpinner className="h-4 w-4 border-white/40 border-t-white" />
+            <LoadingSpinner className="h-4 w-4 border-zinc-600 border-t-white" />
             Working...
           </span>
         ) : (
@@ -287,7 +287,7 @@ export default function IngestPage() {
     <>
       <ToastContainer />
       <main className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black">
-        <div className="sticky top-0 z-10 border-b border-white/5 bg-black/50 backdrop-blur-xl">
+        <div className="sticky top-0 z-10 border-b border-zinc-900 bg-zinc-950">
           <div className="mx-auto max-w-5xl px-6 py-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
@@ -308,7 +308,7 @@ export default function IngestPage() {
 
         <div className="mx-auto max-w-5xl px-6 py-10">
           <div className="space-y-8">
-            <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 p-6">
+            <section className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 p-6">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
                 Choose a starting point
               </p>
@@ -319,7 +319,7 @@ export default function IngestPage() {
               </div>
             </section>
 
-            <section className="rounded-3xl border border-white/10 bg-zinc-950/90 p-6 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
+            <section className="rounded-3xl border border-zinc-800 bg-zinc-950 p-6 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
               <form
                 onSubmit={mode === 'file' ? (e) => e.preventDefault() : handleTextSubmit}
                 className="space-y-6"
@@ -344,7 +344,7 @@ export default function IngestPage() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder={titlePlaceholder}
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent"
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent"
                   />
                 </div>
 
@@ -360,8 +360,8 @@ export default function IngestPage() {
                         dragActive
                           ? 'border-[#d97757] bg-[#d97757]/10'
                           : selectedFile
-                            ? 'border-emerald-500/50 bg-emerald-500/5'
-                            : 'border-white/15 bg-white/5 hover:border-white/30 hover:bg-white/[0.07]'
+                            ? 'border-emerald-700 bg-emerald-950'
+                            : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-800'
                       }`}
                     >
                       <input
@@ -374,7 +374,7 @@ export default function IngestPage() {
 
                       {selectedFile ? (
                         <div className="space-y-3">
-                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
+                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-900">
                             <svg className="h-6 w-6 text-emerald-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
@@ -398,7 +398,7 @@ export default function IngestPage() {
                         </div>
                       ) : (
                         <div className="space-y-3">
-                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
+                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800">
                             <svg className="h-6 w-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                             </svg>
@@ -437,7 +437,7 @@ export default function IngestPage() {
                         value={source}
                         onChange={(e) => setSource(e.target.value)}
                         placeholder="Book, course, transcript, or where this came from"
-                        className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent"
+                        className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent"
                       />
                     </div>
 
@@ -451,7 +451,7 @@ export default function IngestPage() {
                         onChange={(e) => setContent(e.target.value)}
                         placeholder={'Paste your content here.\n\nMarkdown is supported for headings, lists, links, and code.'}
                         rows={16}
-                        className="w-full resize-y rounded-lg border border-white/10 bg-white/5 px-4 py-3 font-mono text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent"
+                        className="w-full resize-y rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 font-mono text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent"
                         required
                       />
                       <div className="mt-2 flex flex-col gap-1 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
@@ -484,12 +484,12 @@ export default function IngestPage() {
                         value={source}
                         onChange={(e) => setSource(e.target.value)}
                         placeholder="https://example.com/article"
-                        className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent"
+                        className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#d97757] focus:border-transparent"
                         required
                       />
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
                       <p className="text-sm text-zinc-300">
                         We will fetch the page, extract readable content, and save the result into your library.
                       </p>

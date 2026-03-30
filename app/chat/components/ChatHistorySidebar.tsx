@@ -72,8 +72,8 @@ export function ChatHistorySidebar({
   }
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col overflow-hidden border-r border-white/5 bg-zinc-950">
-      <div className="border-b border-white/5 px-4 py-4">
+    <aside className="flex h-full w-80 shrink-0 flex-col overflow-hidden border-r border-zinc-800 bg-zinc-950">
+      <div className="border-b border-zinc-800 px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-white">Ask Vault</h2>
@@ -83,7 +83,7 @@ export function ChatHistorySidebar({
           </div>
           <button
             onClick={onToggle}
-            className="rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
+            className="rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-white"
             title="Close sidebar"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,7 +98,7 @@ export function ChatHistorySidebar({
         </div>
       </div>
 
-      <div className="border-b border-white/5 p-3">
+      <div className="border-b border-zinc-800 p-3">
         <button
           onClick={onNewChat}
           className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-zinc-200"
@@ -114,11 +114,11 @@ export function ChatHistorySidebar({
         {isLoading ? (
           <div className="space-y-3 p-2">
             {[1, 2, 3].map((item) => (
-              <div key={item} className="h-16 animate-pulse rounded-xl bg-white/5" />
+              <div key={item} className="h-16 animate-pulse rounded-xl bg-zinc-900" />
             ))}
           </div>
         ) : sessions.length === 0 ? (
-          <div className="rounded-xl border border-white/5 bg-white/[0.03] px-4 py-5 text-sm text-zinc-500">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-5 text-sm text-zinc-500">
             No conversations yet. Start with a question about your reports, documents, or concepts.
           </div>
         ) : (
@@ -132,8 +132,8 @@ export function ChatHistorySidebar({
                   onClick={() => handleSelectSession(session.id)}
                   className={`group flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${
                     isActive
-                      ? 'border-[#d97757]/35 bg-[#d97757]/10'
-                      : 'border-transparent bg-white/[0.02] hover:border-white/5 hover:bg-white/[0.05]'
+                      ? 'border-[#5a3020] bg-[#2a1810]'
+                      : 'border-transparent bg-zinc-950 hover:border-zinc-800 hover:bg-zinc-900'
                   }`}
                 >
                   <div
@@ -160,8 +160,8 @@ export function ChatHistorySidebar({
                     onClick={(e) => handleDeleteSession(e, session.id)}
                     className={`rounded-md p-1 transition-all ${
                       isActive
-                        ? 'text-zinc-400 hover:bg-white/5 hover:text-white'
-                        : 'text-zinc-600 opacity-0 hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100'
+                        ? 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                        : 'text-zinc-600 opacity-0 hover:bg-red-950 hover:text-red-300 group-hover:opacity-100'
                     }`}
                     title="Delete conversation"
                   >

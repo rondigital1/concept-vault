@@ -20,8 +20,8 @@ function LibraryStat({
   tone?: 'default' | 'attention';
 }) {
   const tones = {
-    default: 'border-white/10 bg-black/30 text-zinc-300',
-    attention: 'border-amber-500/30 bg-amber-500/10 text-amber-100',
+    default: 'border-zinc-800 bg-zinc-900 text-zinc-300',
+    attention: 'border-amber-800 bg-amber-950 text-amber-100',
   };
 
   return (
@@ -45,18 +45,18 @@ function DocumentGrid({ documents }: { documents: LibraryDocumentRow[] }) {
 
         return (
           <Link key={doc.id} href={`/library/${doc.id}`} className="group block h-full min-w-0">
-            <Card className="flex h-full flex-col overflow-hidden border-white/10 bg-zinc-950/90 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20">
+            <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-700">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-zinc-300">
+                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[11px] font-medium text-zinc-300">
                   {originLabel}
                 </span>
                 {titleIssue && (
-                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100">
+                  <span className="rounded-full border border-amber-800 bg-amber-950 px-2.5 py-1 text-[11px] font-medium text-amber-100">
                     Needs cleanup
                   </span>
                 )}
                 {doc.is_favorite && (
-                  <span className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-[11px] font-medium text-yellow-100">
+                  <span className="rounded-full border border-yellow-800 bg-yellow-950 px-2.5 py-1 text-[11px] font-medium text-yellow-100">
                     Favorite
                   </span>
                 )}
@@ -68,7 +68,7 @@ function DocumentGrid({ documents }: { documents: LibraryDocumentRow[] }) {
                 </h2>
 
                 {titleIssue ? (
-                  <p className="text-sm leading-6 text-amber-100/90">{titleIssue.reason}</p>
+                  <p className="text-sm leading-6 text-amber-100">{titleIssue.reason}</p>
                 ) : (
                   <p className="text-sm leading-6 text-zinc-400">
                     Open this document to review the full source, tags, and saved content.
@@ -91,12 +91,12 @@ function DocumentGrid({ documents }: { documents: LibraryDocumentRow[] }) {
                 )}
               </div>
 
-              <div className="mt-6 flex items-center justify-between gap-3 border-t border-white/5 pt-4 text-xs text-zinc-500">
+              <div className="mt-6 flex items-center justify-between gap-3 border-t border-zinc-800 pt-4 text-xs text-zinc-500">
                 <div className="min-w-0">
                   <p className="truncate">{getSourceDisplay(doc.source)}</p>
                   <p className="mt-1">{formatLibraryRelativeDate(doc.imported_at)}</p>
                 </div>
-                <span className="rounded-full border border-white/10 px-2.5 py-1 text-zinc-300">
+                <span className="rounded-full border border-zinc-800 px-2.5 py-1 text-zinc-300">
                   {titleIssue ? 'Open to rename' : 'Open document'}
                 </span>
               </div>
@@ -149,7 +149,7 @@ export default async function LibraryPage() {
     return (
       <div className="flex h-full items-center justify-center p-6 text-center">
         <div className="max-w-md space-y-6">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-950">
             <svg className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
@@ -178,7 +178,7 @@ export default async function LibraryPage() {
             </p>
           </div>
 
-          <Card className="border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 p-6">
+          <Card className="border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 p-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <LibraryStat label="saved documents" value={documents.length} />
               <LibraryStat label="favorites" value={favorites.length} />
@@ -207,7 +207,7 @@ export default async function LibraryPage() {
               </Link>
               <Link
                 href="/today"
-                className="inline-flex items-center justify-center rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5"
+                className="inline-flex items-center justify-center rounded-lg border border-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
               >
                 Back to Research
               </Link>

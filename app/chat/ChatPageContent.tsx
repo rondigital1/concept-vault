@@ -333,19 +333,19 @@ export function ChatPageContent() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex-none border-b border-white/5 bg-black/40 px-6 py-4 backdrop-blur-xl">
+        <div className="flex-none border-b border-zinc-800 bg-zinc-950 px-6 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
+                className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-white"
                 title="Toggle chat history"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#d97757]/20 bg-[#d97757]/10 shadow-sm">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#5a3020] bg-[#2a1810] shadow-sm">
                 <svg className="h-5 w-5 text-[#f1b39a]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
@@ -353,7 +353,7 @@ export function ChatPageContent() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-lg font-semibold text-white">Ask Vault</h1>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+                  <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
                     Secondary tool
                   </span>
                 </div>
@@ -365,7 +365,7 @@ export function ChatPageContent() {
             <button
               type="button"
               onClick={() => setIsOutlineDrawerOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/10 xl:hidden"
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800 xl:hidden"
             >
               <span>Prompts</span>
               <span className="rounded-md bg-white px-1.5 py-0.5 text-xs text-black">
@@ -406,7 +406,7 @@ export function ChatPageContent() {
                       className={`flex gap-4 scroll-mt-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       {msg.role === 'assistant' && (
-                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900">
                           <svg className="h-4 w-4 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a1 1 0 1 1 1-1 1 1 0 0 1-1 1zm2.36-5.24a2 2 0 0 0 .64-1.76 2 2 0 0 0-4 0c0 .53.21 1.04.59 1.41a2 2 0 0 1 .59 1.41V12h2.36v-.36a4 4 0 0 0-1.18-2.88z" />
                           </svg>
@@ -420,7 +420,7 @@ export function ChatPageContent() {
                         <div
                           className={`text-[15px] leading-7 ${
                             msg.role === 'user'
-                              ? 'rounded-2xl rounded-tr-sm border border-[#d97757]/25 bg-[#d97757]/10 px-4 py-3 text-zinc-100 [&::selection]:bg-[#d97757]/30 [&::selection]:text-white'
+                              ? 'rounded-2xl rounded-tr-sm border border-[#5a3020] bg-[#2a1810] px-4 py-3 text-zinc-100 [&::selection]:bg-[#5a3020] [&::selection]:text-white'
                               : msg.status === 'failed'
                                 ? 'px-1 py-0.5 text-red-300'
                                 : 'px-1 py-0.5 text-zinc-100'
@@ -440,7 +440,7 @@ export function ChatPageContent() {
                               type="button"
                               onClick={() => retryFailedMessage(msg.id)}
                               disabled={isLoading}
-                              className="inline-flex items-center gap-1 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="inline-flex items-center gap-1 rounded-md border border-red-800 bg-red-950 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {isLoading ? 'Retrying...' : 'Retry'}
                             </button>
@@ -479,7 +479,7 @@ export function ChatPageContent() {
                                   onClick={() => {
                                     handleSubmit(undefined, reply);
                                   }}
-                                  className="flex items-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-zinc-100 transition-all hover:bg-white/10"
+                                  className="flex items-center rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-left text-sm text-zinc-100 transition-all hover:bg-zinc-800"
                                 >
                                   {reply}
                                 </button>
@@ -494,7 +494,7 @@ export function ChatPageContent() {
 
                 {!isLoadingSession && isTyping && (
                   <div className="flex justify-start gap-4">
-                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900">
                       <svg className="h-4 w-4 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a1 1 0 1 1 1-1 1 1 0 0 1-1 1zm2.36-5.24a2 2 0 0 0 .64-1.76 2 2 0 0 0-4 0c0 .53.21 1.04.59 1.41a2 2 0 0 1 .59 1.41V12h2.36v-.36a4 4 0 0 0-1.18-2.88z" />
                       </svg>
@@ -511,7 +511,7 @@ export function ChatPageContent() {
             </div>
 
             <aside className="hidden xl:block xl:w-72 xl:shrink-0">
-              <div className="sticky top-4 rounded-2xl border border-white/10 bg-zinc-950/80 p-3">
+              <div className="sticky top-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
                 <div className="px-2 pb-2">
                   <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
                     Prompt Timeline
@@ -531,8 +531,8 @@ export function ChatPageContent() {
                         onClick={() => handleJumpToMessage(link.id)}
                         className={`w-full rounded-xl border-l-4 px-2 py-2 text-left text-sm transition-colors ${
                           highlightedMessageId === link.id
-                            ? 'border-[#d97757] bg-[#d97757]/10 text-white'
-                            : 'border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+                            ? 'border-[#d97757] bg-[#2a1810] text-white'
+                            : 'border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                         }`}
                       >
                         <span className="mr-2 text-[11px] font-medium opacity-70">{index + 1}.</span>
@@ -546,13 +546,13 @@ export function ChatPageContent() {
           </div>
         </div>
 
-        <div className="flex-none border-t border-white/5 bg-black/40 px-6 py-4 backdrop-blur-xl">
+        <div className="flex-none border-t border-zinc-800 bg-zinc-950 px-6 py-4">
           <div className="mx-auto max-w-4xl">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
               <span>Ask about saved documents, reports, or concepts already in your vault.</span>
               <span>Use Research for new runs and approvals.</span>
             </div>
-            <div className="relative flex items-end gap-2 rounded-2xl border border-white/10 bg-black/30 p-2">
+            <div className="relative flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2">
               <div className="relative flex-1">
                 <textarea
                   ref={textareaRef}
@@ -572,11 +572,11 @@ export function ChatPageContent() {
                 className={`mb-1 rounded-lg p-2 transition-all duration-200 ${
                   message.trim() && !isLoading
                     ? 'bg-[#d97757] text-white shadow-sm hover:bg-[#c66849]'
-                    : 'cursor-not-allowed bg-white/5 text-zinc-500'
+                    : 'cursor-not-allowed bg-zinc-900 text-zinc-500'
                 }`}
               >
                 {isLoading ? (
-                  <LoadingSpinner className="h-5 w-5 border-white/40 border-t-white p-0.5" />
+                  <LoadingSpinner className="h-5 w-5 border-zinc-600 border-t-white p-0.5" />
                 ) : (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
@@ -617,13 +617,13 @@ export function ChatPageContent() {
           <button
             type="button"
             aria-label="Close message links"
-            className="absolute inset-0 bg-black/60"
+            className="absolute inset-0 bg-zinc-950"
             onClick={() => setIsOutlineDrawerOpen(false)}
           />
 
-          <aside className="absolute right-0 top-0 h-full w-[86vw] max-w-sm border-l border-white/10 bg-zinc-950 shadow-xl">
+          <aside className="absolute right-0 top-0 h-full w-[86vw] max-w-sm border-l border-zinc-800 bg-zinc-950 shadow-xl">
             <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between border-b border-white/5 px-4 py-4">
+              <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-4">
                 <div>
                   <h2 className="text-sm font-semibold text-white">Prompt Timeline</h2>
                   <p className="text-xs text-zinc-500">Jump through your recent questions</p>
@@ -631,7 +631,7 @@ export function ChatPageContent() {
                 <button
                   type="button"
                   onClick={() => setIsOutlineDrawerOpen(false)}
-                  className="rounded-md p-2 text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
+                  className="rounded-md p-2 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-white"
                   title="Close message links"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -642,7 +642,7 @@ export function ChatPageContent() {
 
               <div className="flex-1 overflow-y-auto px-3 py-3">
                 {messageOutlineLinks.length === 0 ? (
-                  <p className="rounded-xl border border-white/5 bg-white/[0.03] px-3 py-3 text-sm text-zinc-500">
+                  <p className="rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-3 text-sm text-zinc-500">
                     Send a message to build quick links.
                   </p>
                 ) : (
@@ -653,8 +653,8 @@ export function ChatPageContent() {
                         onClick={() => handleJumpToMessageFromDrawer(link.id)}
                         className={`w-full rounded-xl border-l-4 px-3 py-2 text-left text-sm transition-colors ${
                           highlightedMessageId === link.id
-                            ? 'border-[#d97757] bg-[#d97757]/10 text-white'
-                            : 'border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+                            ? 'border-[#d97757] bg-[#2a1810] text-white'
+                            : 'border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                         }`}
                       >
                         <span className="mr-2 text-[11px] font-medium opacity-70">{index + 1}.</span>
