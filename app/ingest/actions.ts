@@ -54,11 +54,11 @@ export async function ingestContent(formData: {
       documentId: result.documentId,
       created: result.created,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Ingest error:', error);
     return {
       success: false,
-      error: error?.message || 'Failed to ingest content',
+      error: error instanceof Error ? error.message : 'Failed to ingest content',
     };
   }
 }

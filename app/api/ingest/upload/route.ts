@@ -121,7 +121,7 @@ function beautifyPdfText(rawText: string): string {
   flushParagraph();
 
   // Join with double newlines for proper paragraph spacing
-  let output = result
+  const output = result
     .filter((p) => p.trim())
     .join("\n\n")
     // Clean up excessive whitespace
@@ -221,8 +221,8 @@ async function extractTextFromFile(
     }
 
     return { text: "", error: `Unsupported file type: ${mimeType}` };
-  } catch (err: any) {
-    return { text: "", error: err?.message || "Failed to parse file" };
+  } catch (error: unknown) {
+    return { text: "", error: error instanceof Error ? error.message : "Failed to parse file" };
   }
 }
 
@@ -300,7 +300,7 @@ export async function POST(request: Request) {
       },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("File upload error:", error);
     const message = publicErrorMessage(error, 'File upload failed');
     return NextResponse.json(

@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         const extraction = await extractDocumentFromUrl(source);
         content = extraction.content;
         extractedTitle = extraction.title;
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (!content) {
           return badRequest(publicErrorMessage(error, 'Failed to extract content from URL'));
         }
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     const message = publicErrorMessage(error, 'Failed to ingest document');
     return NextResponse.json(
       { ok: false, error: "INGEST_FAILED", message },

@@ -1,6 +1,7 @@
 import { sql } from '@/db';
 import { createHash } from 'node:crypto';
 import { pipelineFlow } from '@/server/flows/pipeline.flow';
+import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
 
 function sha256(content: string): string {
   return createHash('sha256').update(content).digest('hex');
@@ -11,7 +12,7 @@ export async function ingestDocument({
   source,
   content,
   autoEnrich = process.env.NODE_ENV !== 'test',
-  enableAutoDistill = false,
+  enableAutoDistill,
 }: {
   title: string;
   source: string;
@@ -50,13 +51,17 @@ export async function ingestDocument({
   let enrichmentRunId: string | null = null;
   if (autoEnrich) {
     try {
+      const resolvedEnableAutoDistill =
+        typeof enableAutoDistill === 'boolean'
+          ? enableAutoDistill
+          : (await getAgentProfileSettingsMap()).pipeline.enableAutoDistillOnIngest;
       const enrichmentResult = await pipelineFlow({
         trigger: 'auto_document',
         runMode: 'lightweight_enrichment',
         documentIds: [documentId],
         limit: 1,
         enableCategorization: true,
-        enableAutoDistill,
+        enableAutoDistill: resolvedEnableAutoDistill,
         idempotencyKey: `auto_enrich:${documentId}`,
       });
       enrichmentRunId = enrichmentResult.runId;
