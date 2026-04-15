@@ -2,6 +2,39 @@ import { sql } from '@/db';
 import { RunTrace, RunStep, RunKind, RunStatus } from './runTrace.types';
 
 type JsonParam = Parameters<typeof sql.json>[0];
+type RunStepCompatFields = {
+  inputSummary?: unknown;
+  outputSummary?: unknown;
+  retry_count?: number;
+  started_at?: string;
+  ended_at?: string;
+  step_id?: string;
+  stepId?: string;
+  stepName?: string;
+  token_estimate?: number;
+  toolName?: string;
+};
+type DbRunRow = {
+  id: string;
+  kind: RunKind;
+  status: RunStatus;
+  started_at: string;
+  ended_at: string | null;
+  metadata: Record<string, unknown> | null;
+};
+type DbRunStepRow = {
+  id: string;
+  step_name: string;
+  tool_name: string | null;
+  status: RunStep['status'];
+  started_at: string;
+  ended_at: string | null;
+  input: unknown;
+  output: unknown;
+  error: unknown;
+  token_estimate: number | null;
+  retry_count: number;
+};
 
 function sanitizeText(value: string): string {
   return value.includes('\u0000') ? value.replace(/\u0000/g, '') : value;
@@ -86,7 +119,7 @@ function sanitizeJsonForDb(value: unknown): unknown {
 
 // Best-effort mapping because your RunStep shape may evolve.
 function toDbStep(step: RunStep) {
-  const s: any = step;
+  const s: RunStep & RunStepCompatFields = step;
   return {
     stepName: s.name ?? s.stepName ?? s.step_id ?? s.stepId ?? 'step',
     toolName: s.tool ?? s.toolName ?? undefined,
@@ -174,9 +207,7 @@ export async function finishRun(runId: string, status: RunStatus): Promise<void>
 }
 
 export async function getRunTrace(runId: string): Promise<RunTrace | null> {
-  const runRows = await sql<
-    Array<{ id: string; kind: RunKind; status: RunStatus; started_at: string; ended_at: string | null; metadata: any }>
-  >`
+  const runRows = await sql<Array<DbRunRow>>`
     SELECT id, kind, status, started_at, ended_at, metadata
     FROM runs
     WHERE id = ${runId}
@@ -185,21 +216,7 @@ export async function getRunTrace(runId: string): Promise<RunTrace | null> {
   const run = runRows[0];
   if (!run) return null;
 
-  const stepRows = await sql<
-    Array<{
-      id: string;
-      step_name: string;
-      tool_name: string | null;
-      status: string;
-      started_at: string;
-      ended_at: string | null;
-      input: any;
-      output: any;
-      error: any;
-      token_estimate: number | null;
-      retry_count: number;
-    }>
-  >`
+  const stepRows = await sql<Array<DbRunStepRow>>`
     SELECT id, step_name, tool_name, status, started_at, ended_at, input, output, error, token_estimate, retry_count
     FROM run_steps
     WHERE run_id = ${runId}
@@ -209,10 +226,18 @@ export async function getRunTrace(runId: string): Promise<RunTrace | null> {
   // Convert DB rows back into your RunTrace / RunStep shapes.
   // Keep it permissive; the UI just needs a timeline.
   const steps = stepRows.map((r) => {
-    const step: any = {
+    const stepType: RunStep['type'] = r.tool_name
+      ? 'tool'
+      : r.step_name.startsWith('pipeline')
+        ? 'flow'
+        : 'agent';
+
+    const step: RunStep = {
       id: r.id,
+      timestamp: new Date(r.started_at).toISOString(),
       name: r.step_name,
       tool: r.tool_name ?? undefined,
+      type: stepType,
       status: r.status,
       startedAt: new Date(r.started_at).toISOString(),
       endedAt: r.ended_at ? new Date(r.ended_at).toISOString() : undefined,
@@ -231,6 +256,7 @@ export async function getRunTrace(runId: string): Promise<RunTrace | null> {
     status: run.status,
     startedAt: new Date(run.started_at).toISOString(),
     completedAt: run.ended_at ? new Date(run.ended_at).toISOString() : undefined,
+    metadata: run.metadata ?? undefined,
     steps,
   };
 

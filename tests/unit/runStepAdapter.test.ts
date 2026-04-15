@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { Serialized } from '@langchain/core/load/serializable';
 import { RunStepCallbackHandler } from '@/server/langchain/callbacks/runStepAdapter';
 
 describe('RunStepCallbackHandler', () => {
@@ -11,7 +12,7 @@ describe('RunStepCallbackHandler', () => {
     });
 
     await expect(
-      handler.handleLLMStart({ id: ['mock_llm'] } as any, ['prompt'], 'run-1'),
+      handler.handleLLMStart({ id: ['mock_llm'] } as unknown as Serialized, ['prompt'], 'run-1'),
     ).resolves.toBeUndefined();
 
     expect(errorSpy).toHaveBeenCalled();

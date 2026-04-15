@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * SQL-first schema (agent-friendly).
  *
@@ -11,6 +13,12 @@
  */
 
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS schema_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Core: runs + steps (append-only observability)
 CREATE TABLE IF NOT EXISTS runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -52,6 +60,12 @@ CREATE INDEX IF NOT EXISTS run_steps_status_idx ON run_steps(status);
 CREATE INDEX IF NOT EXISTS run_steps_run_id_started_at_idx ON run_steps(run_id, started_at);
 CREATE INDEX IF NOT EXISTS runs_started_at_idx ON runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS runs_status_idx ON runs(status);
+
+CREATE TABLE IF NOT EXISTS agent_profiles (
+  agent_key TEXT PRIMARY KEY CHECK (agent_key IN ('pipeline','curator','webScout','distiller')),
+  settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Content: documents (keep it simple; evolve later)
 CREATE TABLE IF NOT EXISTS documents (
@@ -314,13 +328,28 @@ export type SchemaInitResult = {
 };
 
 type SqlClient = {
-  unsafe: (sql: string) => Promise<any>;
+  unsafe: (sql: string) => Promise<unknown>;
 };
 
 const SCHEMA_INIT_LOCK_KEY = 924_761_201;
 const SCHEMA_INIT_MAX_ATTEMPTS = 3;
 const SCHEMA_INIT_RETRY_BASE_MS = 150;
 const REQUIRED_RUN_KIND_VALUES = ['distill', 'curate', 'webScout', 'research', 'pipeline'] as const;
+const SCHEMA_FINGERPRINT_KEY = 'schema_fingerprint';
+const REQUIRED_BOOTSTRAP_TABLE_ALIASES = [
+  'schema_meta',
+  'runs',
+  'run_steps',
+  'documents',
+  'artifacts',
+  'agent_profiles',
+  'saved_topics',
+  'topic_documents',
+  'source_watchlist',
+] as const;
+const CURRENT_SCHEMA_FINGERPRINT = createHash('sha256')
+  .update(SCHEMA_SQL)
+  .digest('hex');
 
 let schemaInitialized = false;
 let schemaInitInFlight: Promise<SchemaInitResult> | null = null;
@@ -329,21 +358,28 @@ function toBool(value: unknown): boolean {
   return value === true || value === 't' || value === 'true' || value === 1 || value === '1';
 }
 
-async function hasRequiredCoreTables(sqlClient: SqlClient): Promise<boolean> {
+function quoteSqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function hasRequiredBootstrapTables(sqlClient: SqlClient): Promise<boolean> {
   const rows = await sqlClient.unsafe(`
     SELECT
+      to_regclass('public.schema_meta') IS NOT NULL AS has_schema_meta,
       to_regclass('public.runs') IS NOT NULL AS has_runs,
       to_regclass('public.run_steps') IS NOT NULL AS has_run_steps,
       to_regclass('public.documents') IS NOT NULL AS has_documents,
-      to_regclass('public.artifacts') IS NOT NULL AS has_artifacts
+      to_regclass('public.artifacts') IS NOT NULL AS has_artifacts,
+      to_regclass('public.agent_profiles') IS NOT NULL AS has_agent_profiles,
+      to_regclass('public.saved_topics') IS NOT NULL AS has_saved_topics,
+      to_regclass('public.topic_documents') IS NOT NULL AS has_topic_documents,
+      to_regclass('public.source_watchlist') IS NOT NULL AS has_source_watchlist
   `) as Array<Record<string, unknown>>;
   const row = rows[0];
   if (!row) return false;
-  return (
-    toBool(row.has_runs) &&
-    toBool(row.has_run_steps) &&
-    toBool(row.has_documents) &&
-    toBool(row.has_artifacts)
+
+  return REQUIRED_BOOTSTRAP_TABLE_ALIASES.every((alias) =>
+    toBool(row[`has_${alias}`]),
   );
 }
 
@@ -365,13 +401,34 @@ async function hasRequiredRunsKindConstraint(sqlClient: SqlClient): Promise<bool
   return REQUIRED_RUN_KIND_VALUES.every((kind) => definition.includes(`'${kind}'`));
 }
 
+async function hasCurrentSchemaFingerprint(sqlClient: SqlClient): Promise<boolean> {
+  try {
+    const rows = await sqlClient.unsafe(`
+      SELECT value
+      FROM schema_meta
+      WHERE key = ${quoteSqlLiteral(SCHEMA_FINGERPRINT_KEY)}
+      LIMIT 1
+    `) as Array<{ value?: unknown }>;
+
+    return rows[0]?.value === CURRENT_SCHEMA_FINGERPRINT;
+  } catch {
+    return false;
+  }
+}
+
 async function canSkipSchemaInit(sqlClient: SqlClient): Promise<boolean> {
   try {
-    const [hasTables, hasConstraint] = await Promise.all([
-      hasRequiredCoreTables(sqlClient),
+    const hasTables = await hasRequiredBootstrapTables(sqlClient);
+    if (!hasTables) {
+      return false;
+    }
+
+    const [hasConstraint, hasFingerprint] = await Promise.all([
       hasRequiredRunsKindConstraint(sqlClient),
+      hasCurrentSchemaFingerprint(sqlClient),
     ]);
-    return hasTables && hasConstraint;
+
+    return hasConstraint && hasFingerprint;
   } catch {
     return false;
   }
@@ -395,10 +452,26 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function upsertSchemaFingerprint(sqlClient: SqlClient): Promise<void> {
+  await sqlClient.unsafe(`
+    INSERT INTO schema_meta (key, value, updated_at)
+    VALUES (
+      ${quoteSqlLiteral(SCHEMA_FINGERPRINT_KEY)},
+      ${quoteSqlLiteral(CURRENT_SCHEMA_FINGERPRINT)},
+      now()
+    )
+    ON CONFLICT (key)
+    DO UPDATE SET
+      value = EXCLUDED.value,
+      updated_at = now()
+  `);
+}
+
 async function runSchemaSql(sqlClient: SqlClient): Promise<void> {
   await sqlClient.unsafe(`SELECT pg_advisory_lock(${SCHEMA_INIT_LOCK_KEY})`);
   try {
     await sqlClient.unsafe(SCHEMA_SQL);
+    await upsertSchemaFingerprint(sqlClient);
   } finally {
     try {
       await sqlClient.unsafe(`SELECT pg_advisory_unlock(${SCHEMA_INIT_LOCK_KEY})`);
@@ -414,7 +487,7 @@ async function runSchemaSql(sqlClient: SqlClient): Promise<void> {
  * Call this at app startup or before running database operations.
  */
 export async function ensureSchema(sqlClient: {
-  unsafe: (sql: string) => Promise<any>;
+  unsafe: (sql: string) => Promise<unknown>;
 }): Promise<SchemaInitResult> {
   if (schemaInitialized) {
     return { ok: true };

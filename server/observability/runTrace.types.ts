@@ -2,6 +2,7 @@ export type RunStatus = 'running' | 'ok' | 'error' | 'partial';
 export type RunKind = 'distill' | 'curate' | 'webScout' | 'research' | 'pipeline';
 
 export interface RunStep {
+  id?: string;
   timestamp: string;
   type: 'agent' | 'tool' | 'llm' | 'flow';
   name: string;
@@ -9,7 +10,7 @@ export interface RunStep {
   duration?: number;
   input?: unknown;
   output?: unknown;
-  error?: any;
+  error?: unknown;
   startedAt?: string;
   endedAt?: string;
   tokenEstimate?: number;

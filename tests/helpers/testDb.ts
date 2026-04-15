@@ -40,6 +40,7 @@ export async function cleanAllTables(): Promise<void> {
     chat_history,
     chat_sessions,
     source_watchlist,
+    agent_profiles,
     topic_documents,
     saved_topics,
     artifacts,
