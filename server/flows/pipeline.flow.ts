@@ -20,6 +20,12 @@ import { setupTopicContext } from '@/server/services/topicWorkflow.service';
 import { getDocumentsByIds, getRecentDocuments } from '@/server/repos/distiller.repo';
 import { appendStep, createRun, finishRun } from '@/server/observability/runTrace.store';
 import { RunStatus, RunStep } from '@/server/observability/runTrace.types';
+import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
+import {
+  resolveTopicWorkflowSettings,
+  type AgentProfileSettingsMap,
+  type TopicWorkflowSettings,
+} from '@/server/agents/configuration';
 
 export type PipelineStage =
   | 'resolve_targets'
@@ -114,6 +120,7 @@ interface ResolvedTargets {
   maxIterations: number;
   maxQueries: number;
   limit: number;
+  workflowSettings: TopicWorkflowSettings;
 }
 
 interface ExistingRunRow {
@@ -208,7 +215,11 @@ function shouldSynthesize(mode: PipelineRunMode): boolean {
   return mode === 'full_report' || mode === 'incremental_update';
 }
 
-function resolveRequestedMode(input: PipelineInput): PipelineRunMode {
+function resolveRequestedMode(
+  input: PipelineInput,
+  profiles: AgentProfileSettingsMap,
+  topicWorkflowSettings?: TopicWorkflowSettings | null,
+): PipelineRunMode {
   if (input.runMode) {
     return input.runMode;
   }
@@ -220,7 +231,7 @@ function resolveRequestedMode(input: PipelineInput): PipelineRunMode {
     return 'topic_setup';
   }
 
-  return 'full_report';
+  return topicWorkflowSettings?.defaultRunMode ?? profiles.pipeline.defaultRunMode;
 }
 
 async function appendFlowStep(runId: string, step: Omit<RunStep, 'timestamp' | 'type'>) {
@@ -231,21 +242,35 @@ async function appendFlowStep(runId: string, step: Omit<RunStep, 'timestamp' | '
   });
 }
 
-async function resolveTargets(input: PipelineInput): Promise<ResolvedTargets> {
+async function resolveTargets(
+  input: PipelineInput,
+  profiles: AgentProfileSettingsMap,
+  providedTopic: SavedTopicRow | null = null,
+): Promise<ResolvedTargets> {
   const day = typeof input.day === 'string' && input.day.trim() ? input.day.trim() : todayISODate();
-  const limit = clampInt(input.limit, 5, 1, 20);
   const explicitDocumentIds = Array.isArray(input.documentIds)
     ? input.documentIds.filter((id): id is string => typeof id === 'string').slice(0, 100)
     : [];
 
-  let topic: SavedTopicRow | null = null;
-  if (typeof input.topicId === 'string' && input.topicId.trim()) {
+  let topic: SavedTopicRow | null = providedTopic;
+  if (!topic && typeof input.topicId === 'string' && input.topicId.trim()) {
     const topics = await getSavedTopicsByIds([input.topicId.trim()]);
     topic = topics[0] ?? null;
     if (!topic) {
       throw new Error(`Topic ${input.topicId.trim()} not found`);
     }
   }
+
+  const workflowSettings = resolveTopicWorkflowSettings({
+    maxDocsPerRun: topic?.max_docs_per_run ?? profiles.distiller.maxDocsPerRun,
+    minQualityResults: topic?.min_quality_results ?? profiles.webScout.minQualityResults,
+    minRelevanceScore: topic?.min_relevance_score ?? profiles.webScout.minRelevanceScore,
+    maxIterations: topic?.max_iterations ?? profiles.webScout.maxIterations,
+    maxQueries: topic?.max_queries ?? profiles.webScout.maxQueries,
+    metadata: topic?.metadata ?? null,
+    profiles,
+  });
+  const limit = clampInt(input.limit ?? workflowSettings.maxDocsPerRun, workflowSettings.maxDocsPerRun, 1, 20);
 
   let targetDocumentIds: string[] = [];
   let seedTags: string[] = topic?.focus_tags ?? [];
@@ -319,17 +344,27 @@ async function resolveTargets(input: PipelineInput): Promise<ResolvedTargets> {
   }
 
   const minQualityResults = clampInt(
-    input.minQualityResults ?? topic?.min_quality_results,
-    3,
+    input.minQualityResults ?? workflowSettings.minQualityResults,
+    workflowSettings.minQualityResults,
     1,
     10,
   );
   const minRelevanceScore = clampScore(
-    input.minRelevanceScore ?? topic?.min_relevance_score,
-    0.8,
+    input.minRelevanceScore ?? workflowSettings.minRelevanceScore,
+    workflowSettings.minRelevanceScore,
   );
-  const maxIterations = clampInt(input.maxIterations ?? topic?.max_iterations, 5, 1, 10);
-  const maxQueries = clampInt(input.maxQueries ?? topic?.max_queries, 10, 1, 25);
+  const maxIterations = clampInt(
+    input.maxIterations ?? workflowSettings.maxIterations,
+    workflowSettings.maxIterations,
+    1,
+    10,
+  );
+  const maxQueries = clampInt(
+    input.maxQueries ?? workflowSettings.maxQueries,
+    workflowSettings.maxQueries,
+    1,
+    25,
+  );
 
   return {
     day,
@@ -344,6 +379,7 @@ async function resolveTargets(input: PipelineInput): Promise<ResolvedTargets> {
     maxIterations,
     maxQueries,
     limit,
+    workflowSettings,
   };
 }
 
@@ -381,7 +417,7 @@ async function findExistingRunByIdempotencyKey(idempotencyKey: string): Promise<
 }
 
 async function hydratePipelineResultFromRun(runId: string): Promise<PipelineResult | null> {
-  const rows = await sql<Array<{ output: any }>>`
+  const rows = await sql<Array<{ output: Record<string, unknown> | null }>>`
     SELECT output
     FROM run_steps
     WHERE run_id = ${runId}
@@ -445,8 +481,24 @@ function finalizeStatus(
 }
 
 export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineResult> {
-  const mode = resolveRequestedMode(input);
   const trigger = input.trigger ?? 'manual';
+  const profiles = await getAgentProfileSettingsMap();
+  const preselectedTopic =
+    typeof input.topicId === 'string' && input.topicId.trim()
+      ? (await getSavedTopicsByIds([input.topicId.trim()]))[0] ?? null
+      : null;
+  const preselectedTopicWorkflowSettings = preselectedTopic
+    ? resolveTopicWorkflowSettings({
+        maxDocsPerRun: preselectedTopic.max_docs_per_run,
+        minQualityResults: preselectedTopic.min_quality_results,
+        minRelevanceScore: preselectedTopic.min_relevance_score,
+        maxIterations: preselectedTopic.max_iterations,
+        maxQueries: preselectedTopic.max_queries,
+        metadata: preselectedTopic.metadata,
+        profiles,
+      })
+    : null;
+  const mode = resolveRequestedMode(input, profiles, preselectedTopicWorkflowSettings);
   const idempotencyKey =
     typeof input.idempotencyKey === 'string' && input.idempotencyKey.trim()
       ? input.idempotencyKey.trim()
@@ -513,8 +565,11 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
       },
     });
 
-    const resolved = await resolveTargets(input);
+    const resolved = await resolveTargets(input, profiles, preselectedTopic);
     counts.docsTargeted = resolved.documentIds.length;
+    const enableCategorization =
+      input.enableCategorization ?? resolved.workflowSettings.enableCategorizationByDefault;
+    const skipPublish = input.skipPublish ?? resolved.workflowSettings.skipPublishByDefault;
 
     await appendFlowStep(runId, {
       name: 'pipeline_resolve_targets',
@@ -527,6 +582,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
         focusTags: resolved.focusTags,
         documentIds: resolved.documentIds,
         limit: resolved.limit,
+        workflowSettings: resolved.workflowSettings,
       },
     });
 
@@ -621,7 +677,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
         status: 'running',
         input: {
           documentIds: resolved.documentIds,
-          enableCategorization: input.enableCategorization ?? false,
+          enableCategorization,
         },
       });
 
@@ -632,7 +688,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
           const curateResult = await curatorGraph(
             {
               documentId,
-              enableCategorization: input.enableCategorization ?? false,
+              enableCategorization,
             },
             async (agentStep) => {
               await appendStep(runId, agentStep);
@@ -968,7 +1024,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
         });
       }
 
-      if (reportId && !input.skipPublish) {
+      if (reportId && !skipPublish) {
         const publishResult = await publishReportToNotion({
           title: reportContent.title,
           markdown: reportContent.markdown,

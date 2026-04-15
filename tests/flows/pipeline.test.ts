@@ -19,6 +19,7 @@ const mockGetTopicLinkedDocuments = vi.hoisted(() => vi.fn());
 const mockLinkDocumentToMatchingTopics = vi.hoisted(() => vi.fn());
 const mockMarkTopicRunCompleted = vi.hoisted(() => vi.fn());
 const mockSetupTopicContext = vi.hoisted(() => vi.fn());
+const mockGetAgentProfileSettingsMap = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/agents/curator.graph', () => ({
   curatorGraph: mockCuratorGraph,
@@ -69,6 +70,10 @@ vi.mock('@/server/repos/savedTopics.repo', () => ({
 
 vi.mock('@/server/services/topicWorkflow.service', () => ({
   setupTopicContext: mockSetupTopicContext,
+}));
+
+vi.mock('@/server/repos/agentProfiles.repo', () => ({
+  getAgentProfileSettingsMap: mockGetAgentProfileSettingsMap,
 }));
 
 describe('Pipeline Flow', () => {
@@ -155,6 +160,25 @@ describe('Pipeline Flow', () => {
     mockGetTopicLinkedDocuments.mockResolvedValue([]);
     mockLinkDocumentToMatchingTopics.mockResolvedValue({ topicIds: [] });
     mockMarkTopicRunCompleted.mockResolvedValue(undefined);
+    mockGetAgentProfileSettingsMap.mockResolvedValue({
+      pipeline: {
+        defaultRunMode: 'full_report',
+        enableAutoDistillOnIngest: false,
+        skipPublishByDefault: false,
+      },
+      curator: {
+        enableCategorizationByDefault: false,
+      },
+      webScout: {
+        minQualityResults: 3,
+        minRelevanceScore: 0.8,
+        maxIterations: 5,
+        maxQueries: 10,
+      },
+      distiller: {
+        maxDocsPerRun: 5,
+      },
+    });
     mockSetupTopicContext.mockResolvedValue({
       topicId: 'topic-1',
       focusTags: ['learning'],
@@ -269,6 +293,62 @@ describe('Pipeline Flow', () => {
     expect(mockWebScoutGraph).not.toHaveBeenCalled();
     expect(mockDistillerGraph).not.toHaveBeenCalled();
     expect(mockInsertReport).not.toHaveBeenCalled();
+  });
+
+  it('uses global defaults for manual runs when no topic overrides are present', async () => {
+    mockGetAgentProfileSettingsMap.mockResolvedValue({
+      pipeline: {
+        defaultRunMode: 'full_report',
+        enableAutoDistillOnIngest: false,
+        skipPublishByDefault: true,
+      },
+      curator: {
+        enableCategorizationByDefault: true,
+      },
+      webScout: {
+        minQualityResults: 6,
+        minRelevanceScore: 0.93,
+        maxIterations: 7,
+        maxQueries: 12,
+      },
+      distiller: {
+        maxDocsPerRun: 2,
+      },
+    });
+
+    const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
+
+    const result = await pipelineFlow({
+      day: TEST_DAY,
+      documentIds: ['doc-1'],
+      goal: 'agent execution telemetry',
+    });
+
+    expect(result.mode).toBe('full_report');
+    expect(mockCuratorGraph).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enableCategorization: true,
+      }),
+      expect.any(Function),
+    );
+    expect(mockWebScoutGraph).toHaveBeenCalledWith(
+      expect.objectContaining({
+        minQualityResults: 6,
+        minRelevanceScore: 0.93,
+        maxIterations: 7,
+        maxQueries: 12,
+      }),
+      expect.any(Function),
+      expect.any(String),
+    );
+    expect(mockDistillerGraph).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 2,
+      }),
+      expect.any(Function),
+      expect.any(String),
+    );
+    expect(mockPublishReportToNotion).not.toHaveBeenCalled();
   });
 
   it('topic_setup mode only runs setup work and skips expensive stages', async () => {

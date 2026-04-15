@@ -53,6 +53,21 @@ export interface CreateSavedTopicInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface UpdateSavedTopicInput {
+  name?: string;
+  goal?: string;
+  focusTags?: string[];
+  maxDocsPerRun?: number;
+  minQualityResults?: number;
+  minRelevanceScore?: number;
+  maxIterations?: number;
+  maxQueries?: number;
+  isActive?: boolean;
+  isTracked?: boolean;
+  cadence?: TopicCadence;
+  metadata?: Record<string, unknown>;
+}
+
 export interface UpsertTopicSetupInput {
   topicId: string;
   focusTags: string[];
@@ -189,6 +204,36 @@ export async function createSavedTopic(input: CreateSavedTopicInput): Promise<Sa
   `;
 
   return rows[0];
+}
+
+export async function updateSavedTopic(
+  topicId: string,
+  input: UpdateSavedTopicInput,
+): Promise<SavedTopicRow | null> {
+  const normalizedFocusTags = input.focusTags ? normalizeTags(input.focusTags) : null;
+  const nextMetadata = input.metadata ?? null;
+
+  const rows = await sql<SavedTopicRow[]>`
+    UPDATE saved_topics
+    SET
+      name = COALESCE(${input.name ?? null}, name),
+      goal = COALESCE(${input.goal ?? null}, goal),
+      focus_tags = COALESCE(${normalizedFocusTags ? sql.array(normalizedFocusTags) : null}, focus_tags),
+      max_docs_per_run = COALESCE(${input.maxDocsPerRun ?? null}, max_docs_per_run),
+      min_quality_results = COALESCE(${input.minQualityResults ?? null}, min_quality_results),
+      min_relevance_score = COALESCE(${input.minRelevanceScore ?? null}, min_relevance_score),
+      max_iterations = COALESCE(${input.maxIterations ?? null}, max_iterations),
+      max_queries = COALESCE(${input.maxQueries ?? null}, max_queries),
+      is_active = COALESCE(${input.isActive ?? null}, is_active),
+      is_tracked = COALESCE(${input.isTracked ?? null}, is_tracked),
+      cadence = COALESCE(${input.cadence ?? null}, cadence),
+      metadata = COALESCE(${nextMetadata ? sql.json(nextMetadata as JsonParam) : null}, metadata),
+      updated_at = now()
+    WHERE id = ${topicId}
+    RETURNING ${rowSelection()}
+  `;
+
+  return rows[0] ?? null;
 }
 
 export async function upsertTopicSetup(input: UpsertTopicSetupInput): Promise<SavedTopicRow | null> {

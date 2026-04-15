@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { client, ensureSchema } from '@/db';
 import { createSavedTopic, listSavedTopics } from '@/server/repos/savedTopics.repo';
+import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
+import {
+  isAgentDefaultRunMode,
+  mergeTopicWorkflowMetadata,
+} from '@/server/agents/configuration';
 import { pipelineFlow } from '@/server/flows/pipeline.flow';
 import { publicErrorMessage } from '@/server/security/publicError';
 
@@ -21,6 +26,9 @@ type CreateTopicBody = {
   isActive?: boolean;
   isTracked?: boolean;
   cadence?: 'daily' | 'weekly';
+  defaultRunMode?: string;
+  enableCategorizationByDefault?: boolean;
+  skipPublishByDefault?: boolean;
 };
 
 function isJsonRequest(contentType: string): boolean {
@@ -221,18 +229,50 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'goal is required' }, { status: 400 });
     }
 
+    const profiles = await getAgentProfileSettingsMap();
     const topic = await createSavedTopic({
       name: name.slice(0, 80),
       goal: goal.slice(0, 500),
       focusTags: normalizeFocusTags(body.focusTags),
-      maxDocsPerRun: clampInt(body.maxDocsPerRun, 5, 1, 20),
-      minQualityResults: clampInt(body.minQualityResults, 3, 1, 20),
-      minRelevanceScore: clampScore(body.minRelevanceScore, 0.8),
-      maxIterations: clampInt(body.maxIterations, 5, 1, 20),
-      maxQueries: clampInt(body.maxQueries, 10, 1, 50),
+      maxDocsPerRun: clampInt(
+        body.maxDocsPerRun,
+        profiles.distiller.maxDocsPerRun,
+        1,
+        20,
+      ),
+      minQualityResults: clampInt(
+        body.minQualityResults,
+        profiles.webScout.minQualityResults,
+        1,
+        20,
+      ),
+      minRelevanceScore: clampScore(
+        body.minRelevanceScore,
+        profiles.webScout.minRelevanceScore,
+      ),
+      maxIterations: clampInt(body.maxIterations, profiles.webScout.maxIterations, 1, 20),
+      maxQueries: clampInt(body.maxQueries, profiles.webScout.maxQueries, 1, 50),
       isActive: body.isActive !== false,
       isTracked: body.isTracked === true,
       cadence: body.cadence === 'daily' ? 'daily' : 'weekly',
+      metadata: mergeTopicWorkflowMetadata(
+        {},
+        {
+          workflowSettings: {
+            defaultRunMode: isAgentDefaultRunMode(body.defaultRunMode)
+              ? body.defaultRunMode
+              : profiles.pipeline.defaultRunMode,
+            enableCategorizationByDefault:
+              typeof body.enableCategorizationByDefault === 'boolean'
+                ? body.enableCategorizationByDefault
+                : profiles.curator.enableCategorizationByDefault,
+            skipPublishByDefault:
+              typeof body.skipPublishByDefault === 'boolean'
+                ? body.skipPublishByDefault
+                : profiles.pipeline.skipPublishByDefault,
+          },
+        },
+      ),
     });
 
     let setupRunId: string | null = null;
