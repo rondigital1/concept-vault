@@ -6,8 +6,8 @@ import { toast } from '@/app/components/Toast';
 import { primaryButtonClass, secondaryButtonClass } from './WorkspaceHeaderPrimitives';
 
 type Props =
-  | { scope: 'topic'; topicId: string; topicName: string; emphasis?: 'primary' | 'secondary' }
-  | { scope: 'all_topics'; topicId?: undefined; topicName?: undefined };
+  | { scope: 'topic'; topicId: string; topicName: string; emphasis?: 'primary' | 'secondary'; label?: string }
+  | { scope: 'all_topics'; topicId?: undefined; topicName?: undefined; label?: string };
 
 export function FindSourcesButton(props: Props) {
   const [busy, setBusy] = useState(false);
@@ -75,7 +75,7 @@ export function FindSourcesButton(props: Props) {
             : secondaryButtonClass
       }
     >
-      {busy ? 'Finding...' : isBatch ? 'Find Sources for All' : 'Find Sources'}
+      {busy ? 'Finding...' : props.label ?? (isBatch ? 'Find Sources for All' : 'Find Sources')}
     </button>
   );
 }

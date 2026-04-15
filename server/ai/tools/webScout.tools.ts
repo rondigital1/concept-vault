@@ -156,7 +156,13 @@ async function searchWebTool(args: unknown): Promise<string> {
 
 async function evaluateResultTool(args: unknown): Promise<string> {
   const parsed = evaluateResultArgsSchema.parse(args);
-  const heuristic = computeHeuristicScore(parsed.url, parsed.title, parsed.snippet, parsed.goal, parsed.publishedDate);
+  const heuristic = computeHeuristicScore(
+    parsed.url,
+    parsed.title,
+    parsed.snippet,
+    parsed.goal,
+    parsed.publishedDate ?? undefined,
+  );
 
   if (heuristic > 0.8) {
     return JSON.stringify({

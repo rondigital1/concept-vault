@@ -5,6 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { StatusBadge } from '@/app/components/StatusBadge';
 import { formatClockTime, formatElapsedTime } from '@/app/components/workflowFormatting';
+import {
+  formatObservedStepLabel,
+  summarizeStageProgress,
+  type StageProgress as SharedStageProgress,
+} from '@/lib/agentRunPresentation';
 
 type RunStatus = 'running' | 'ok' | 'error' | 'partial';
 
@@ -27,22 +32,7 @@ type RunTrace = {
   steps: RunStep[];
 };
 
-type StageId =
-  | 'topic_setup'
-  | 'resolve_targets'
-  | 'curate'
-  | 'webscout'
-  | 'analyze_findings'
-  | 'distill'
-  | 'synthesize'
-  | 'persist_publish'
-  | 'unknown';
-
-type StageProgress = {
-  id: StageId;
-  label: string;
-  status: 'pending' | 'running' | 'done' | 'error';
-};
+type StageProgress = SharedStageProgress;
 
 type Metric = {
   label: string;
@@ -139,17 +129,6 @@ type BatchFindSourcesResult = {
   runs: BatchRunResult[];
 };
 
-const STAGE_ORDER: Array<{ id: StageId; label: string }> = [
-  { id: 'topic_setup', label: 'Topic Setup' },
-  { id: 'resolve_targets', label: 'Resolve Targets' },
-  { id: 'curate', label: 'Curate' },
-  { id: 'webscout', label: 'WebScout' },
-  { id: 'analyze_findings', label: 'Analyze Findings' },
-  { id: 'distill', label: 'Distill' },
-  { id: 'synthesize', label: 'Synthesize' },
-  { id: 'persist_publish', label: 'Persist & Publish' },
-];
-
 function todayISODate(): string {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -184,34 +163,6 @@ function formatRunModeLabel(mode: string): string {
   };
 
   return labels[mode] ?? mode.replace(/[_-]+/g, ' ');
-}
-
-function parseStageFromStepName(name: string): StageId {
-  if (name.startsWith('pipeline_topic_setup')) return 'topic_setup';
-  if (name.startsWith('pipeline_resolve_targets')) return 'resolve_targets';
-  if (name.startsWith('pipeline_curate') || name.startsWith('curator_')) return 'curate';
-  if (name.startsWith('pipeline_webscout') || name.startsWith('webscout_')) return 'webscout';
-  if (name.startsWith('pipeline_analyze_findings')) return 'analyze_findings';
-  if (name.startsWith('pipeline_distill') || name.startsWith('distiller_')) return 'distill';
-  if (name.startsWith('pipeline_synthesize')) return 'synthesize';
-  if (name.startsWith('pipeline_persist_publish') || name.startsWith('pipeline_persist')) return 'persist_publish';
-  return 'unknown';
-}
-
-function summarizeStageProgress(steps: RunStep[]): StageProgress[] {
-  return STAGE_ORDER.map((stage) => {
-    const stageSteps = steps.filter((step) => parseStageFromStepName(step.name) === stage.id);
-    if (stageSteps.some((step) => step.status === 'running')) {
-      return { id: stage.id, label: stage.label, status: 'running' };
-    }
-    if (stageSteps.some((step) => step.status === 'error')) {
-      return { id: stage.id, label: stage.label, status: 'error' };
-    }
-    if (stageSteps.some((step) => step.status === 'ok' || step.status === 'skipped')) {
-      return { id: stage.id, label: stage.label, status: 'done' };
-    }
-    return { id: stage.id, label: stage.label, status: 'pending' };
-  });
 }
 
 function isWebScoutCounts(value: unknown): value is {
@@ -1494,8 +1445,7 @@ export function WebScoutRunClient({
             ) : (
               <div className="mt-3 divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-950">
                 {trace.steps.map((step, index) => {
-                  const stageId = parseStageFromStepName(step.name);
-                  const stageLabel = STAGE_ORDER.find((stage) => stage.id === stageId)?.label ?? 'Pipeline';
+                  const stageLabel = formatObservedStepLabel(step.name);
 
                   return (
                     <div key={`${step.name}-${index}`} className="p-4">
