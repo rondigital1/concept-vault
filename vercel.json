@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/topic-report",
+      "path": "/api/cron/pipeline",
       "schedule": "0 11 * * *"
-    },
-    {
-      "path": "/api/cron/web-scout",
-      "schedule": "0 13 * * 0"
     }
   ]
 }
