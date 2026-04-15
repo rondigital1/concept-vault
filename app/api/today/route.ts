@@ -16,7 +16,7 @@ export async function GET() {
         "Cache-Control": "no-store", // daily content + debugging simplicity
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     const message = publicErrorMessage(error, 'Failed to load today view');
     return NextResponse.json(
       { error: "TODAY_ROUTE_FAILED", message },

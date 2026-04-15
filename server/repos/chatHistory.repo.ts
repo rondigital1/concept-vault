@@ -6,6 +6,8 @@
 
 import { sql } from '@/db';
 
+type JsonParam = Parameters<typeof sql.json>[0];
+
 // ---------- Types ----------
 
 export interface ChatSessionRow {
@@ -151,7 +153,7 @@ export async function insertMessage(
 ): Promise<string> {
   const rows = await sql<Array<{ id: string }>>`
     INSERT INTO chat_history (session_id, message)
-    VALUES (${sessionId}::uuid, ${message as any})
+    VALUES (${sessionId}::uuid, ${sql.json(message as JsonParam)})
     RETURNING id
   `;
   return rows[0].id;

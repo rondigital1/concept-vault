@@ -46,7 +46,7 @@ function truncateForPrompt(text: string, maxChars: number): string {
 }
 
 function normalizeTag(tag: string): string | null {
-  let t = tag
+  const t = tag
     .toLowerCase()
     .trim()
     // Replace punctuation with spaces (defensive)
@@ -282,7 +282,7 @@ export async function findRelatedDocs(documentId: string): Promise<string[]> {
     LIMIT 10
   `;
 
-  return rows.map((r: { id: any; }) => r.id);
+  return rows.map((row) => row.id);
 }
 
 export async function setDocumentTags(

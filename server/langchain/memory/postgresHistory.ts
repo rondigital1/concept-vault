@@ -12,6 +12,8 @@ import {
 } from '@langchain/core/messages';
 import { sql } from '@/db';
 
+type JsonParam = Parameters<typeof sql.json>[0];
+
 interface StoredMessage {
   id: string;
   session_id: string;
@@ -59,7 +61,7 @@ export class PostgresChatMessageHistory extends BaseListChatMessageHistory {
 
     await sql`
       INSERT INTO chat_history (session_id, message)
-      VALUES (${this.sessionId}::uuid, ${serialized as any})
+      VALUES (${this.sessionId}::uuid, ${sql.json(serialized as JsonParam)})
     `;
   }
 

@@ -13,7 +13,7 @@ const STOP_TAGS = new Set([
  * Returns null if the tag should be filtered out.
  */
 export function normalizeTag(tag: string): string | null {
-  let t = tag
+  const t = tag
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9\s]/g, ' ')
