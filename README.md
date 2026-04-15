@@ -33,6 +33,10 @@ Set at least:
 - `AUTH_GOOGLE_SECRET`
 - `OWNER_EMAIL`
 
+If you ever rotate the auth secret, keep the new value in `AUTH_SECRET` and retain older
+values as `AUTH_SECRET_1`, `AUTH_SECRET_2`, and so on until existing sessions have expired.
+This prevents Auth.js JWT sessions from failing decryption during a rollout or local env change.
+
 ### 3. Start Postgres
 
 ```bash
