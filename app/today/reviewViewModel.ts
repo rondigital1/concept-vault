@@ -1,7 +1,16 @@
 'use client';
 
 import type { Artifact, Run, RunMode, TopicWorkflowSummary, WorkbenchTopic } from './types';
-import { formatRunLabel, readString } from './utils';
+import { formatObservedAgentLabel } from '@/lib/agentRunPresentation';
+import { formatRunLabel, formatTitleCase, readString } from './utils';
+
+export type ActivityEntry = {
+  id: string;
+  agentName: string;
+  summary: string;
+  timestamp: string;
+  status: 'running' | 'ok' | 'error' | 'partial';
+};
 
 function sortByNewest<T extends { createdAt?: string; startedAt?: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => {
@@ -121,4 +130,40 @@ export function getTopicDetailRunMode(selectedTopic: WorkbenchTopic | null, runs
   }
 
   return 'scout_only';
+}
+
+const MODE_SUMMARIES: Record<string, string> = {
+  scout_only: 'Searched for sources',
+  full_report: 'Generated full report',
+  incremental_update: 'Refreshed topic evidence',
+  concept_only: 'Extracted concepts',
+};
+
+function buildSummary(kind: string, runMode: string | null | undefined, topicSuffix: string): string {
+  if (kind === 'webScout') return `Searched for sources${topicSuffix}`;
+  if (kind === 'curate') return `Curated evidence${topicSuffix}`;
+  if (kind === 'distill') return `Distilled findings${topicSuffix}`;
+  if (kind === 'research') return `Researched topic${topicSuffix}`;
+  return `${MODE_SUMMARIES[runMode ?? ''] ?? 'Ran pipeline'}${topicSuffix}`;
+}
+
+export function deriveActivityFeed(runs: Run[], topicById: Map<string, string>): ActivityEntry[] {
+  const entries: ActivityEntry[] = runs.map((run) => {
+    const topicName = run.metadata?.topicId ? topicById.get(run.metadata.topicId) : undefined;
+    const topicSuffix = topicName ? ` for '${topicName}'` : '';
+    return {
+      id: run.id,
+      agentName: formatObservedAgentLabel(run.kind) ?? formatTitleCase(run.kind),
+      summary: buildSummary(run.kind, run.metadata?.runMode, topicSuffix),
+      timestamp: run.startedAt,
+      status: run.status,
+    };
+  });
+
+  const running = entries.filter((e) => e.status === 'running');
+  const rest = entries
+    .filter((e) => e.status !== 'running')
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+
+  return [...running, ...rest].slice(0, 20);
 }

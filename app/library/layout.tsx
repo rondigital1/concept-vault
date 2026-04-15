@@ -2,10 +2,16 @@ import { ensureSchema } from '@/db/schema';
 import { client } from '@/db';
 import { listDocuments } from '@/server/repos/documents.repo';
 import { listCollections } from '@/server/repos/collections.repo';
+import { Inter } from 'next/font/google';
 import { LibraryShell } from './components/LibraryShell';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const librarySans = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800', '900'],
+});
 
 export default async function LibraryLayout({
   children,
@@ -20,8 +26,10 @@ export default async function LibraryLayout({
   ]);
 
   return (
-    <LibraryShell documents={documents} collections={collections}>
-      {children}
-    </LibraryShell>
+    <div className={librarySans.className}>
+      <LibraryShell documents={documents} collections={collections}>
+        {children}
+      </LibraryShell>
+    </div>
   );
 }

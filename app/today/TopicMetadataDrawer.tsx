@@ -67,7 +67,7 @@ export function TopicMetadataDrawer({
         <div className="space-y-8 pb-10">
           <section>
             <p className={sectionLabelClass}>Research brief</p>
-            <p className="mt-3 text-sm leading-7 text-slate-700">{selectedTopic.goal}</p>
+            <p className="mt-3 text-sm leading-7 text-[color:var(--today-text-soft)]">{selectedTopic.goal}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <StatusChip label={`${selectedTopic.linkedDocumentCount} linked docs`} />
               <StatusChip label={`${selectedTopic.pendingCount} pending`} tone="pending" />
@@ -96,23 +96,23 @@ export function TopicMetadataDrawer({
               <StatusChip label={workflowSummary.stageLabel} tone={workflowSummary.stageTone} />
               <StatusChip label={`Mode: ${workflowSummary.modeLabel}`} />
             </div>
-            <p className="mt-4 text-base font-semibold text-slate-950">{workflowSummary.stageLabel}</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{workflowSummary.stageDescription}</p>
-            <p className="mt-3 text-sm font-medium text-slate-700">{workflowSummary.modeDescription}</p>
+            <p className="mt-4 text-base font-semibold text-[color:var(--today-text)]">{workflowSummary.stageLabel}</p>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--today-muted)]">{workflowSummary.stageDescription}</p>
+            <p className="mt-3 text-sm font-medium text-[color:var(--today-text-soft)]">{workflowSummary.modeDescription}</p>
           </section>
 
           <section>
             <p className={sectionLabelClass}>Context</p>
-            <dl className="mt-3 space-y-3 text-sm text-slate-600">
+            <dl className="mt-3 space-y-3 text-sm text-[color:var(--today-muted)]">
               <div className="flex items-start justify-between gap-4">
                 <dt>Last report</dt>
-                <dd className="text-right font-medium text-slate-900">
+                <dd className="text-right font-medium text-[color:var(--today-text)]">
                   {selectedTopic.lastReportAt ? formatShortDate(selectedTopic.lastReportAt) : 'No report yet'}
                 </dd>
               </div>
               <div className="flex items-start justify-between gap-4">
                 <dt>Last run</dt>
-                <dd className="text-right font-medium text-slate-900">
+                <dd className="text-right font-medium text-[color:var(--today-text)]">
                   {selectedTopic.lastRunMode
                     ? `${formatRunLabel(selectedTopic.lastRunMode)} · ${formatDate(selectedTopic.lastRunAt, 'No recent run')}`
                     : 'No recent run'}
@@ -142,7 +142,7 @@ export function TopicMetadataDrawer({
           </section>
         </div>
       ) : (
-        <div className="py-10 text-sm text-slate-600">No topic selected.</div>
+        <div className="py-10 text-sm text-[color:var(--today-muted)]">No topic selected.</div>
       )}
     </MetadataDrawer>
   );

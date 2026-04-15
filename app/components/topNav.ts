@@ -5,6 +5,7 @@ export type TopNavItem = {
 
 export const TOP_NAV_ITEMS: TopNavItem[] = [
   { href: '/today', label: 'Research' },
+  { href: '/agents', label: 'Agents' },
   { href: '/library', label: 'Library' },
   { href: '/reports', label: 'Reports' },
   { href: '/ingest', label: 'Add Content' },

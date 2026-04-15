@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Concept Vault icon">
+  <defs>
+    <linearGradient id="bg" x1="32" y1="24" x2="224" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f4efe5" />
+      <stop offset="1" stop-color="#d7ebe9" />
+    </linearGradient>
+    <linearGradient id="lens" x1="82" y1="70" x2="176" y2="166" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#173c49" />
+      <stop offset="1" stop-color="#10242c" />
+    </linearGradient>
+  </defs>
+
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="url(#bg)" />
+  <rect
+    x="16"
+    y="16"
+    width="224"
+    height="224"
+    rx="56"
+    fill="none"
+    stroke="#173c49"
+    stroke-opacity="0.12"
+    stroke-width="4"
+  />
+
+  <circle cx="112" cy="110" r="58" fill="url(#lens)" />
+  <circle cx="112" cy="110" r="42" fill="none" stroke="#b9dce2" stroke-width="8" stroke-opacity="0.9" />
+
+  <path
+    d="M148 146l34 34"
+    fill="none"
+    stroke="#10242c"
+    stroke-linecap="round"
+    stroke-width="18"
+  />
+  <path
+    d="M148 146l34 34"
+    fill="none"
+    stroke="#88b8bf"
+    stroke-linecap="round"
+    stroke-width="8"
+  />
+
+  <path
+    d="M88 124l24-24 22 16 20-28"
+    fill="none"
+    stroke="#cde9e4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="9"
+  />
+  <circle cx="88" cy="124" r="8" fill="#eaf7f4" />
+  <circle cx="112" cy="100" r="8" fill="#eaf7f4" />
+  <circle cx="134" cy="116" r="8" fill="#eaf7f4" />
+  <circle cx="154" cy="88" r="8" fill="#eaf7f4" />
+
+  <circle cx="186" cy="70" r="10" fill="#d88d5b" />
+  <path
+    d="M186 54v10M186 76v10M170 70h10M192 70h10"
+    fill="none"
+    stroke="#fff5e8"
+    stroke-linecap="round"
+    stroke-width="4"
+  />
+</svg>

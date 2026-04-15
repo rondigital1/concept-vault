@@ -1,136 +1,317 @@
 import Link from 'next/link';
 import { getAllDocumentsForLibrary, type LibraryDocumentRow } from '@/server/services/document.service';
-import { Badge } from '@/app/components/Badge';
-import { Card } from '@/app/components/Card';
-import { EmptyState } from '@/app/components/EmptyState';
+import { LibraryIcon } from './components/LibraryIcon';
 import {
+  formatLibraryFullDate,
   formatLibraryRelativeDate,
   getDocumentOriginLabel,
   getDocumentTitleIssue,
   getSourceDisplay,
 } from './documentPresentation';
 
-function LibraryStat({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string;
-  value: number;
-  tone?: 'default' | 'attention';
-}) {
-  const tones = {
-    default: 'border-zinc-800 bg-zinc-900 text-zinc-300',
-    attention: 'border-amber-800 bg-amber-950 text-amber-100',
-  };
+type FormatBucket = 'pdf' | 'text' | 'web';
 
-  return (
-    <div className={`rounded-2xl border p-4 ${tones[tone]}`}>
-      <div className="text-2xl font-semibold text-white">{value}</div>
-      <p className="mt-1 text-sm">{label}</p>
-    </div>
-  );
-}
+const FORMAT_LABELS: Record<FormatBucket, string> = {
+  pdf: 'PDF Document',
+  text: 'Text Note',
+  web: 'Web Archive',
+};
 
-function DocumentGrid({ documents }: { documents: LibraryDocumentRow[] }) {
-  if (documents.length === 0) {
-    return null;
+function inferFormatBucket(document: LibraryDocumentRow): FormatBucket {
+  const source = document.source.toLowerCase();
+  const title = document.title.toLowerCase();
+
+  if (source.endsWith('.pdf') || title.endsWith('.pdf')) {
+    return 'pdf';
   }
 
+  if (source.startsWith('http://') || source.startsWith('https://')) {
+    return 'web';
+  }
+
+  return 'text';
+}
+
+function buildPreview(content: string): string {
+  const normalized = content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
+    .replace(/[#>*_~|-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) {
+    return 'Open this record to inspect the full source, review its tags, and continue working from the saved material.';
+  }
+
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+}
+
+function getTopClusters(documents: LibraryDocumentRow[]) {
+  const counts = new Map<string, number>();
+
+  for (const document of documents) {
+    for (const tag of document.tags) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+
+  const ranked = Array.from(counts.entries())
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3)
+    .map(([label, count]) => ({
+      label,
+      count,
+    }));
+
+  if (ranked.length > 0) {
+    return ranked;
+  }
+
+  return [
+    { label: 'research imports', count: documents.filter((document) => document.is_webscout_discovered).length },
+    { label: 'favorites', count: documents.filter((document) => document.is_favorite).length },
+    { label: 'new records', count: documents.length },
+  ].filter((cluster) => cluster.count > 0);
+}
+
+function getFormatIcon(format: FormatBucket) {
+  switch (format) {
+    case 'pdf':
+      return 'pdf';
+    case 'web':
+      return 'link';
+    default:
+      return 'file';
+  }
+}
+
+function StatCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      {documents.map((doc) => {
-        const titleIssue = getDocumentTitleIssue(doc.title);
-        const originLabel = getDocumentOriginLabel(doc.is_webscout_discovered);
-
-        return (
-          <Link key={doc.id} href={`/library/${doc.id}`} className="group block h-full min-w-0">
-            <Card className="flex h-full flex-col overflow-hidden border-zinc-800 bg-zinc-950 p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-700">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[11px] font-medium text-zinc-300">
-                  {originLabel}
-                </span>
-                {titleIssue && (
-                  <span className="rounded-full border border-amber-800 bg-amber-950 px-2.5 py-1 text-[11px] font-medium text-amber-100">
-                    Needs cleanup
-                  </span>
-                )}
-                {doc.is_favorite && (
-                  <span className="rounded-full border border-yellow-800 bg-yellow-950 px-2.5 py-1 text-[11px] font-medium text-yellow-100">
-                    Favorite
-                  </span>
-                )}
-              </div>
-
-              <div className="mt-4 flex-1 space-y-3">
-                <h2 className="line-clamp-3 text-lg font-semibold leading-tight text-white transition-colors group-hover:text-[#d97757]">
-                  {doc.title}
-                </h2>
-
-                {titleIssue ? (
-                  <p className="text-sm leading-6 text-amber-100">{titleIssue.reason}</p>
-                ) : (
-                  <p className="text-sm leading-6 text-zinc-400">
-                    Open this document to review the full source, tags, and saved content.
-                  </p>
-                )}
-
-                {doc.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {doc.tags.slice(0, 3).map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-xs text-zinc-300">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {doc.tags.length > 3 && (
-                      <Badge variant="secondary" className="text-xs text-zinc-300">
-                        +{doc.tags.length - 3}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-6 flex items-center justify-between gap-3 border-t border-zinc-800 pt-4 text-xs text-zinc-500">
-                <div className="min-w-0">
-                  <p className="truncate">{getSourceDisplay(doc.source)}</p>
-                  <p className="mt-1">{formatLibraryRelativeDate(doc.imported_at)}</p>
-                </div>
-                <span className="rounded-full border border-zinc-800 px-2.5 py-1 text-zinc-300">
-                  {titleIssue ? 'Open to rename' : 'Open document'}
-                </span>
-              </div>
-            </Card>
-          </Link>
-        );
-      })}
+    <div
+      className={`relative overflow-hidden rounded-[28px] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.24)] sm:p-8 ${className ?? 'bg-[#1f1f1f]'}`}
+    >
+      {children}
     </div>
   );
 }
 
-function DocumentSection({
+function DocumentTile({ document }: { document: LibraryDocumentRow }) {
+  const format = inferFormatBucket(document);
+  const titleIssue = getDocumentTitleIssue(document.title);
+
+  return (
+    <Link
+      href={`/library/${document.id}`}
+      className="group flex min-h-[18.5rem] flex-col rounded-[24px] bg-[#0f0f0f] p-5 transition duration-500 hover:bg-[#171717]"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-[#242424] text-[#d0cccc]">
+          <LibraryIcon name={getFormatIcon(format)} className="h-5 w-5" />
+        </div>
+        <div className="text-[#d7d1d1]">
+          {document.is_favorite ? (
+            <LibraryIcon name="star" className="h-4 w-4" filled />
+          ) : (
+            <LibraryIcon name="star" className="h-4 w-4 text-[#5f5959] transition group-hover:text-[#bcb4b4]" />
+          )}
+        </div>
+      </div>
+
+      <div className="mt-8 flex-1">
+        {titleIssue ? (
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[rgba(255,180,171,0.08)] px-3 py-1 text-[0.58rem] font-bold uppercase tracking-[0.2em] text-[#f0c0b5]">
+            <LibraryIcon name="warning" className="h-3.5 w-3.5" />
+            Cleanup
+          </div>
+        ) : null}
+        <h2 className="line-clamp-3 text-[1.32rem] font-bold tracking-[-0.05em] text-white">
+          {document.title}
+        </h2>
+        <p className="mt-3 text-[0.66rem] font-semibold uppercase tracking-[0.22em] text-[#797373]">
+          Uploaded {formatLibraryRelativeDate(document.imported_at)}
+        </p>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between gap-3 text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-[#797373]">
+        <span>{FORMAT_LABELS[format]}</span>
+        <LibraryIcon name="arrow-up-right" className="h-4 w-4 opacity-0 transition group-hover:opacity-100" />
+      </div>
+    </Link>
+  );
+}
+
+function FeaturedDocumentTile({ document }: { document: LibraryDocumentRow }) {
+  const format = inferFormatBucket(document);
+  const titleIssue = getDocumentTitleIssue(document.title);
+  const preview = buildPreview(document.content);
+
+  return (
+    <article className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,rgba(60,60,60,0.95),rgba(38,38,38,0.95)_56%,rgba(23,23,23,0.98))] px-6 py-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] sm:px-8 sm:py-7 md:col-span-2 xl:col-span-2">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -right-8 -top-10 h-48 w-48 rounded-full bg-white/[0.06] blur-3xl" />
+        <div className="absolute inset-y-0 right-0 w-1/2 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent)]" />
+      </div>
+
+      <div className="relative">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-[#111111]/80 px-3 py-1.5 text-[0.58rem] font-bold uppercase tracking-[0.22em] text-white">
+            Primary Asset
+          </span>
+          <span className="rounded-full bg-[#111111]/60 px-3 py-1.5 text-[0.58rem] font-bold uppercase tracking-[0.22em] text-[#bcb4b4]">
+            {FORMAT_LABELS[format]}
+          </span>
+          {titleIssue ? (
+            <span className="rounded-full bg-[rgba(255,180,171,0.1)] px-3 py-1.5 text-[0.58rem] font-bold uppercase tracking-[0.22em] text-[#f0c0b5]">
+              Cleanup Queue
+            </span>
+          ) : null}
+        </div>
+
+        <h2 className="mt-6 max-w-4xl text-[clamp(2rem,3.6vw,3.2rem)] font-black tracking-[-0.07em] text-white leading-[1.02]">
+          {document.title}
+        </h2>
+
+        <p className="mt-5 max-w-2xl text-[1rem] leading-8 text-[#ddd7d5]">
+          {preview}
+        </p>
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          {document.tags.slice(0, 4).map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full bg-[#151515] px-3 py-1.5 text-[0.68rem] font-semibold text-[#d2cbcb]"
+            >
+              {tag}
+            </span>
+          ))}
+          {document.tags.length === 0 ? (
+            <span className="rounded-full bg-[#151515] px-3 py-1.5 text-[0.68rem] font-semibold text-[#d2cbcb]">
+              source archive
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-8 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-4 text-[0.64rem] font-semibold uppercase tracking-[0.2em] text-[#a7a0a0]">
+            <span>{formatLibraryFullDate(document.imported_at)}</span>
+            <span>{getDocumentOriginLabel(document.is_webscout_discovered)}</span>
+            <span>{getSourceDisplay(document.source)}</span>
+          </div>
+
+          <Link
+            href={`/library/${document.id}`}
+            className="inline-flex items-center justify-center rounded-full bg-[#efeded] px-5 py-3 text-[0.68rem] font-bold uppercase tracking-[0.26em] text-[#171717] transition hover:bg-white"
+          >
+            Access_Node
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SignalLane({
   id,
   title,
   description,
   documents,
+  emptyMessage,
 }: {
-  id?: string;
+  id: string;
   title: string;
   description: string;
   documents: LibraryDocumentRow[];
+  emptyMessage: string;
 }) {
   return (
-    <section id={id} className="space-y-4 scroll-mt-24">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-white">{title}</h2>
-          <p className="mt-1 text-sm text-zinc-400">{description}</p>
+    <section id={id} className="rounded-[28px] bg-[#1b1b1b] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.24)] sm:p-8">
+      <p className="text-[0.66rem] font-bold uppercase tracking-[0.26em] text-[#8d8787]">{title}</p>
+      <p className="mt-3 max-w-2xl text-[0.96rem] leading-7 text-[#c0b8b8]">{description}</p>
+
+      {documents.length > 0 ? (
+        <div className="mt-6 space-y-3">
+          {documents.map((document) => {
+            const format = inferFormatBucket(document);
+
+            return (
+              <Link
+                key={document.id}
+                href={`/library/${document.id}`}
+                className="flex items-center gap-4 rounded-[22px] bg-[#101010] px-4 py-4 transition hover:bg-[#151515]"
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-[#232323] text-[#d0cccc]">
+                  <LibraryIcon name={getFormatIcon(format)} className="h-[1.125rem] w-[1.125rem]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[1rem] font-semibold tracking-[-0.03em] text-white">
+                    {document.title}
+                  </div>
+                  <div className="mt-1 text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-[#7d7777]">
+                    {getSourceDisplay(document.source)} · {formatLibraryRelativeDate(document.imported_at)}
+                  </div>
+                </div>
+                <LibraryIcon name="arrow-up-right" className="h-4 w-4 shrink-0 text-[#7d7777]" />
+              </Link>
+            );
+          })}
         </div>
-        <p className="text-sm text-zinc-500">
-          {documents.length} {documents.length === 1 ? 'document' : 'documents'}
-        </p>
+      ) : (
+        <p className="mt-6 text-[0.95rem] leading-7 text-[#8f8888]">{emptyMessage}</p>
+      )}
+    </section>
+  );
+}
+
+function ErrorState({ error }: { error: string }) {
+  return (
+    <section className="rounded-[32px] bg-[#191919] px-6 py-10 shadow-[0_24px_80px_rgba(0,0,0,0.32)] sm:px-10 sm:py-12">
+      <p className="text-[0.7rem] font-bold uppercase tracking-[0.3em] text-[#8f8888]">Repository unavailable</p>
+      <h1 className="mt-4 text-[clamp(2.1rem,4vw,3.4rem)] font-black tracking-[-0.07em] text-white">
+        Database offline
+      </h1>
+      <p className="mt-5 max-w-2xl whitespace-pre-line text-[1rem] leading-8 text-[#b9b0b0]">
+        {error}
+      </p>
+    </section>
+  );
+}
+
+function EmptyLibraryState() {
+  return (
+    <section className="rounded-[32px] bg-[#191919] px-6 py-10 shadow-[0_24px_80px_rgba(0,0,0,0.32)] sm:px-10 sm:py-12">
+      <div className="mb-4 flex items-center gap-3 text-[0.68rem] font-bold uppercase tracking-[0.26em] text-[#8f8888]">
+        <span className="rounded-full bg-[#232323] px-3 py-1.5 text-[#ddd8d8]">Repository cold start</span>
+        <span>Status: awaiting first source</span>
       </div>
-      <DocumentGrid documents={documents} />
+      <h1 className="max-w-4xl text-[clamp(2.4rem,5vw,4.6rem)] font-black tracking-[-0.08em] text-white leading-[0.96]">
+        The library is still empty.
+      </h1>
+      <p className="mt-6 max-w-2xl text-[1.08rem] leading-8 text-[#b7b0b0]">
+        Add content from the ingest flow or save approved research imports to populate the document repository.
+      </p>
+      <div className="mt-8 flex flex-wrap gap-3">
+        <Link
+          href="/ingest"
+          className="inline-flex items-center justify-center rounded-full bg-[#efeded] px-5 py-3 text-[0.7rem] font-bold uppercase tracking-[0.28em] text-[#171717] transition hover:bg-white"
+        >
+          Add_Content
+        </Link>
+        <Link
+          href="/today"
+          className="inline-flex items-center justify-center rounded-full bg-[#232323] px-5 py-3 text-[0.7rem] font-bold uppercase tracking-[0.28em] text-[#ddd7d7] transition hover:bg-[#2c2c2c] hover:text-white"
+        >
+          Open_Research
+        </Link>
+      </div>
     </section>
   );
 }
@@ -147,99 +328,208 @@ export default async function LibraryPage() {
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center">
-        <div className="max-w-md space-y-6">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-950">
-            <svg className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-xl font-bold text-white">Database Offline</h1>
-            <p className="whitespace-pre-line text-sm text-zinc-400">{error}</p>
-          </div>
+      <main className="relative px-4 pb-16 pt-10 sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-[1220px]">
+          <ErrorState error={error} />
         </div>
-      </div>
+      </main>
     );
   }
 
-  const favorites = documents.filter((doc) => doc.is_favorite);
-  const documentsNeedingCleanup = documents.filter((doc) => getDocumentTitleIssue(doc.title));
-  const researchDocuments = documents.filter((doc) => doc.is_webscout_discovered);
+  const favorites = documents.filter((document) => document.is_favorite);
+  const documentsNeedingCleanup = documents.filter((document) => getDocumentTitleIssue(document.title));
+  const researchDocuments = documents.filter((document) => document.is_webscout_discovered);
+  const featuredDocument = favorites[0] ?? researchDocuments[0] ?? documents[0] ?? null;
+  const repositoryDocuments = documents
+    .filter((document) => document.id !== featuredDocument?.id)
+    .slice(0, 6);
+  const formatCounts = documents.reduce<Record<FormatBucket, number>>(
+    (accumulator, document) => {
+      accumulator[inferFormatBucket(document)] += 1;
+      return accumulator;
+    },
+    { pdf: 0, text: 0, web: 0 },
+  );
+  const topClusters = getTopClusters(documents);
 
   return (
-    <div className="p-6">
-      <div className="space-y-8">
-        <header className="space-y-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white">Library</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-              Search saved material, clean up messy imports, and reopen documents you want to keep close at hand.
-            </p>
-          </div>
-
-          <Card className="border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 p-6">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <LibraryStat label="saved documents" value={documents.length} />
-              <LibraryStat label="favorites" value={favorites.length} />
-              <LibraryStat
-                label="titles needing cleanup"
-                value={documentsNeedingCleanup.length}
-                tone={documentsNeedingCleanup.length > 0 ? 'attention' : 'default'}
-              />
-              <LibraryStat label="saved from research" value={researchDocuments.length} />
-            </div>
-          </Card>
-        </header>
-
+    <main className="relative px-4 pb-16 pt-10 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-[1220px]">
         {documents.length === 0 ? (
-          <div className="space-y-4">
-            <EmptyState
-              title="No documents yet"
-              description="Add content from the Research flow or import something directly to start building your library."
-            />
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/ingest"
-                className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-zinc-200"
-              >
-                Add Content
-              </Link>
-              <Link
-                href="/today"
-                className="inline-flex items-center justify-center rounded-lg border border-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
-              >
-                Back to Research
-              </Link>
-            </div>
-          </div>
+          <EmptyLibraryState />
         ) : (
-          <div className="space-y-10">
-            {documentsNeedingCleanup.length > 0 && (
-              <DocumentSection
-                id="needs-cleanup"
-                title="Needs Cleanup"
-                description="Fix imported titles that are too long, too noisy, or pulled in raw page metadata."
-                documents={documentsNeedingCleanup.slice(0, 6)}
-              />
-            )}
+          <>
+            <section className="grid gap-6 xl:grid-cols-[1.15fr_1fr_0.9fr]">
+              <StatCard className="bg-[#2a2a2a]">
+                <div className="relative z-10">
+                  <p className="text-[0.64rem] font-bold uppercase tracking-[0.28em] text-[#a39d9d]">
+                    Total intelligence assets
+                  </p>
+                  <h1 className="mt-4 text-[clamp(3.4rem,7vw,5.1rem)] font-black tracking-[-0.08em] text-white leading-none">
+                    {documents.length}
+                  </h1>
+                  <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[18px] bg-black/20 px-4 py-4">
+                      <div className="text-[0.6rem] font-bold uppercase tracking-[0.22em] text-[#bcb5b5]">Favorites</div>
+                      <div className="mt-2 text-[1.4rem] font-bold tracking-[-0.05em] text-white">{favorites.length}</div>
+                    </div>
+                    <div className="rounded-[18px] bg-black/20 px-4 py-4">
+                      <div className="text-[0.6rem] font-bold uppercase tracking-[0.22em] text-[#bcb5b5]">Cleanup</div>
+                      <div className="mt-2 text-[1.4rem] font-bold tracking-[-0.05em] text-white">{documentsNeedingCleanup.length}</div>
+                    </div>
+                    <div className="rounded-[18px] bg-black/20 px-4 py-4">
+                      <div className="text-[0.6rem] font-bold uppercase tracking-[0.22em] text-[#bcb5b5]">Research</div>
+                      <div className="mt-2 text-[1.4rem] font-bold tracking-[-0.05em] text-white">{researchDocuments.length}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="pointer-events-none absolute -bottom-6 right-0 text-white/[0.06]">
+                  <LibraryIcon name="grid" className="h-36 w-36" />
+                </div>
+              </StatCard>
 
-            {favorites.length > 0 && (
-              <DocumentSection
-                title="Favorites"
-                description="Quick access to the documents you return to most often."
-                documents={favorites}
-              />
-            )}
+              <StatCard className="bg-[#1b1b1b]">
+                <p className="text-[0.64rem] font-bold uppercase tracking-[0.28em] text-[#a39d9d]">
+                  Format distribution
+                </p>
+                <div className="mt-6 space-y-5">
+                  {(Object.entries(FORMAT_LABELS) as Array<[FormatBucket, string]>).map(([bucket, label]) => {
+                    const count = formatCounts[bucket];
+                    const percent = documents.length > 0 ? Math.max((count / documents.length) * 100, count > 0 ? 8 : 0) : 0;
 
-            <DocumentSection
-              title="Recently Added"
-              description="Everything in your library, ordered by the newest imports first."
-              documents={documents}
-            />
-          </div>
+                    return (
+                      <div key={bucket}>
+                        <div className="flex items-center justify-between text-[0.76rem]">
+                          <span className="text-[#cfc7c7]">{label}</span>
+                          <span className="font-bold text-white">{count}</span>
+                        </div>
+                        <div className="mt-2 h-1.5 rounded-full bg-[#353535]">
+                          <div
+                            className={`h-full rounded-full ${bucket === 'pdf' ? 'bg-[#d7d1d1]' : bucket === 'web' ? 'bg-[#848080]' : 'bg-[#5d5858]'}`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </StatCard>
+
+              <StatCard className="bg-[#1b1b1b]">
+                <p className="text-[0.64rem] font-bold uppercase tracking-[0.28em] text-[#a39d9d]">
+                  Node clusters
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {topClusters.map((cluster) => (
+                    <span
+                      key={cluster.label}
+                      className="rounded-[8px] bg-[#2a2a2a] px-3 py-2 text-[0.6rem] font-bold uppercase tracking-[0.16em] text-white"
+                    >
+                      {cluster.label} ({cluster.count})
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-10 flex items-center gap-3 text-[0.64rem] font-semibold uppercase tracking-[0.22em] text-[#7b7575]">
+                  <span className="flex h-2.5 w-2.5 rounded-full bg-[#d5cfcf] animate-status-pulse" />
+                  <span>Core synchronized</span>
+                </div>
+              </StatCard>
+            </section>
+
+            <section className="mt-12">
+              <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-[0.68rem] font-bold uppercase tracking-[0.26em] text-[#8f8888]">
+                    Vault workspace
+                  </p>
+                  <h2 className="mt-3 text-[clamp(2.4rem,4vw,3.45rem)] font-black tracking-[-0.07em] text-white leading-[0.96]">
+                    Repository_Vault
+                  </h2>
+                  <p className="mt-4 max-w-3xl text-[1rem] leading-8 text-[#b7b0b0]">
+                    Search saved material, clean up noisy imports, and reopen the documents that matter most inside the working memory layer.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  {documentsNeedingCleanup.length > 0 ? (
+                    <Link
+                      href="#needs-cleanup"
+                      className="inline-flex items-center gap-2 rounded-[16px] bg-[#2a2a2a] px-4 py-3 text-[0.64rem] font-bold uppercase tracking-[0.22em] text-[#dfd8d8] transition hover:bg-[#343434]"
+                    >
+                      <LibraryIcon name="warning" className="h-3.5 w-3.5" />
+                      Cleanup
+                    </Link>
+                  ) : null}
+                  {favorites.length > 0 ? (
+                    <Link
+                      href="#favorites"
+                      className="inline-flex items-center gap-2 rounded-[16px] bg-[#2a2a2a] px-4 py-3 text-[0.64rem] font-bold uppercase tracking-[0.22em] text-[#dfd8d8] transition hover:bg-[#343434]"
+                    >
+                      <LibraryIcon name="star" className="h-3.5 w-3.5" filled />
+                      Favorites
+                    </Link>
+                  ) : null}
+                  <Link
+                    href="/ingest"
+                    className="inline-flex items-center gap-2 rounded-[16px] bg-[#efeded] px-4 py-3 text-[0.64rem] font-bold uppercase tracking-[0.22em] text-[#171717] transition hover:bg-white"
+                  >
+                    <LibraryIcon name="plus" className="h-3.5 w-3.5" />
+                    Add content
+                  </Link>
+                </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+                {repositoryDocuments.map((document) => (
+                  <DocumentTile key={document.id} document={document} />
+                ))}
+                {featuredDocument ? <FeaturedDocumentTile document={featuredDocument} /> : null}
+              </div>
+            </section>
+
+            {documentsNeedingCleanup.length > 0 || favorites.length > 0 ? (
+              <section className="mt-12 grid gap-6 xl:grid-cols-2">
+                <SignalLane
+                  id="needs-cleanup"
+                  title="Cleanup queue"
+                  description="Imported titles that leaked metadata, pasted URLs, or otherwise need manual naming before they are easy to scan."
+                  documents={documentsNeedingCleanup.slice(0, 4)}
+                  emptyMessage="No cleanup queue is active. New imports are landing with readable titles."
+                />
+                <SignalLane
+                  id="favorites"
+                  title="Favorite nodes"
+                  description="The documents you return to frequently stay surfaced here for quick access back into the archive."
+                  documents={favorites.slice(0, 4)}
+                  emptyMessage="Favorite a document from the detail view to pin it here."
+                />
+              </section>
+            ) : null}
+
+            <footer className="mt-12 rounded-[24px] bg-[#171717] px-5 py-5 sm:px-6">
+              <div className="flex flex-col gap-4 text-[0.64rem] font-semibold uppercase tracking-[0.22em] text-[#7d7676] lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-5">
+                  <span>Memory_Status: Optimal</span>
+                  <span>Favorites: {favorites.length}</span>
+                  <span>Cleanup_Queue: {documentsNeedingCleanup.length}</span>
+                  <span>Research_Imports: {researchDocuments.length}</span>
+                </div>
+                <div className="flex flex-wrap gap-5">
+                  <Link href="/today" className="transition hover:text-white">
+                    Research
+                  </Link>
+                  <Link href="/reports" className="transition hover:text-white">
+                    Results
+                  </Link>
+                  <Link href="/ingest" className="transition hover:text-white">
+                    Add Content
+                  </Link>
+                </div>
+              </div>
+            </footer>
+          </>
         )}
       </div>
-    </div>
+    </main>
   );
 }

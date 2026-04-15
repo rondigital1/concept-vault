@@ -3,32 +3,39 @@
 import Link from 'next/link';
 import type { SurfaceTone } from './types';
 
-export const sectionLabelClass = 'workbench-label';
-export const primaryButtonClass = 'workbench-button-primary';
-export const secondaryButtonClass = 'workbench-button-secondary';
-export const textLinkClass = 'workbench-button-link';
-export const inputClass = 'workbench-input';
-export const elevatedPanelClass = 'workbench-elevated';
-export const insetPanelClass = 'workbench-inset';
+export const sectionLabelClass = 'today-label';
+export const primaryButtonClass = 'today-button-primary';
+export const secondaryButtonClass = 'today-button-secondary';
+export const textLinkClass = 'today-button-link';
+export const inputClass = 'today-input';
+export const elevatedPanelClass = 'today-panel today-panel-low';
+export const insetPanelClass = 'today-panel today-panel-lowest';
 
 export function StatusChip({
   label,
   tone = 'default',
+  title,
+  pulse = false,
 }: {
   label: string;
   tone?: SurfaceTone;
+  title?: string;
+  pulse?: boolean;
 }) {
   const classes =
     tone === 'ready'
-      ? 'border-emerald-200/90 bg-emerald-50/90 text-emerald-800'
+      ? 'bg-[rgba(92,142,112,0.18)] text-[#e5f8ec] outline-[rgba(152,225,184,0.18)]'
       : tone === 'pending'
-        ? 'border-sky-200/90 bg-sky-50/90 text-sky-800'
+        ? 'bg-[rgba(255,255,255,0.07)] text-[color:var(--today-text-soft)] outline-[rgba(255,255,255,0.08)]'
         : tone === 'live'
-          ? 'border-amber-200/90 bg-amber-50/90 text-amber-800'
-          : 'border-[color:var(--workbench-line)] bg-[rgba(255,252,248,0.78)] text-slate-700';
+          ? 'bg-[rgba(255,255,255,0.14)] text-[color:var(--today-accent-strong)] outline-[rgba(255,255,255,0.14)]'
+          : 'bg-[rgba(255,255,255,0.06)] text-[color:var(--today-muted-strong)] outline-[rgba(255,255,255,0.08)]';
 
   return (
-    <span className={`rounded-full border px-3 py-1.5 text-xs font-medium tracking-[0.01em] ${classes}`}>
+    <span
+      title={title}
+      className={`inline-flex items-center rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] outline outline-1 ${classes} ${pulse ? 'animate-pulse' : ''}`}
+    >
       {label}
     </span>
   );
@@ -62,7 +69,7 @@ export function DisabledHeaderAction({ label, hint }: { label: string; hint: str
   return (
     <span
       title={hint}
-      className="inline-flex items-center justify-center rounded-full border border-[color:var(--workbench-line)] bg-[color:var(--workbench-inset)] px-5 py-3 text-sm font-semibold text-slate-400"
+      className="inline-flex items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] px-5 py-3 text-sm font-semibold text-[color:var(--today-muted)] outline outline-1 outline-[rgba(255,255,255,0.08)]"
     >
       {label}
     </span>

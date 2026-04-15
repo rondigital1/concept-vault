@@ -3,7 +3,7 @@
 import { useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { EvidenceReviewWorkspace } from './EvidenceReviewWorkspace';
-import { deriveTopicWorkflowSummary, getTopicDetailRunMode, getTopicIdFromArtifact, summarizeArtifact } from './reviewViewModel';
+import { deriveActivityFeed, deriveTopicWorkflowSummary, getTopicDetailRunMode, getTopicIdFromArtifact, summarizeArtifact } from './reviewViewModel';
 import type { Artifact, DrawerKey, Run, TopicWorkspaceOption, WorkbenchTopic } from './types';
 
 type QueueFilter = 'pending' | 'saved';
@@ -48,7 +48,7 @@ function readQueueFilter(value: string | null, fallback: QueueFilter): QueueFilt
 }
 
 function readDrawerKey(value: string | null, fallback: DrawerKey | null): DrawerKey | null {
-  return value === 'topic' || value === 'report' ? value : fallback;
+  return value === 'topic' || value === 'report' || value === 'evidence' ? value : fallback;
 }
 
 function buildNextHref(
@@ -137,6 +137,9 @@ export function TodayWorkbenchClient({
   const selectedArtifact = queueItems.find((item) => item.id === selectedArtifactId) ?? queueItems[0] ?? null;
   const workflowSummary = deriveTopicWorkflowSummary(selectedTopic, runs, pendingItems.length);
   const detailRunMode = getTopicDetailRunMode(selectedTopic, runs);
+  const recentRunCount = runs.filter((r) => r.metadata?.topicId === selectedTopicId).length;
+  const topicById = new Map(topics.map((t) => [t.id, t.name]));
+  const activityEntries = deriveActivityFeed(runs, topicById);
 
   function navigate(updates: Parameters<typeof buildNextHref>[2]) {
     startViewTransition(() => {
@@ -153,13 +156,17 @@ export function TodayWorkbenchClient({
   }
 
   function handleArtifactChange(artifactId: string) {
-    navigate({ artifactId });
+    navigate({
+      artifactId,
+      drawer: drawer === 'evidence' ? 'evidence' : null,
+    });
   }
 
   function handleQueueFilterChange(nextFilter: QueueFilter) {
     navigate({
       queue: nextFilter,
       artifactId: null,
+      drawer: null,
     });
   }
 
@@ -194,7 +201,9 @@ export function TodayWorkbenchClient({
       refreshTopicHref={buildRunHref('incremental_update', selectedTopicId)}
       generateReportHref={selectedTopic?.isReady ? buildRunHref('full_report', selectedTopicId) : null}
       extractConceptsHref={buildRunHref('concept_only', selectedTopicId)}
+      recentRunCount={recentRunCount}
       summarizeArtifact={summarizeArtifact}
+      activityEntries={activityEntries}
     />
   );
 }

@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useTransition } from 'react';
-import { toggleFavoriteAction } from '@/app/actions/libraryActions';
 import type { DocumentListItem as DocItem } from '@/server/repos/documents.repo';
+import { toggleFavoriteAction } from '@/app/actions/libraryActions';
 import { getDocumentTitleIssue } from '../documentPresentation';
+import { LibraryIcon } from './LibraryIcon';
 
 type Props = {
   document: DocItem;
@@ -15,9 +16,10 @@ export function DocumentListItem({ document, isSelected }: Props) {
   const [isPending, startTransition] = useTransition();
   const titleIssue = getDocumentTitleIssue(document.title);
 
-  const handleFavoriteClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleFavoriteClick = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+
     startTransition(() => {
       toggleFavoriteAction(document.id);
     });
@@ -26,47 +28,55 @@ export function DocumentListItem({ document, isSelected }: Props) {
   return (
     <Link
       href={`/library/${document.id}`}
-      className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+      className={`group flex items-center gap-3 rounded-[18px] px-3 py-3 text-[0.82rem] transition ${
         isSelected
-          ? 'bg-zinc-800 text-white'
-          : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+          ? 'bg-[#f0eded] text-[#171717]'
+          : 'text-[#b1abab] hover:bg-[#1f1f1f] hover:text-white'
       }`}
     >
-      <svg
-        className="w-4 h-4 shrink-0 text-zinc-600"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
+      <div
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] ${
+          isSelected ? 'bg-black/6 text-[#171717]' : 'bg-[#232323] text-[#8d8787]'
+        }`}
       >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-        />
-      </svg>
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        {titleIssue && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title={titleIssue.label} />}
-        <span className="truncate">{document.title}</span>
+        <LibraryIcon name="file" className="h-4 w-4" />
       </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          {titleIssue ? (
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${isSelected ? 'bg-[#171717]' : 'bg-[#d99f90]'}`}
+              title={titleIssue.label}
+            />
+          ) : null}
+          <span className="truncate font-medium tracking-[-0.02em]">{document.title}</span>
+        </div>
+        <div className={`${isSelected ? 'text-[#4d4949]' : 'text-[#726b6b]'} mt-1 text-[0.58rem] font-semibold uppercase tracking-[0.22em]`}>
+          {document.tags.length > 0 ? document.tags.slice(0, 2).join(' · ') : 'Vault record'}
+        </div>
+      </div>
+
       <button
+        type="button"
         onClick={handleFavoriteClick}
-        className={`shrink-0 p-0.5 transition-all ${
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
           document.is_favorite
-            ? 'text-yellow-400'
-            : 'text-zinc-600 opacity-0 group-hover:opacity-100'
-        } ${isPending ? 'opacity-50' : ''}`}
+            ? isSelected
+              ? 'text-[#171717]'
+              : 'text-[#e7d87a]'
+            : isSelected
+              ? 'text-[#4d4949] hover:bg-black/6'
+              : 'text-[#726b6b] opacity-0 hover:bg-white/5 hover:text-white group-hover:opacity-100'
+        } ${isPending ? 'opacity-60' : ''}`}
         disabled={isPending}
         aria-label={document.is_favorite ? 'Remove from favorites' : 'Add to favorites'}
       >
-        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={document.is_favorite ? 'currentColor' : 'none'} stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-          />
-        </svg>
+        <LibraryIcon
+          name="star"
+          className="h-4 w-4"
+          filled={document.is_favorite}
+        />
       </button>
     </Link>
   );

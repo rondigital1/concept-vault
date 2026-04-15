@@ -127,12 +127,12 @@ export default async function TodayPage({
       {(artifactActionError || artifactActionInfo) && (
         <div className="relative z-20 mx-auto max-w-[1560px] px-4 pt-4 sm:px-6 lg:px-8">
           {artifactActionError && (
-            <div className="rounded-[20px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <div className="rounded-[20px] bg-[rgba(143,58,58,0.18)] px-4 py-3 text-sm text-[#ffdada] outline outline-1 outline-[rgba(255,194,194,0.16)]">
               {artifactActionError}
             </div>
           )}
           {!artifactActionError && artifactActionInfo && (
-            <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <div className="rounded-[20px] bg-[rgba(92,142,112,0.18)] px-4 py-3 text-sm text-[#e5f8ec] outline outline-1 outline-[rgba(152,225,184,0.18)]">
               {artifactActionInfo}
             </div>
           )}

@@ -116,6 +116,22 @@ export function readLinkedDocumentCount(topic: SavedTopicRow, reportReadyTopic?:
   return readNumber(metadata?.linkedDocumentCount) ?? 0;
 }
 
+export function formatRelativeTime(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
 export function formatRunLabel(kind: string): string {
   const labels: Record<string, string> = {
     full_report: 'Generate report',

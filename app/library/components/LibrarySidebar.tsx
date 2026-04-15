@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { DocumentListItem } from './DocumentListItem';
-import { CollectionSection } from './CollectionSection';
-import type { DocumentListItem as DocItem } from '@/server/repos/documents.repo';
 import type { CollectionRow } from '@/server/repos/collections.repo';
+import type { DocumentListItem as DocItem } from '@/server/repos/documents.repo';
+import { CollectionSection } from './CollectionSection';
+import { DocumentListItem } from './DocumentListItem';
+import { LibraryIcon } from './LibraryIcon';
 
 type Props = {
   documents: DocItem[];
@@ -33,128 +34,148 @@ export function LibrarySidebar({
   const [allDocsExpanded, setAllDocsExpanded] = useState(true);
 
   return (
-    <aside className="w-72 border-r border-zinc-800 bg-zinc-950 flex flex-col overflow-hidden shrink-0">
-      {/* Header */}
-      <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
-        <div>
-          <span className="text-sm font-semibold text-zinc-300">Library</span>
-          <p className="mt-0.5 text-xs text-zinc-500">Search, organize, and clean up imports</p>
+    <aside className="fixed left-0 top-16 z-40 flex h-[calc(100vh-4rem)] w-[18rem] flex-col bg-[#151515] px-4 py-5 shadow-[0_30px_90px_rgba(0,0,0,0.4)]">
+      <div className="rounded-[24px] bg-[#1f1f1f] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-[#7f7979]">Research_Unit_01</p>
+            <h2 className="mt-3 text-[1.08rem] font-bold tracking-[-0.045em] text-white">Repository index</h2>
+            <p className="mt-2 text-[0.76rem] leading-6 text-[#8e8787]">
+              Search, organize, and reopen source material held inside the vault.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="hidden h-9 w-9 items-center justify-center rounded-full bg-white/5 text-[#b6afaf] transition hover:bg-white/10 hover:text-white lg:flex"
+            aria-label="Collapse library navigation"
+          >
+            <LibraryIcon name="panel-close" className="h-4 w-4" />
+          </button>
         </div>
-        <button
-          onClick={onToggleSidebar}
-          className="p-1 text-zinc-500 hover:text-white rounded transition-colors"
-          aria-label="Collapse sidebar"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
-        </button>
-      </div>
 
-      {/* Search */}
-      <div className="p-3">
-        {cleanupCount > 0 && (
+        {cleanupCount > 0 ? (
           <Link
             href="/library#needs-cleanup"
-            className="mb-3 block rounded-xl border border-amber-800 bg-amber-950 px-3 py-2 text-xs text-amber-100 transition-colors hover:bg-amber-900"
+            className="mt-5 flex items-center justify-between rounded-[18px] bg-[#2a1d18] px-4 py-3 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[#f1d0c6] transition hover:bg-[#33231d]"
           >
-            {cleanupCount} title{cleanupCount === 1 ? '' : 's'} need cleanup
+            <span>{cleanupCount} title{cleanupCount === 1 ? '' : 's'} need cleanup</span>
+            <LibraryIcon name="warning" className="h-3.5 w-3.5" />
           </Link>
-        )}
-        <div className="relative">
-          <svg
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+        ) : null}
+
+        <label className="relative mt-4 block">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7d7676]">
+            <LibraryIcon name="search" className="h-4 w-4" />
+          </span>
           <input
             type="text"
             placeholder="Search titles or tags"
             value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-sm bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
+            onChange={(event) => onSearchChange(event.target.value)}
+            className="h-12 w-full rounded-full bg-[#111111] pl-10 pr-4 text-sm text-white placeholder:text-[#676161] outline-none transition focus:bg-[#2a2a2a] focus:shadow-[0_0_0_1px_rgba(198,198,198,0.14)]"
           />
-          {searchQuery && (
+        </label>
+      </div>
+
+      <div className="mt-6 flex-1 overflow-y-auto pr-1">
+        <div className="space-y-4">
+          {favorites.length > 0 ? (
+            <section>
+              <button
+                type="button"
+                onClick={() => setFavoritesExpanded((current) => !current)}
+                className="flex w-full items-center gap-2 px-2 py-1 text-[0.64rem] font-bold uppercase tracking-[0.24em] text-[#8b8484] transition hover:text-white"
+              >
+                <LibraryIcon
+                  name="chevron-right"
+                  className={`h-3.5 w-3.5 transition-transform ${favoritesExpanded ? 'rotate-90' : ''}`}
+                />
+                <span>Favorites</span>
+                <span className="ml-auto rounded-full bg-[#232323] px-2.5 py-1 text-[0.58rem] text-[#d6d0d0]">
+                  {favorites.length}
+                </span>
+              </button>
+              {favoritesExpanded ? (
+                <div className="mt-2 space-y-1">
+                  {favorites.map((document) => (
+                    <DocumentListItem
+                      key={`favorite-${document.id}`}
+                      document={document}
+                      isSelected={document.id === selectedId}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          <CollectionSection
+            collections={collections}
+            expanded={collectionsExpanded}
+            onToggle={() => setCollectionsExpanded((current) => !current)}
+          />
+
+          <section>
             <button
-              onClick={() => onSearchChange('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+              type="button"
+              onClick={() => setAllDocsExpanded((current) => !current)}
+              className="flex w-full items-center gap-2 px-2 py-1 text-[0.64rem] font-bold uppercase tracking-[0.24em] text-[#8b8484] transition hover:text-white"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <LibraryIcon
+                name="chevron-right"
+                className={`h-3.5 w-3.5 transition-transform ${allDocsExpanded ? 'rotate-90' : ''}`}
+              />
+              <span>All documents</span>
+              <span className="ml-auto rounded-full bg-[#232323] px-2.5 py-1 text-[0.58rem] text-[#d6d0d0]">
+                {documents.length}
+              </span>
             </button>
-          )}
+            {allDocsExpanded ? (
+              <div className="mt-2 space-y-1">
+                {documents.length > 0 ? (
+                  documents.map((document) => (
+                    <DocumentListItem
+                      key={document.id}
+                      document={document}
+                      isSelected={document.id === selectedId}
+                    />
+                  ))
+                ) : (
+                  <p className="px-3 py-4 text-[0.78rem] leading-6 text-[#7a7474]">
+                    No matching documents in the current index.
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </section>
         </div>
       </div>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-3">
-        {/* Favorites */}
-        {favorites.length > 0 && (
-          <section>
-            <button
-              onClick={() => setFavoritesExpanded(!favoritesExpanded)}
-              className="flex items-center gap-1 w-full px-2 py-1 text-xs font-semibold text-zinc-400 uppercase tracking-wider hover:text-zinc-300"
-            >
-              <svg
-                className={`w-3 h-3 transition-transform ${favoritesExpanded ? 'rotate-90' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <svg className="w-3 h-3 text-yellow-400" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-              </svg>
-              Favorites ({favorites.length})
-            </button>
-            {favoritesExpanded &&
-              favorites.map((doc) => (
-                <DocumentListItem
-                  key={`fav-${doc.id}`}
-                  document={doc}
-                  isSelected={doc.id === selectedId}
-                />
-              ))}
-          </section>
-        )}
+      <div className="mt-6 rounded-[24px] bg-[#1d1d1d] p-4">
+        <Link
+          href="/ingest"
+          className="flex w-full items-center justify-center rounded-full bg-[#f1eeee] px-4 py-3 text-[0.68rem] font-bold uppercase tracking-[0.28em] text-[#171717] transition hover:bg-white"
+        >
+          Add_Content
+        </Link>
 
-        {/* Collections */}
-        <CollectionSection
-          collections={collections}
-          expanded={collectionsExpanded}
-          onToggle={() => setCollectionsExpanded(!collectionsExpanded)}
-        />
-
-        {/* All Documents */}
-        <section>
-          <button
-            onClick={() => setAllDocsExpanded(!allDocsExpanded)}
-            className="flex items-center gap-1 w-full px-2 py-1 text-xs font-semibold text-zinc-400 uppercase tracking-wider hover:text-zinc-300"
+        <div className="mt-4 space-y-1">
+          <Link
+            href="/today"
+            className="flex items-center gap-3 rounded-full px-3 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[#898383] transition hover:bg-white/5 hover:text-white"
           >
-            <svg
-              className={`w-3 h-3 transition-transform ${allDocsExpanded ? 'rotate-90' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            Browse All ({documents.length})
-          </button>
-          {allDocsExpanded &&
-            documents.map((doc) => (
-              <DocumentListItem
-                key={doc.id}
-                document={doc}
-                isSelected={doc.id === selectedId}
-              />
-            ))}
-        </section>
+            <LibraryIcon name="spark" className="h-4 w-4" />
+            <span>Open research</span>
+          </Link>
+          <Link
+            href="/reports"
+            className="flex items-center gap-3 rounded-full px-3 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[#898383] transition hover:bg-white/5 hover:text-white"
+          >
+            <LibraryIcon name="report" className="h-4 w-4" />
+            <span>Review results</span>
+          </Link>
+        </div>
       </div>
     </aside>
   );

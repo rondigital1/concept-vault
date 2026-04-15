@@ -42,7 +42,7 @@ export function ReportMetadataDrawer({ isOpen, onClose, latestReport, topicName 
                 />
               ) : null}
             </div>
-            <p className="mt-4 text-sm leading-7 text-slate-700">
+            <p className="mt-4 text-sm leading-7 text-[color:var(--today-text-soft)]">
               {latestReport.preview ?? 'Open the full report to read the finished synthesis for this topic.'}
             </p>
           </section>
@@ -71,7 +71,7 @@ export function ReportMetadataDrawer({ isOpen, onClose, latestReport, topicName 
           </section>
         </div>
       ) : (
-        <div className="py-10 text-sm text-slate-600">
+        <div className="py-10 text-sm text-[color:var(--today-muted)]">
           Save more evidence and run report generation to populate this surface.
         </div>
       )}

@@ -91,7 +91,7 @@ export type LatestReportPreview = {
 
 export type SelectedTopicSummary = TopicWorkspaceOption;
 
-export type DrawerKey = 'topic' | 'report';
+export type DrawerKey = 'topic' | 'report' | 'evidence';
 
 export type DrawerState = {
   key: DrawerKey | null;
