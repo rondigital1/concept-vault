@@ -28,5 +28,7 @@ export const client = postgres(connectionString, {
 });
 export const sql = client;
 // Re-export schema utilities
+export { assertSchemaReady, getSchemaStatus, runMigrations } from './migrations';
+export type { MigrationRunResult, SchemaStatus } from './migrations';
 export { ensureSchema } from './schema';
 export type { SchemaInitResult } from './schema';

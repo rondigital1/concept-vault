@@ -22,23 +22,30 @@ function describeDatabase(connectionString: string): string {
 
 async function main() {
   loadEnvConfig(process.cwd());
-  const { client, ensureSchema, resolvedDatabaseUrl } = await import('../db');
+  const { client, resolvedDatabaseUrl, runMigrations } = await import('../db');
 
-  console.log('Initializing database schema...');
+  console.log('Running database migrations...');
   console.log(`Database: ${describeDatabase(resolvedDatabaseUrl)}`);
 
   try {
-    const result = await ensureSchema(client);
+    const result = await runMigrations(client);
 
     if (result.ok) {
-      console.log('✓ Schema initialized successfully');
+      console.log(
+        `✓ Database schema is ready at version ${result.currentVersion ?? 'none'}`,
+      );
+      if (result.appliedVersions.length > 0) {
+        console.log(`Applied migrations: ${result.appliedVersions.join(', ')}`);
+      } else {
+        console.log('No pending migrations');
+      }
       process.exit(0);
     } else {
-      console.error('✗ Schema initialization failed:', result.error);
+      console.error('✗ Migration run failed:', result.error);
       process.exit(1);
     }
   } catch (error) {
-    console.error('✗ Unexpected error:', error);
+    console.error('✗ Unexpected migration error:', error);
     process.exit(1);
   } finally {
     await client.end();

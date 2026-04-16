@@ -60,11 +60,43 @@ export interface CollectionDocument {
   added_at: Date;
 }
 
+export interface User {
+  id: string;
+  email: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  last_authenticated_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface Workspace {
+  id: string;
+  slug: string;
+  name: string;
+  owner_user_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type MembershipRole = 'owner' | 'member';
+
+export interface Membership {
+  user_id: string;
+  workspace_id: string;
+  role: MembershipRole;
+  is_default: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
 /**
  * Schema migration record
  */
 export interface SchemaMigration {
   version: string;
+  name: string;
+  checksum: string;
   applied_at: Date;
 }
 

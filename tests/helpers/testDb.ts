@@ -10,7 +10,7 @@
  * is set in tests/setup.ts before any imports.
  */
 import { sql } from '@/db';
-import { SCHEMA_SQL } from '@/db/schema';
+import { runMigrations } from '@/db/migrations';
 
 type JsonParam = Parameters<typeof sql.json>[0];
 
@@ -19,7 +19,20 @@ type JsonParam = Parameters<typeof sql.json>[0];
  * Safe to call multiple times.
  */
 export async function initTestSchema(): Promise<void> {
-  await sql.unsafe(SCHEMA_SQL);
+  const result = await runMigrations(sql);
+  if (!result.ok) {
+    throw new Error(result.error || 'Failed to initialize test schema');
+  }
+}
+
+export async function resetTestSchema(): Promise<void> {
+  await sql.unsafe('DROP SCHEMA IF EXISTS public CASCADE');
+  await sql.unsafe('CREATE SCHEMA public');
+  try {
+    await sql.unsafe('CREATE EXTENSION IF NOT EXISTS vector');
+  } catch {
+    // Ignore if pgvector is not installed in local development.
+  }
 }
 
 /**
@@ -29,6 +42,9 @@ export async function initTestSchema(): Promise<void> {
 export async function cleanAllTables(): Promise<void> {
   // Order matters due to foreign keys - delete from children first
   await sql`TRUNCATE TABLE 
+    memberships,
+    workspaces,
+    users,
     reviews,
     review_schedule,
     flashcards,
