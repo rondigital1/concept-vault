@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { auth } from '@/auth';
+import { hasOwnerAccess } from '@/server/auth/sessionIdentity';
 
 const PUBLIC_FILE = /\.[^/]+$/;
 
@@ -9,16 +10,6 @@ const PUBLIC_PATHS = new Set(['/favicon.ico', '/robots.txt', '/sitemap.xml']);
 function isStateChangingMethod(method: string): boolean {
   return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
 }
-
-function normalizeEmail(value: string | null | undefined): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-}
-
-const OWNER_EMAIL = normalizeEmail(process.env.OWNER_EMAIL);
 
 function isCrossOriginRequest(request: NextRequest): boolean {
   const origin = request.headers.get('origin');
@@ -68,13 +59,7 @@ function withPrivateHeaders(response: NextResponse): NextResponse {
 }
 
 function isOwnerSession(request: AuthenticatedRequest): boolean {
-  const sessionEmail = normalizeEmail(request.auth?.user?.email);
-
-  if (!OWNER_EMAIL) {
-    return process.env.NODE_ENV !== 'production';
-  }
-
-  return sessionEmail === OWNER_EMAIL;
+  return hasOwnerAccess(request.auth);
 }
 
 function isPublicPath(pathname: string): boolean {
@@ -153,7 +138,14 @@ export const config = {
 type AuthenticatedRequest = NextRequest & {
   auth?: {
     user?: {
+      id?: string;
       email?: string | null;
+      membershipRole?: 'owner' | 'member';
     } | null;
+    workspace?: {
+      id: string;
+      name: string;
+      slug: string;
+    };
   } | null;
 };

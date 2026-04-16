@@ -1,15 +1,14 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import { resolveAuthSecrets } from '@/server/auth/authSecrets';
-
-function normalizeEmail(value: string | null | undefined): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-}
+import {
+  applyIdentityToToken,
+  applyTokenToSession,
+  canSignInWithEmail,
+  hasIdentityClaims,
+  normalizeEmail,
+  resolveSessionIdentity,
+} from '@/server/auth/sessionIdentity';
 
 function emailFromProfile(profile: unknown): string | null {
   if (!profile || typeof profile !== 'object') {
@@ -20,7 +19,6 @@ function emailFromProfile(profile: unknown): string | null {
   return typeof raw === 'string' ? normalizeEmail(raw) : null;
 }
 
-const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL);
 const authSecret = resolveAuthSecrets();
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -31,23 +29,44 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ user, profile }) {
       const candidateEmail = normalizeEmail(user.email) ?? emailFromProfile(profile);
+      return canSignInWithEmail(candidateEmail);
+    },
+    async jwt({ token, user, profile }) {
+      const email =
+        normalizeEmail(user?.email) ??
+        normalizeEmail(typeof token.email === 'string' ? token.email : null) ??
+        emailFromProfile(profile);
 
-      if (!ownerEmail) {
-        if (process.env.NODE_ENV === 'production') {
-          console.error('OWNER_EMAIL is not set. Rejecting sign-in in production.');
-          return false;
-        }
-        return true;
+      if (!email) {
+        return token;
       }
 
-      return candidateEmail === ownerEmail;
+      token.email = email;
+
+      if (hasIdentityClaims(token) && !user) {
+        return token;
+      }
+
+      const identity = await resolveSessionIdentity({
+        email,
+        name:
+          typeof user?.name === 'string'
+            ? user.name
+            : typeof token.name === 'string'
+              ? token.name
+              : null,
+        image:
+          typeof user?.image === 'string'
+            ? user.image
+            : typeof token.picture === 'string'
+              ? token.picture
+              : null,
+      });
+
+      return applyIdentityToToken(token, identity);
     },
     async session({ session, token }) {
-      if (session.user && typeof token.email === 'string') {
-        session.user.email = token.email;
-      }
-
-      return session;
+      return applyTokenToSession(session, token);
     },
   },
 });
