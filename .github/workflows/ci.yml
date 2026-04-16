@@ -70,3 +70,31 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Release smoke checks
+        env:
+          SMOKE_BASE_URL: http://127.0.0.1:3000
+          SMOKE_CRON_SECRET: test-cron-secret
+        run: |
+          npm run start > /tmp/concept-vault-smoke.log 2>&1 &
+          APP_PID=$!
+
+          cleanup() {
+            kill "$APP_PID" >/dev/null 2>&1 || true
+            wait "$APP_PID" >/dev/null 2>&1 || true
+          }
+
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --silent --show-error --output /dev/null --location --max-time 5 "$SMOKE_BASE_URL/"; then
+              npm run smoke:release -- --base-url "$SMOKE_BASE_URL"
+              exit 0
+            fi
+
+            sleep 1
+          done
+
+          echo "Application failed to boot for release smoke checks"
+          cat /tmp/concept-vault-smoke.log
+          exit 1

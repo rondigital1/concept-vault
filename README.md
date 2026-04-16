@@ -167,6 +167,22 @@ To enable Notion publishing, set:
 3. Set `CRON_SECRET` in your deployment environment.
 4. Keep cron schedules enabled for `/api/cron/pipeline`.
 
+## Release Smoke Checks
+
+After `npm run build`, boot the production server and run:
+
+```bash
+SMOKE_BASE_URL=http://127.0.0.1:3000 npm run smoke:release
+```
+
+The smoke script verifies:
+
+- protected app routes still redirect to sign-in
+- protected primary APIs still reject unauthenticated requests
+- `/api/cron/pipeline` rejects missing bearer auth and accepts the configured cron secret
+
+The script emits one structured JSON line per step and fails with the exact route that regressed.
+
 ## Project Structure
 
 ```text
