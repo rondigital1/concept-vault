@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import { getRunTrace } from '@/server/observability/runTrace.store';
 import { listArtifactsByRunId, type ArtifactRow } from '@/server/repos/artifacts.repo';
 import { getReportById } from '@/server/repos/report.repo';
@@ -178,7 +177,6 @@ export async function GET(
   { params }: { params: Promise<{ runId: string }> },
 ) {
   try {
-    await ensureSchema(client);
     const { runId } = await params;
 
     const trace = await getRunTrace(runId);

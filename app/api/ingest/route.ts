@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { client, ensureSchema } from "@/db";
 import { ingestDocument } from "@/server/services/ingest.service";
 import { extractDocumentFromUrl, isHttpUrl } from "@/server/services/urlExtract.service";
 import { publicErrorMessage } from '@/server/security/publicError';
@@ -18,7 +17,6 @@ function badRequest(message: string) {
 
 export async function POST(request: Request) {
   try {
-    await ensureSchema(client);
 
     let body: IngestRequest;
     try {

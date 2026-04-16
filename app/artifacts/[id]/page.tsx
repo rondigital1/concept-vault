@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { client, ensureSchema } from '@/db';
 import { getArtifactById, type ArtifactRow } from '@/server/repos/artifacts.repo';
 
 export const dynamic = 'force-dynamic';
@@ -332,11 +331,6 @@ export default async function ArtifactDetailPage({
   const artifactActionError = firstQueryParam(resolvedSearchParams.artifactActionError);
   const artifactActionInfo = firstQueryParam(resolvedSearchParams.artifactActionInfo);
   const { id } = await params;
-
-  const schemaResult = await ensureSchema(client);
-  if (!schemaResult.ok) {
-    throw new Error(schemaResult.error || 'Failed to initialize database');
-  }
 
   const artifact = await getArtifactById(id);
   if (!artifact) {

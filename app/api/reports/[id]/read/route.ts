@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { markReportRead } from '@/server/repos/report.repo';
-import { client, ensureSchema } from '@/db';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function POST(
@@ -8,7 +7,6 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await ensureSchema(client);
     const { id } = await params;
     const updated = await markReportRead(id);
 

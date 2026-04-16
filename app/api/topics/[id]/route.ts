@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import {
   countTopicLinkedDocuments,
   getSavedTopicsByIds,
@@ -56,7 +55,6 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await ensureSchema(client);
     const { id } = await params;
     const body = (await request.json()) as Record<string, unknown>;
 

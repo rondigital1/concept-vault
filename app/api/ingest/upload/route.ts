@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { client, ensureSchema } from "@/db";
 import { ingestDocument } from "@/server/services/ingest.service";
 import { publicErrorMessage } from '@/server/security/publicError';
 
@@ -228,7 +227,6 @@ async function extractTextFromFile(
 
 export async function POST(request: Request) {
   try {
-    await ensureSchema(client);
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;

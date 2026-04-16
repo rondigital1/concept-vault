@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import { PipelineInput, PipelineRunMode, PipelineTrigger, pipelineFlow } from '@/server/flows/pipeline.flow';
 import { publicErrorMessage } from '@/server/security/publicError';
 
@@ -56,7 +55,6 @@ export async function POST(request: Request) {
   const expectsJson = isJsonRequest(contentType);
 
   try {
-    await ensureSchema(client);
 
     const input: PipelineInput = {};
 

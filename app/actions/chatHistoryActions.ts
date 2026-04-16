@@ -1,6 +1,5 @@
 'use server';
 
-import { client, ensureSchema } from '@/db';
 import * as chatHistoryService from '@/server/services/chatHistory.service';
 import { revalidatePath } from 'next/cache';
 import { publicErrorMessage } from '@/server/security/publicError';
@@ -28,7 +27,6 @@ export interface SessionWithMessages {
 
 export async function listSessionsAction(): Promise<SessionSummary[]> {
   try {
-    await ensureSchema(client);
     const sessions = await chatHistoryService.listRecentSessions(50);
     return sessions.map((s) => ({
       id: s.id,
@@ -47,7 +45,6 @@ export async function getSessionAction(
   sessionId: string
 ): Promise<SessionWithMessages | null> {
   try {
-    await ensureSchema(client);
     const data = await chatHistoryService.getSessionWithMessages(sessionId);
     if (!data) {
       return null;
@@ -71,7 +68,6 @@ export async function deleteSessionAction(
   sessionId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await ensureSchema(client);
     await chatHistoryService.deleteSession(sessionId);
     revalidatePath('/chat');
     return { success: true };
@@ -89,7 +85,6 @@ export async function renameSessionAction(
   title: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await ensureSchema(client);
     await chatHistoryService.renameSession(sessionId, title);
     revalidatePath('/chat');
     return { success: true };

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import { pipelineFlow, PipelineInput, PipelineRunMode } from '@/server/flows/pipeline.flow';
 import { publicErrorMessage } from '@/server/security/publicError';
 
@@ -13,7 +12,6 @@ type Body = {
 
 export async function POST(request: Request) {
   try {
-    await ensureSchema(client);
     const body = (await request.json().catch(() => ({}))) as Body;
 
     if (typeof body.topicId !== 'string' || !body.topicId.trim()) {

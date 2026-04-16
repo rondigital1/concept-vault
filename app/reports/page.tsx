@@ -1,5 +1,3 @@
-import { client } from '@/db';
-import { ensureSchema } from '@/db/schema';
 import { listReports } from '@/server/repos/report.repo';
 import { ReportsWorkspace } from './ReportsWorkspace';
 import { readReportSummary } from './reportsViewModel';
@@ -9,11 +7,6 @@ export const revalidate = 0;
 
 export default async function ReportsPage() {
   try {
-    const schemaResult = await ensureSchema(client);
-    if (!schemaResult.ok) {
-      throw new Error(schemaResult.error || 'Failed to initialize database');
-    }
-
     const reports = await listReports();
     return <ReportsWorkspace reports={reports.map(readReportSummary)} />;
   } catch (error) {

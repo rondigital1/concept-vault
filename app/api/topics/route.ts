@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import { createSavedTopic, listSavedTopics } from '@/server/repos/savedTopics.repo';
 import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
 import {
@@ -158,7 +157,6 @@ function normalizeTopicName(value: string): string {
 
 export async function GET(request: Request) {
   try {
-    await ensureSchema(client);
     const url = new URL(request.url);
     const activeOnly = url.searchParams.get('activeOnly') === 'true';
     const topics = await listSavedTopics({ activeOnly });
@@ -177,7 +175,6 @@ export async function POST(request: Request) {
   const expectsJson = isJsonRequest(contentType);
 
   try {
-    await ensureSchema(client);
     let body: CreateTopicBody = {};
 
     if (expectsJson) {

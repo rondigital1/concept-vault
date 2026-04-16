@@ -1,4 +1,4 @@
-import { client, ensureSchema, sql } from "@/db";
+import { sql } from "@/db";
 import { z } from 'zod';
 import { openAIExecutionService } from '@/server/ai/openai-execution-service';
 import { buildPrompt } from '@/server/ai/prompt-builder';
@@ -78,32 +78,10 @@ export type EvidenceReviewView = {
   active: ResearchArtifact[];
 };
 
-let todaySchemaInitialized = false;
-let todaySchemaInFlight: Promise<void> | null = null;
-
-async function ensureTodaySchema(): Promise<void> {
-  if (todaySchemaInitialized) return;
-  if (todaySchemaInFlight) return todaySchemaInFlight;
-
-  todaySchemaInFlight = (async () => {
-    const result = await ensureSchema(client);
-    if (!result.ok) {
-      throw new Error(result.error || 'Failed to initialize database schema for today service');
-    }
-    todaySchemaInitialized = true;
-  })().finally(() => {
-    todaySchemaInFlight = null;
-  });
-
-  return todaySchemaInFlight;
-}
-
 export async function getTopTags(
   limit = 10
 ): Promise<Array<{ tag: string; count: number }>> {
   try {
-    await ensureTodaySchema();
-
     // Ensure limit is a valid number
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 10));
     
@@ -519,7 +497,6 @@ export async function buildLearningBrief(): Promise<LearningBrief> {
  * Prefer documents that match top tags.
  */
 async function getSourceDocsForToday(topTags: Array<{ tag: string; count: number }>) {
-  await ensureTodaySchema();
 
   if (topTags.length === 0) return [];
 
@@ -762,7 +739,6 @@ function toArtifactStatus(
  * This intentionally avoids web search and LLM calls so the page loads quickly.
  */
 export async function getResearchView(): Promise<ResearchView> {
-  await ensureTodaySchema();
   const date = todayISODate();
 
   const [inboxRows, activeRows, runRows] = await Promise.all([
@@ -948,7 +924,6 @@ export async function getResearchView(): Promise<ResearchView> {
 }
 
 export async function getEvidenceReviewView(): Promise<EvidenceReviewView> {
-  await ensureTodaySchema();
   const date = todayISODate();
 
   const [inboxRows, activeRows, runRows] = await Promise.all([

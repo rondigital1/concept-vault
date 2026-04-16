@@ -1,14 +1,10 @@
 'use server';
 
-import { client, ensureSchema } from '@/db';
 import { ingestDocument } from '@/server/services/ingest.service';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function saveToLibraryAction(text: string, title?: string) {
   try {
-    // Ensure database schema is initialized
-    await ensureSchema(client);
-
     // Use the title provided or default to 'Saved from chat'
     const documentTitle = title || 'Saved from chat';
 

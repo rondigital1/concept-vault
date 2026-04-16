@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import {
   AGENT_KEYS,
   type AgentKey,
@@ -19,7 +18,6 @@ export async function PATCH(
   { params }: { params: Promise<{ agentKey: string }> },
 ) {
   try {
-    await ensureSchema(client);
     const { agentKey } = await params;
 
     if (!isAgentKey(agentKey)) {

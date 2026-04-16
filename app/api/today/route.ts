@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getTodayView } from '@/server/services/today.service';
-import { client, ensureSchema } from '@/db';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    await ensureSchema(client);
     const todayView = await getTodayView();
   
     return NextResponse.json(todayView, {

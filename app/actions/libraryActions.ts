@@ -1,6 +1,5 @@
 'use server';
 
-import { client, ensureSchema } from '@/db';
 import {
   deleteDocument,
   updateDocumentTitle,
@@ -11,7 +10,6 @@ import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function deleteDocumentAction(documentId: string) {
   try {
-    await ensureSchema(client);
     await deleteDocument(documentId);
     revalidatePath('/library');
     return { success: true };
@@ -29,7 +27,6 @@ export async function updateDocumentTitleAction(
   title: string
 ) {
   try {
-    await ensureSchema(client);
     await updateDocumentTitle(documentId, title);
     revalidatePath('/library');
     revalidatePath(`/library/${documentId}`);
@@ -45,7 +42,6 @@ export async function updateDocumentTitleAction(
 
 export async function toggleFavoriteAction(documentId: string) {
   try {
-    await ensureSchema(client);
     const isFavorite = await toggleFavorite(documentId);
     revalidatePath('/library');
     return { success: true, isFavorite };

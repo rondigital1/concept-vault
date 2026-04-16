@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_DAY } from '../helpers/fixtures';
 
-const mockEnsureSchema = vi.hoisted(() => vi.fn());
 const mockFindSources = vi.hoisted(() => vi.fn());
-
-vi.mock('@/db', () => ({
-  client: {},
-  ensureSchema: mockEnsureSchema,
-}));
 
 vi.mock('@/server/services/findSources.service', () => ({
   findSources: mockFindSources,
@@ -16,7 +10,6 @@ vi.mock('@/server/services/findSources.service', () => ({
 describe('find sources route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockEnsureSchema.mockResolvedValue(undefined);
   });
 
   it('parses and forwards a single-topic request', async () => {

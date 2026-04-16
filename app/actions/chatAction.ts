@@ -1,7 +1,6 @@
 'use server';
 
 import type { EasyInputMessage } from 'openai/resources/responses/responses';
-import { client, ensureSchema } from '@/db';
 import { openAIExecutionService } from '@/server/ai/openai-execution-service';
 import { buildPrompt } from '@/server/ai/prompt-builder';
 import { AI_TASKS } from '@/server/ai/tasks';
@@ -22,7 +21,6 @@ export interface ChatResponse {
 
 export async function chatAction(input: ChatActionInput): Promise<ChatResponse> {
   try {
-    await ensureSchema(client);
 
     // Get or create session
     const session = await chatHistoryService.getOrCreateSession(input.sessionId);

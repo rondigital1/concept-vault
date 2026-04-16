@@ -1,6 +1,5 @@
 'use server';
 
-import { client, ensureSchema } from '@/db';
 import { ingestDocument } from '@/server/services/ingest.service';
 import { extractDocumentFromUrl, isHttpUrl } from '@/server/services/urlExtract.service';
 
@@ -14,8 +13,6 @@ export async function ingestContent(formData: {
   content?: string;
 }): Promise<IngestResult> {
   try {
-    await ensureSchema(client);
-
     const rawSource = formData.source?.trim();
     const source = rawSource || 'manual';
     const providedContent = formData.content?.trim() || '';

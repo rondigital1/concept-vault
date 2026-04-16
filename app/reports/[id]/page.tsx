@@ -1,7 +1,5 @@
 import { notFound } from 'next/navigation';
 import { getReportById } from '@/server/repos/report.repo';
-import { ensureSchema } from '@/db/schema';
-import { client } from '@/db';
 import ReportDetailClient from './ReportDetailClient';
 
 export default async function ReportDetailPage({
@@ -10,11 +8,6 @@ export default async function ReportDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-
-  const schemaResult = await ensureSchema(client);
-  if (!schemaResult.ok) {
-    throw new Error(schemaResult.error || 'Failed to initialize database');
-  }
 
   const report = await getReportById(id);
   if (!report) {

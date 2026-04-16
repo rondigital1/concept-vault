@@ -1,7 +1,6 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { WebScoutRunClient } from './WebScoutRunClient';
-import { client, ensureSchema } from '@/db';
 import { getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
 import {
   listReportReadyTopics,
@@ -79,54 +78,47 @@ export default async function WebScoutPage({
     linkedDocumentCount: number;
   }> = [];
 
-  const schemaResult = await ensureSchema(client);
-  if (!schemaResult.ok) {
-    const schemaError = schemaResult.error || 'Failed to initialize database';
-    reportTopicsError = schemaError;
-    batchTopicsError = schemaError;
-  } else {
-    if (requiresTopicSelection) {
-      try {
-        const readyTopics = await listReportReadyTopics(MIN_LINKED_DOCUMENTS_FOR_REPORT);
-        reportTopicOptions = readyTopics.map((entry) => ({
-          id: entry.topic.id,
-          name: entry.topic.name,
-          goal: entry.topic.goal,
-          focusTags: entry.topic.focus_tags ?? [],
-          linkedDocumentCount: entry.linkedDocumentCount,
-          lastReportAt: entry.lastReportAt,
-        }));
-      } catch (error) {
-        reportTopicsError =
-          error instanceof Error ? error.message : 'Failed to load ready-to-generate topics';
-      }
+  if (requiresTopicSelection) {
+    try {
+      const readyTopics = await listReportReadyTopics(MIN_LINKED_DOCUMENTS_FOR_REPORT);
+      reportTopicOptions = readyTopics.map((entry) => ({
+        id: entry.topic.id,
+        name: entry.topic.name,
+        goal: entry.topic.goal,
+        focusTags: entry.topic.focus_tags ?? [],
+        linkedDocumentCount: entry.linkedDocumentCount,
+        lastReportAt: entry.lastReportAt,
+      }));
+    } catch (error) {
+      reportTopicsError =
+        error instanceof Error ? error.message : 'Failed to load ready-to-generate topics';
     }
+  }
 
-    if (isBatchFindSources) {
-      try {
-        const topicsNeedingSources = await listTopicsNeedingSources(
-          MIN_LINKED_DOCUMENTS_FOR_REPORT,
-        );
-        batchTopicOptions = topicsNeedingSources.map((entry) => ({
-          id: entry.topic.id,
-          name: entry.topic.name,
-          goal: entry.topic.goal,
-          focusTags: entry.topic.focus_tags ?? [],
-          linkedDocumentCount: entry.linkedDocumentCount,
-        }));
-      } catch (error) {
-        batchTopicsError =
-          error instanceof Error ? error.message : 'Failed to load topics that need more sources';
-      }
+  if (isBatchFindSources) {
+    try {
+      const topicsNeedingSources = await listTopicsNeedingSources(
+        MIN_LINKED_DOCUMENTS_FOR_REPORT,
+      );
+      batchTopicOptions = topicsNeedingSources.map((entry) => ({
+        id: entry.topic.id,
+        name: entry.topic.name,
+        goal: entry.topic.goal,
+        focusTags: entry.topic.focus_tags ?? [],
+        linkedDocumentCount: entry.linkedDocumentCount,
+      }));
+    } catch (error) {
+      batchTopicsError =
+        error instanceof Error ? error.message : 'Failed to load topics that need more sources';
     }
+  }
 
-    if (topicId) {
-      try {
-        const topics = await getSavedTopicsByIds([topicId]);
-        selectedTopicName = topics[0]?.name ?? null;
-      } catch {
-        selectedTopicName = null;
-      }
+  if (topicId) {
+    try {
+      const topics = await getSavedTopicsByIds([topicId]);
+      selectedTopicName = topics[0]?.name ?? null;
+    } catch {
+      selectedTopicName = null;
     }
   }
 

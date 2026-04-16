@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import type { FindSourcesInput } from '@/server/services/findSources.service';
 import { findSources } from '@/server/services/findSources.service';
 import { publicErrorMessage } from '@/server/security/publicError';
@@ -10,7 +9,6 @@ type Body = FindSourcesInput;
 
 export async function POST(request: Request) {
   try {
-    await ensureSchema(client);
     const body = (await request.json().catch(() => ({}))) as Body;
 
     const input: FindSourcesInput = {};

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import { createSourceWatch, listSourceWatch } from '@/server/services/sourceWatch.service';
 import { publicErrorMessage } from '@/server/security/publicError';
 
@@ -7,7 +6,6 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    await ensureSchema(client);
     const items = await listSourceWatch();
     return NextResponse.json({ items });
   } catch (error) {
@@ -21,7 +19,6 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await ensureSchema(client);
 
     const body = await request.json();
     if (!body || typeof body.url !== 'string' || !body.url.trim()) {

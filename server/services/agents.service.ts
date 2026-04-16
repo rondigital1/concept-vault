@@ -1,4 +1,4 @@
-import { client, ensureSchema, sql } from '@/db';
+import { sql } from '@/db';
 import {
   type AgentKey,
   type AgentProfileSettingsMap,
@@ -463,8 +463,6 @@ export async function getAgentsView(options?: {
   selectedTopicId?: string | null;
   selectedRunId?: string | null;
 }): Promise<AgentsView> {
-  await ensureSchema(client);
-
   const [
     profiles,
     topics,

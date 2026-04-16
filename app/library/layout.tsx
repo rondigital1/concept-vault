@@ -1,5 +1,3 @@
-import { ensureSchema } from '@/db/schema';
-import { client } from '@/db';
 import { listDocuments } from '@/server/repos/documents.repo';
 import { listCollections } from '@/server/repos/collections.repo';
 import { Inter } from 'next/font/google';
@@ -18,8 +16,6 @@ export default async function LibraryLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await ensureSchema(client);
-
   const [documents, collections] = await Promise.all([
     listDocuments(),
     listCollections(),

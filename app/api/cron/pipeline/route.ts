@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { client, ensureSchema } from '@/db';
 import { pipelineFlow, PipelineInput, PipelineRunMode } from '@/server/flows/pipeline.flow';
 import { listDueTrackedTopics, getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
 import { decideScheduledRunMode, setupTopicContext } from '@/server/services/topicWorkflow.service';
@@ -99,8 +98,6 @@ async function runCronPipeline(request: Request): Promise<Response> {
   if (!isCronRequestAuthorized(request, ['PIPELINE_CRON_SECRET', 'CRON_SECRET'])) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  await ensureSchema(client);
 
   let body: CronPipelineBody = {};
   if (request.method === 'POST') {

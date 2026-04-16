@@ -1,6 +1,5 @@
 'use server';
 
-import { client, ensureSchema } from '@/db';
 import {
   createCollection,
   updateCollection,
@@ -13,7 +12,6 @@ import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function createCollectionAction(name: string, description?: string) {
   try {
-    await ensureSchema(client);
     const id = await createCollection(name, description);
     revalidatePath('/library');
     return { success: true, id };
@@ -28,7 +26,6 @@ export async function createCollectionAction(name: string, description?: string)
 
 export async function renameCollectionAction(collectionId: string, name: string) {
   try {
-    await ensureSchema(client);
     await updateCollection(collectionId, { name });
     revalidatePath('/library');
     return { success: true };
@@ -43,7 +40,6 @@ export async function renameCollectionAction(collectionId: string, name: string)
 
 export async function deleteCollectionAction(collectionId: string) {
   try {
-    await ensureSchema(client);
     await deleteCollection(collectionId);
     revalidatePath('/library');
     return { success: true };
@@ -61,7 +57,6 @@ export async function addToCollectionAction(
   documentId: string,
 ) {
   try {
-    await ensureSchema(client);
     await addDocumentToCollection(collectionId, documentId);
     revalidatePath('/library');
     return { success: true };
@@ -79,7 +74,6 @@ export async function removeFromCollectionAction(
   documentId: string,
 ) {
   try {
-    await ensureSchema(client);
     await removeDocumentFromCollection(collectionId, documentId);
     revalidatePath('/library');
     return { success: true };

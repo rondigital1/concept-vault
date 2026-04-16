@@ -1,4 +1,4 @@
-import { client, ensureSchema, sql } from '@/db';
+import { sql } from '@/db';
 import {
   AGENT_KEYS,
   type AgentKey,
@@ -17,16 +17,7 @@ type AgentProfileRow = {
   updated_at: string | null;
 };
 
-async function ensureAgentProfilesStoreReady(): Promise<void> {
-  const result = await ensureSchema(client);
-  if (!result.ok) {
-    throw new Error(result.error || 'Failed to initialize schema for agent profiles');
-  }
-}
-
 async function ensureAgentProfilesSeeded(): Promise<void> {
-  await ensureAgentProfilesStoreReady();
-
   for (const agentKey of AGENT_KEYS) {
     await sql`
       INSERT INTO agent_profiles (agent_key, settings)
