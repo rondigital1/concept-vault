@@ -3,10 +3,10 @@
 import { useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { EvidenceReviewWorkspace } from './EvidenceReviewWorkspace';
+import { buildNextHref, getTopicForSelection, readDrawerKey, readQueueFilter } from './routeState';
 import { deriveActivityFeed, deriveTopicWorkflowSummary, getTopicDetailRunMode, getTopicIdFromArtifact, summarizeArtifact } from './reviewViewModel';
 import type { Artifact, DrawerKey, Run, TopicWorkspaceOption, WorkbenchTopic } from './types';
-
-type QueueFilter = 'pending' | 'saved';
+import type { QueueFilter } from './routeState';
 
 type Props = {
   displayDate: string;
@@ -34,49 +34,6 @@ function buildRunHref(runMode: string, topicId: string | null): string {
     params.set('topicId', topicId);
   }
   return `/web-scout?${params.toString()}`;
-}
-
-function getTopicForSelection(topics: WorkbenchTopic[], preferredTopicId: string | null): string | null {
-  if (preferredTopicId && topics.some((topic) => topic.id === preferredTopicId)) {
-    return preferredTopicId;
-  }
-  return topics[0]?.id ?? null;
-}
-
-function readQueueFilter(value: string | null, fallback: QueueFilter): QueueFilter {
-  return value === 'saved' || value === 'pending' ? value : fallback;
-}
-
-function readDrawerKey(value: string | null, fallback: DrawerKey | null): DrawerKey | null {
-  return value === 'topic' || value === 'report' || value === 'evidence' ? value : fallback;
-}
-
-function buildNextHref(
-  pathname: string,
-  searchParams: { toString(): string },
-  updates: {
-    topicId?: string | null;
-    artifactId?: string | null;
-    queue?: QueueFilter | null;
-    drawer?: DrawerKey | null;
-  },
-) {
-  const nextParams = new URLSearchParams(searchParams.toString());
-
-  for (const [key, value] of Object.entries(updates)) {
-    if (value === undefined) {
-      continue;
-    }
-
-    if (value === null || value === '') {
-      nextParams.delete(key);
-    } else {
-      nextParams.set(key, value);
-    }
-  }
-
-  const query = nextParams.toString();
-  return query ? `${pathname}?${query}` : pathname;
 }
 
 export function TodayWorkbenchClient({
@@ -156,9 +113,12 @@ export function TodayWorkbenchClient({
   }
 
   function handleArtifactChange(artifactId: string) {
+    const openEvidenceDrawer =
+      typeof window !== 'undefined' && window.matchMedia('(max-width: 979px)').matches;
+
     navigate({
       artifactId,
-      drawer: drawer === 'evidence' ? 'evidence' : null,
+      drawer: openEvidenceDrawer ? 'evidence' : null,
     });
   }
 

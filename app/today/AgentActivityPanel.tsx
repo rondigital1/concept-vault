@@ -10,17 +10,17 @@ type Props = {
 };
 
 function textClassForIndex(index: number): string {
-  if (index === 0) return 'text-slate-950 font-medium';
-  if (index <= 3) return 'text-slate-700';
-  if (index <= 7) return 'text-slate-500';
-  return 'text-[color:var(--workbench-muted)]';
+  if (index === 0) return 'font-medium text-[color:var(--today-text)]';
+  if (index <= 3) return 'text-[color:var(--today-text-soft)]';
+  if (index <= 7) return 'text-[color:var(--today-muted-strong)]';
+  return 'text-[color:var(--today-muted)]';
 }
 
 function PanelHeader({ hasLive }: { hasLive: boolean }) {
   return (
     <div className="flex items-center gap-2">
       {hasLive && <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />}
-      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--workbench-muted)]">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--today-muted)]">
         Agent Activity
       </span>
     </div>
@@ -31,18 +31,18 @@ function EntryList({ entries }: { entries: ActivityEntry[] }) {
   if (entries.length === 0) {
     return (
       <div className="px-4 py-6">
-        <p className="text-sm text-[color:var(--workbench-muted)]">No agent activity yet.</p>
+        <p className="text-sm text-[color:var(--today-muted)]">No agent activity yet.</p>
       </div>
     );
   }
 
   return (
-    <ul className="divide-y divide-[color:var(--workbench-line)]">
+    <ul className="divide-y divide-[rgba(255,255,255,0.08)]">
       {entries.map((entry, index) => (
         <li key={entry.id} className={`px-4 py-3 ${textClassForIndex(index)}`}>
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-semibold">{entry.agentName}</span>
-            <span className="shrink-0 text-[11px] text-[color:var(--workbench-muted)]">
+            <span className="shrink-0 text-[11px] text-[color:var(--today-muted)]">
               {formatClockTime(entry.timestamp)}
             </span>
           </div>
@@ -64,8 +64,8 @@ export function AgentActivityPanel({ entries, inline }: Props) {
 
   if (inline) {
     return (
-      <div className="overflow-hidden rounded-[24px] border border-[color:var(--workbench-line)]">
-        <div className="border-b border-[color:var(--workbench-line)] px-4 py-3">
+      <div className="today-panel today-panel-low overflow-hidden rounded-[24px]">
+        <div className="border-b border-[rgba(255,255,255,0.08)] px-4 py-3">
           <PanelHeader hasLive={hasLive} />
         </div>
         <div className="max-h-72 overflow-y-auto">
@@ -76,7 +76,7 @@ export function AgentActivityPanel({ entries, inline }: Props) {
   }
 
   return (
-    <div className="border-t border-[color:var(--workbench-line)]">
+    <div className="border-t border-[rgba(255,255,255,0.08)]">
       <button
         type="button"
         onClick={() => setIsExpanded((v) => !v)}
@@ -84,7 +84,7 @@ export function AgentActivityPanel({ entries, inline }: Props) {
       >
         <PanelHeader hasLive={hasLive} />
         <svg
-          className={`h-4 w-4 text-[color:var(--workbench-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 text-[color:var(--today-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
           viewBox="0 0 20 20"
           fill="currentColor"
           aria-hidden="true"
@@ -97,7 +97,7 @@ export function AgentActivityPanel({ entries, inline }: Props) {
         </svg>
       </button>
       {isExpanded && (
-        <div className="max-h-64 overflow-y-auto border-t border-[color:var(--workbench-line)]">
+        <div className="max-h-64 overflow-y-auto border-t border-[rgba(255,255,255,0.08)]">
           <EntryList entries={entries} />
         </div>
       )}

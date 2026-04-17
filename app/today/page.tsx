@@ -1,5 +1,6 @@
 import { TodayClient } from './TodayClient';
 import { TodayWorkbenchClient } from './TodayWorkbenchClient';
+import { readDrawerKey } from './routeState';
 import type { LatestReportPreview, PageSearchParams, TodayData, WorkbenchTopic } from './types';
 import { asObject, firstQueryParam, formatDisplayDate, readNumber, readString } from './utils';
 import { listSavedTopics, type SavedTopicRow } from '@/server/repos/savedTopics.repo';
@@ -149,7 +150,7 @@ export default async function TodayPage({
         initialTopicId={initialTopicId}
         initialArtifactId={requestedArtifactId}
         initialQueueFilter={requestedQueue === 'saved' ? 'saved' : 'pending'}
-        initialDrawer={requestedDrawer === 'topic' || requestedDrawer === 'report' ? requestedDrawer : null}
+        initialDrawer={readDrawerKey(requestedDrawer ?? null, null)}
       />
     </>
   );

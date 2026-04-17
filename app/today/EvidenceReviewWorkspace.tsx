@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { PRIMARY_TOP_NAV_KEYS, getTopNavItemsWithState } from '@/app/components/topNav';
 import { EvidenceDecisionBar } from './EvidenceDecisionBar';
@@ -404,6 +405,23 @@ export function EvidenceReviewWorkspace({
   const activeNodeCount = activityEntries.filter((entry) => entry.status === 'running').length;
   const selectedTopicLastUpdate = formatRelativeTime(selectedTopic?.lastRunAt);
 
+  useEffect(() => {
+    if (activeDrawer !== 'evidence') {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onDrawerClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [activeDrawer, onDrawerClose]);
+
   if (topics.length === 0) {
     return (
       <WorkspaceChrome
@@ -688,14 +706,24 @@ export function EvidenceReviewWorkspace({
       </WorkspaceChrome>
 
       {activeDrawer === 'evidence' && selectedArtifact ? (
-        <div className="fixed inset-0 z-40 hidden min-[980px]:block">
+        <div className="fixed inset-0 z-40 min-[980px]:hidden">
           <button
             type="button"
             aria-label="Close evidence detail"
             onClick={onDrawerClose}
-            className="absolute inset-0 bg-black/52 backdrop-blur-[4px]"
+            className="absolute inset-0 bg-black/60 backdrop-blur-[6px]"
           />
-          <aside className="today-panel today-panel-high today-glass absolute inset-y-0 right-0 z-10 flex w-full max-w-[680px] flex-col rounded-none rounded-l-[28px]">
+          <aside className="today-panel today-panel-high today-glass absolute inset-x-0 bottom-0 top-[10vh] z-10 flex flex-col rounded-t-[28px]">
+            <div className="absolute right-4 top-4 z-10">
+              <button
+                type="button"
+                onClick={onDrawerClose}
+                className={`${secondaryButtonClass} h-10 w-10 px-0`}
+                aria-label="Close evidence detail"
+              >
+                ×
+              </button>
+            </div>
             <div className="flex h-full min-h-0 flex-col">
               <EvidenceDetailPane
                 queueFilter={queueFilter}

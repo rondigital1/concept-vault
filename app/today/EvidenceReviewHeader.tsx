@@ -22,7 +22,9 @@ function TabBadge({ label, active }: { label: string; active: boolean }) {
   return (
     <span
       className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${
-        active ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'
+        active
+          ? 'bg-[rgba(255,255,255,0.14)] text-[color:var(--today-accent-strong)]'
+          : 'bg-[rgba(255,255,255,0.08)] text-[color:var(--today-muted-strong)]'
       }`}
     >
       {label}
@@ -39,27 +41,27 @@ export function EvidenceReviewHeader({
   onReportOpen,
 }: Props) {
   const activeTabClass =
-    'inline-flex items-center rounded-[18px] bg-[color:var(--workbench-accent-ink)] px-4 py-2.5 text-sm font-semibold text-white transition-colors [box-shadow:0_1px_4px_rgba(23,60,73,0.22),inset_0_-2px_0_rgba(0,0,0,0.12)]';
+    'inline-flex items-center rounded-[18px] bg-[color:var(--today-accent-strong)] px-4 py-2.5 text-sm font-semibold text-[color:var(--today-accent-ink)] transition-colors shadow-[0_12px_24px_rgba(0,0,0,0.22)]';
   const inactiveTabClass =
-    'inline-flex items-center rounded-[18px] px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-white/60 hover:text-slate-900';
+    'inline-flex items-center rounded-[18px] px-4 py-2.5 text-sm font-semibold text-[color:var(--today-muted-strong)] transition-colors hover:bg-[rgba(255,255,255,0.08)] hover:text-[color:var(--today-text)]';
 
   const reportBadge = selectedTopic?.latestReport
     ? formatReportDay(selectedTopic.latestReport.day)
     : 'None';
 
   return (
-    <header className="border-b border-[color:var(--workbench-line)] px-5 py-6 sm:px-6 lg:px-8">
+    <header className="border-b border-[rgba(255,255,255,0.08)] px-5 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 min-[900px]:flex-row min-[900px]:items-start min-[900px]:justify-between">
         <div className="max-w-2xl">
-          <h1 className="text-[clamp(2rem,3vw,3.1rem)] font-semibold tracking-[-0.045em] text-slate-950">
+          <h1 className="text-[clamp(2rem,3vw,3.1rem)] font-semibold tracking-[-0.045em] text-[color:var(--today-text)]">
             Evidence Review
           </h1>
-          <p className="mt-3 max-w-xl text-sm leading-7 text-slate-600">
+          <p className="mt-3 max-w-xl text-sm leading-7 text-[color:var(--today-muted)]">
             Stay in one topic, review evidence quickly, and open deeper context only when needed.
           </p>
         </div>
 
-        <div className="flex items-center gap-0.5 self-start rounded-[22px] border border-[color:var(--workbench-line)] bg-[rgba(248,246,243,0.6)] p-1">
+        <div className="flex items-center gap-0.5 self-start rounded-[22px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] p-1">
           <button
             type="button"
             onClick={onTopicInfoOpen}

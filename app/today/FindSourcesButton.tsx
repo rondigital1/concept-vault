@@ -72,7 +72,7 @@ export function FindSourcesButton(props: Props) {
       onClick={handleClick}
       className={
         isBatch
-          ? `${secondaryButtonClass} bg-[color:var(--workbench-accent-soft)] text-[color:var(--workbench-accent-ink)]`
+          ? `${secondaryButtonClass} !bg-[rgba(255,255,255,0.12)] !text-[color:var(--today-accent-strong)] !outline-[rgba(255,255,255,0.14)] hover:!bg-[rgba(255,255,255,0.18)]`
           : emphasis === 'primary'
             ? primaryButtonClass
             : secondaryButtonClass
