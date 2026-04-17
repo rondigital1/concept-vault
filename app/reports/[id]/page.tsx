@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getReportById } from '@/server/repos/report.repo';
+import { readReportDetail } from '../reportsViewModel';
 import ReportDetailClient from './ReportDetailClient';
 
 export default async function ReportDetailPage({
@@ -16,23 +17,22 @@ export default async function ReportDetailPage({
     notFound();
   }
 
-  const content = report.content as {
-    markdown?: string;
-    title?: string;
-    executiveSummary?: string;
-    sourcesCount?: number;
-    topicsCovered?: string[];
-  };
+  const detail = readReportDetail(report);
 
   return (
     <ReportDetailClient
-      id={report.id}
-      title={content.title || report.title}
-      day={report.day}
-      markdown={content.markdown || ''}
-      sourcesCount={content.sourcesCount ?? 0}
-      topicsCovered={content.topicsCovered ?? []}
-      isRead={!!report.read_at}
+      id={detail.id}
+      title={detail.title}
+      createdAt={detail.createdAt}
+      day={detail.day}
+      markdown={detail.markdown}
+      summaryLines={detail.summaryLines}
+      summaryPreview={detail.summaryPreview}
+      citations={detail.citations}
+      sourcesCount={detail.sourcesCount ?? 0}
+      topicsCovered={detail.topicsCovered}
+      isRead={!detail.isUnread}
+      runId={detail.runId}
     />
   );
 }

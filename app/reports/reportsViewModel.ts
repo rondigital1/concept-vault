@@ -22,6 +22,10 @@ export type ReportCardSummary = {
   topicId: string | null;
 };
 
+export type ReportDetailModel = ReportCardSummary & {
+  markdown: string;
+};
+
 function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
@@ -58,7 +62,7 @@ function readCitationSource(url: string): string {
   }
 }
 
-function extractCitations(markdown: string): ReportCitation[] {
+export function extractReportCitations(markdown: string): ReportCitation[] {
   const sourcesSection = markdown.match(/##\s+Sources\s*\n+([\s\S]*?)(?=\n##|\n#\s|$)/i)?.[1];
   if (!sourcesSection) {
     return [];
@@ -85,6 +89,10 @@ function extractCitations(markdown: string): ReportCitation[] {
 }
 
 export function readReportSummary(report: ArtifactRow): ReportCardSummary {
+  return readReportDetail(report);
+}
+
+export function readReportDetail(report: ArtifactRow): ReportDetailModel {
   const content = report.content as {
     title?: string;
     executiveSummary?: string;
@@ -112,9 +120,10 @@ export function readReportSummary(report: ArtifactRow): ReportCardSummary {
     topicsCovered: readStringArray(content.topicsCovered),
     sourcesCount: typeof content.sourcesCount === 'number' ? content.sourcesCount : null,
     isUnread: !report.read_at,
-    citations: extractCitations(markdown),
+    citations: extractReportCitations(markdown),
     runId: report.run_id,
     topicId: readString(sourceRefs.topicId),
+    markdown,
   };
 }
 
