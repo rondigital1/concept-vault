@@ -77,7 +77,7 @@ describe('ChatHistorySidebar', () => {
     expect(html).toContain('href="/chat?session=session-2"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('Delete conversation Concept cleanup');
-    expect(html).toContain('3 messages');
+    expect(html).toContain('Which notes need cleanup?');
   });
 
   it('renders a product-facing empty state when there are no saved conversations', () => {

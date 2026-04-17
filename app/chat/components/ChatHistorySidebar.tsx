@@ -71,7 +71,7 @@ export function ChatHistorySidebar({
   onNewChat,
   variant = 'desktop',
 }: ChatHistorySidebarProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '';
   const [pendingDeleteSession, setPendingDeleteSession] = useState<SessionSummary | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const { data, isLoading, mutate } = useSWR<SessionSummary[]>(
