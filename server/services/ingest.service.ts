@@ -1,46 +1,65 @@
 import { sql } from '@/db';
 import { createHash } from 'node:crypto';
-import { pipelineFlow } from '@/server/flows/pipeline.flow';
 import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
+import type { PipelineInput } from '@/server/flows/pipeline.flow';
+import {
+  enqueuePipelineJob,
+  executePipelineInline,
+  isPipelineInlineExecutionEnabled,
+} from '@/server/jobs/pipelineJobs';
 
 function sha256(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
 export async function ingestDocument({
+  workspaceId,
   title,
   source,
   content,
   autoEnrich = process.env.NODE_ENV !== 'test',
   enableAutoDistill,
 }: {
+  workspaceId: string;
   title: string;
   source: string;
   content: string;
   autoEnrich?: boolean;
   enableAutoDistill?: boolean;
-}): Promise<{ documentId: string; created: boolean; enrichmentRunId: string | null }> {
+}): Promise<{
+  documentId: string;
+  created: boolean;
+  enrichmentJobId: string | null;
+  enrichmentQueued: boolean;
+  enrichmentRunId: string | null;
+}> {
   const normalizedContent = normalizeContent(content);
   // 2. Compute a stable content_hash
   const contentHash = sha256(normalizedContent);
 
   // 4. Insert new document with conflict handling
   const inserted = await sql<Array<{ id: string }>>`
-    INSERT INTO documents (title, source, content, content_hash)
-    VALUES (${title}, ${source}, ${normalizedContent}, ${contentHash})
-    ON CONFLICT (content_hash) DO NOTHING
+    INSERT INTO documents (workspace_id, title, source, content, content_hash)
+    VALUES (${workspaceId}, ${title}, ${source}, ${normalizedContent}, ${contentHash})
+    ON CONFLICT (workspace_id, content_hash) DO NOTHING
     RETURNING id
   `;
   if (inserted.length === 0) {
     // If nothing was inserted, it means a conflict occurred (deduplicated)
     const existing = await sql<Array<{ id: string }>>`
-      SELECT id FROM documents WHERE content_hash = ${contentHash} LIMIT 1
+      SELECT id
+      FROM documents
+      WHERE workspace_id = ${workspaceId}
+        AND content_hash = ${contentHash}
+      LIMIT 1
     `;
     const documentId = existing[0]?.id ?? 'unknown';
     console.log(`[Ingest] Deduplicated document: ${title} (${documentId})`);
     return {
       documentId,
       created: false,
+      enrichmentJobId: null,
+      enrichmentQueued: false,
       enrichmentRunId: null,
     };
   }
@@ -49,13 +68,16 @@ export async function ingestDocument({
   console.log(`[Ingest] Created document: ${title} (${documentId})`);
 
   let enrichmentRunId: string | null = null;
+  let enrichmentJobId: string | null = null;
+  let enrichmentQueued = false;
   if (autoEnrich) {
     try {
       const resolvedEnableAutoDistill =
         typeof enableAutoDistill === 'boolean'
           ? enableAutoDistill
           : (await getAgentProfileSettingsMap()).pipeline.enableAutoDistillOnIngest;
-      const enrichmentResult = await pipelineFlow({
+      const enrichmentInput: PipelineInput = {
+        workspaceId,
         trigger: 'auto_document',
         runMode: 'lightweight_enrichment',
         documentIds: [documentId],
@@ -63,8 +85,21 @@ export async function ingestDocument({
         enableCategorization: true,
         enableAutoDistill: resolvedEnableAutoDistill,
         idempotencyKey: `auto_enrich:${documentId}`,
-      });
-      enrichmentRunId = enrichmentResult.runId;
+      };
+
+      if (isPipelineInlineExecutionEnabled()) {
+        const enrichmentResult = await executePipelineInline(enrichmentInput);
+        enrichmentRunId = enrichmentResult.runId;
+      } else {
+        const queued = await enqueuePipelineJob({
+          scope: { workspaceId },
+          route: '/api/ingest',
+          input: enrichmentInput,
+        });
+        enrichmentRunId = queued.runId;
+        enrichmentJobId = queued.jobId;
+        enrichmentQueued = true;
+      }
     } catch (error) {
       // Ingest should succeed even if auto-enrichment fails.
       console.error('[Ingest] Auto enrichment failed:', error);
@@ -74,6 +109,8 @@ export async function ingestDocument({
   return {
     documentId,
     created: true,
+    enrichmentJobId,
+    enrichmentQueued,
     enrichmentRunId,
   };
 }

@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { detectWorkspaceAccess, recordAuthorizationDenied } from '@/server/auth/authzAudit';
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getRunTrace } from '@/server/observability/runTrace.store';
 import { listArtifactsByRunId, type ArtifactRow } from '@/server/repos/artifacts.repo';
 import { getReportById } from '@/server/repos/report.repo';
@@ -177,22 +179,32 @@ export async function GET(
   { params }: { params: Promise<{ runId: string }> },
 ) {
   try {
+    const scope = await requireSessionWorkspace();
     const { runId } = await params;
 
-    const trace = await getRunTrace(runId);
+    const trace = await getRunTrace(scope, runId);
     if (!trace) {
+      if ((await detectWorkspaceAccess({ table: 'runs', recordId: runId, workspaceId: scope.workspaceId })) === 'forbidden') {
+        recordAuthorizationDenied({
+          table: 'runs',
+          action: 'read_results',
+          recordId: runId,
+          workspaceId: scope.workspaceId,
+          userId: scope.userId,
+        });
+      }
       return NextResponse.json({ error: 'Run not found' }, { status: 404 });
     }
 
-    const artifacts = await listArtifactsByRunId(runId);
+    const artifacts = await listArtifactsByRunId(scope, runId);
     const pipelineOutput = extractPipelineOutput(trace);
     const notionPageId = readString(pipelineOutput?.notionPageId);
 
     let reportArtifact = selectLatestReportArtifact(artifacts);
     if (!reportArtifact) {
-      const fallbackReportId = readString(pipelineOutput?.reportId);
+        const fallbackReportId = readString(pipelineOutput?.reportId);
       if (fallbackReportId) {
-        const fallbackReport = await getReportById(fallbackReportId);
+        const fallbackReport = await getReportById(scope, fallbackReportId);
         if (fallbackReport) {
           reportArtifact = fallbackReport;
         }
@@ -215,6 +227,9 @@ export async function GET(
       flashcards,
     });
   } catch (error) {
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error fetching run results:', error);
     return NextResponse.json(
       { error: publicErrorMessage(error, 'Failed to fetch run results') },

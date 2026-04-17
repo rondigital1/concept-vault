@@ -18,6 +18,7 @@ export type TerminationReason = 'satisfied' | 'max_iterations' | 'max_queries' |
 // ---------- Input/Output Types ----------
 
 export interface WebScoutInput {
+  workspaceId: string;
   goal: string;
   mode: 'explicit-query' | 'derive-from-vault';
   day: string;
@@ -68,6 +69,7 @@ export interface ScoredResult {
 
 export const WebScoutState = Annotation.Root({
   // Inputs
+  workspaceId: Annotation<string>,
   goal: Annotation<string>,
   mode: Annotation<'explicit-query' | 'derive-from-vault'>,
   day: Annotation<string>,

@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BlockedSourceError } from '@/server/security/sourceTrust';
 
 const mockApproveArtifact = vi.hoisted(() => vi.fn());
 const mockGetArtifactById = vi.hoisted(() => vi.fn());
 const mockExtractDocumentFromUrl = vi.hoisted(() => vi.fn());
 const mockIngestDocument = vi.hoisted(() => vi.fn());
 const mockRevalidatePath = vi.hoisted(() => vi.fn());
+const mockRequireSessionWorkspace = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/repos/artifacts.repo', () => ({
   approveArtifact: mockApproveArtifact,
@@ -18,6 +20,24 @@ vi.mock('@/server/services/urlExtract.service', () => ({
 
 vi.mock('@/server/services/ingest.service', () => ({
   ingestDocument: mockIngestDocument,
+}));
+
+vi.mock('@/server/auth/workspaceContext', () => ({
+  WorkspaceAccessError: class WorkspaceAccessError extends Error {
+    status: number;
+
+    constructor(status: number, message: string) {
+      super(message);
+      this.name = 'WorkspaceAccessError';
+      this.status = status;
+    }
+  },
+  requireSessionWorkspace: mockRequireSessionWorkspace,
+}));
+
+vi.mock('@/server/auth/authzAudit', () => ({
+  detectWorkspaceAccess: vi.fn().mockResolvedValue('allowed'),
+  recordAuthorizationDenied: vi.fn(),
 }));
 
 vi.mock('next/cache', () => ({
@@ -43,9 +63,19 @@ describe('artifact approve route', () => {
       content: 'Full extracted content from the source page.',
       method: 'fetch',
     });
+    mockRequireSessionWorkspace.mockResolvedValue({
+      workspaceId: 'workspace-1',
+      userId: 'user-1',
+      email: 'test@example.com',
+      workspaceName: 'Test Workspace',
+      workspaceSlug: 'test-workspace',
+      membershipRole: 'owner',
+    });
     mockIngestDocument.mockResolvedValue({
       documentId: 'doc-1',
       created: true,
+      enrichmentJobId: null,
+      enrichmentQueued: false,
       enrichmentRunId: null,
     });
     mockApproveArtifact.mockResolvedValue(true);
@@ -65,13 +95,18 @@ describe('artifact approve route', () => {
 
     expect(mockExtractDocumentFromUrl).toHaveBeenCalledWith('https://example.com/resource');
     expect(mockIngestDocument).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
       title: 'Extracted Resource',
       source: 'https://example.com/resource',
       content: 'Full extracted content from the source page.',
       autoEnrich: true,
       enableAutoDistill: false,
     });
-    expect(mockApproveArtifact).toHaveBeenCalledWith('artifact-1', { documentId: 'doc-1' });
+    expect(mockApproveArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: 'workspace-1' }),
+      'artifact-1',
+      { documentId: 'doc-1' },
+    );
     expect(mockExtractDocumentFromUrl.mock.invocationCallOrder[0]).toBeLessThan(
       mockApproveArtifact.mock.invocationCallOrder[0],
     );
@@ -118,6 +153,30 @@ describe('artifact approve route', () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       error: 'Extraction failed',
+    });
+  });
+
+  it('returns 422 when source trust blocks an approved proposal import', async () => {
+    mockExtractDocumentFromUrl.mockRejectedValue(
+      new BlockedSourceError('Blocked by source trust policy', 'blocked_domain'),
+    );
+
+    const { POST } = await import('@/app/api/artifacts/[id]/approve/route');
+
+    const response = await POST(
+      new Request('http://localhost/api/artifacts/artifact-1/approve', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      }),
+      {
+        params: Promise.resolve({ id: 'artifact-1' }),
+      },
+    );
+
+    expect(mockApproveArtifact).not.toHaveBeenCalled();
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Blocked by source trust policy',
     });
   });
 });

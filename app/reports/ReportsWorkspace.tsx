@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PRIMARY_TOP_NAV_KEYS, getTopNavItems } from '@/app/components/topNav';
 import { formatDisplayDate, formatDisplayStamp, trimIdentifier, type ReportCardSummary } from './reportsViewModel';
 
 type IconName =
@@ -22,12 +23,11 @@ type NavItem = {
   active?: boolean;
 };
 
-const TOP_NAV_ITEMS: NavItem[] = [
-  { label: 'Research', href: '/today' },
-  { label: 'Pipeline', href: '/web-scout' },
-  { label: 'Library', href: '/library' },
-  { label: 'Reports', href: '/reports', active: true },
-];
+const TOP_NAV_ITEMS = getTopNavItems(PRIMARY_TOP_NAV_KEYS).map((item) => ({
+  href: item.href,
+  label: item.label,
+  active: item.key === 'reports',
+}));
 
 const SIDE_NAV_ITEMS: NavItem[] = [
   { label: 'Research', href: '/today', icon: 'research' },

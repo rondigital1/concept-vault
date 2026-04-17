@@ -77,13 +77,15 @@ vi.mock('@/server/repos/agentProfiles.repo', () => ({
 }));
 
 describe('Pipeline Flow', () => {
+  const workspaceId = 'workspace-1';
+
   beforeEach(() => {
     vi.clearAllMocks();
 
     mockCreateRun.mockResolvedValue('run-pipeline-1');
     mockAppendStep.mockResolvedValue(undefined);
     mockFinishRun.mockResolvedValue(undefined);
-    mockGetDocumentsByIds.mockImplementation(async (ids: string[]) =>
+    mockGetDocumentsByIds.mockImplementation(async (_scope: { workspaceId: string }, ids: string[]) =>
       ids.map((id) => ({
         id,
         title: `Doc ${id}`,
@@ -194,6 +196,7 @@ describe('Pipeline Flow', () => {
     const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
 
     const result = await pipelineFlow({
+      workspaceId,
       day: TEST_DAY,
       documentIds: [documentId],
       goal: 'memory techniques',
@@ -226,6 +229,7 @@ describe('Pipeline Flow', () => {
     const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
 
     const result = await pipelineFlow({
+      workspaceId,
       day: TEST_DAY,
       documentIds: [documentId],
       goal: 'learning systems',
@@ -263,6 +267,7 @@ describe('Pipeline Flow', () => {
     const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
 
     const result = await pipelineFlow({
+      workspaceId,
       day: TEST_DAY,
       documentIds: [documentId],
       goal: 'niche topic',
@@ -281,6 +286,7 @@ describe('Pipeline Flow', () => {
     const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
 
     const result = await pipelineFlow({
+      workspaceId,
       day: TEST_DAY,
       documentIds: ['doc-1'],
       runMode: 'lightweight_enrichment',
@@ -319,6 +325,7 @@ describe('Pipeline Flow', () => {
     const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
 
     const result = await pipelineFlow({
+      workspaceId,
       day: TEST_DAY,
       documentIds: ['doc-1'],
       goal: 'agent execution telemetry',
@@ -377,6 +384,7 @@ describe('Pipeline Flow', () => {
 
     const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
     const result = await pipelineFlow({
+      workspaceId,
       day: TEST_DAY,
       topicId: 'topic-1',
       runMode: 'topic_setup',
@@ -386,6 +394,7 @@ describe('Pipeline Flow', () => {
     expect(result.mode).toBe('topic_setup');
     expect(result.status).toBe('ok');
     expect(mockSetupTopicContext).toHaveBeenCalledTimes(1);
+    expect(mockSetupTopicContext).toHaveBeenCalledWith({ workspaceId }, 'topic-1');
     expect(mockWebScoutGraph).not.toHaveBeenCalled();
     expect(mockDistillerGraph).not.toHaveBeenCalled();
     expect(mockInsertReport).not.toHaveBeenCalled();
@@ -395,6 +404,7 @@ describe('Pipeline Flow', () => {
     const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
 
     await pipelineFlow({
+      workspaceId,
       day: TEST_DAY,
       documentIds: ['doc-1'],
       goal: 'memory techniques',
@@ -419,6 +429,7 @@ describe('Pipeline Flow', () => {
 
     const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
     const result = await pipelineFlow({
+      workspaceId,
       day: TEST_DAY,
       documentIds: ['doc-1'],
       goal: 'memory techniques',

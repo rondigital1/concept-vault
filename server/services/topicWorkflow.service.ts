@@ -9,6 +9,7 @@ import {
   linkTopicToMatchingDocuments,
   upsertTopicSetup,
 } from '@/server/repos/savedTopics.repo';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import { getLatestReportForTopic } from '@/server/repos/report.repo';
 import { GOAL_STOP_WORDS } from '@/server/ai/tools/scoring.utils';
 
@@ -122,8 +123,11 @@ function hoursSince(iso: string | null): number | null {
   return (Date.now() - ts) / (1000 * 60 * 60);
 }
 
-export async function setupTopicContext(topicId: string): Promise<TopicSetupResult> {
-  const topics = await getSavedTopicsByIds([topicId]);
+export async function setupTopicContext(
+  scope: WorkspaceScope,
+  topicId: string,
+): Promise<TopicSetupResult> {
+  const topics = await getSavedTopicsByIds(scope, [topicId]);
   const topic = topics[0];
   if (!topic) {
     throw new Error(`Topic ${topicId} not found`);
@@ -132,18 +136,22 @@ export async function setupTopicContext(topicId: string): Promise<TopicSetupResu
   const goalTags = deriveTagsFromGoal(topic.goal);
   const baselineFocusTags = uniqueTags([...(topic.focus_tags ?? []), ...goalTags], 20);
 
-  const matchingDocs = await getTopicDocuments(baselineFocusTags, Math.max(topic.max_docs_per_run, 20));
+  const matchingDocs = await getTopicDocuments(
+    scope,
+    baselineFocusTags,
+    Math.max(topic.max_docs_per_run, 20),
+  );
   const inferredDocTags = summarizeTagFrequencies(matchingDocs.flatMap((doc) => doc.tags ?? []));
   const nextFocusTags = uniqueTags([...baselineFocusTags, ...inferredDocTags], 20);
 
-  const linked = await linkTopicToMatchingDocuments(topic.id, nextFocusTags, 250);
+  const linked = await linkTopicToMatchingDocuments(scope, topic.id, nextFocusTags, 250);
 
   const previewGoal =
     nextFocusTags.length > 0
       ? `Track updates related to: ${nextFocusTags.slice(0, 6).join(', ')}`
       : topic.goal;
 
-  await upsertTopicSetup({
+  await upsertTopicSetup(scope, {
     topicId: topic.id,
     focusTags: nextFocusTags,
     metadata: {
@@ -163,10 +171,13 @@ export async function setupTopicContext(topicId: string): Promise<TopicSetupResu
   };
 }
 
-export async function decideScheduledRunMode(topic: SavedTopicRow): Promise<RunModeDecision> {
-  const signalCount = await countTopicSignalsSince(topic.id, topic.last_run_at);
-  const linkedDocs = (await getTopicLinkedDocuments(topic.id, 200)).length;
-  const latestReport = await getLatestReportForTopic(topic.id);
+export async function decideScheduledRunMode(
+  scope: WorkspaceScope,
+  topic: SavedTopicRow,
+): Promise<RunModeDecision> {
+  const signalCount = await countTopicSignalsSince(scope, topic.id, topic.last_run_at);
+  const linkedDocs = (await getTopicLinkedDocuments(scope, topic.id, 200)).length;
+  const latestReport = await getLatestReportForTopic(scope, topic.id);
 
   const lastReportAt = latestReport?.created_at ?? null;
   const hoursSinceReport = hoursSince(lastReportAt);
@@ -237,16 +248,17 @@ export async function decideScheduledRunMode(topic: SavedTopicRow): Promise<RunM
 }
 
 export async function listReportReadyTopics(
+  scope: WorkspaceScope,
   minLinkedDocuments = MIN_LINKED_DOCUMENTS_FOR_REPORT,
 ): Promise<ReportReadyTopic[]> {
   const minimum = Math.max(1, Math.floor(minLinkedDocuments));
-  const topics = await listSavedTopics({ activeOnly: true });
+  const topics = await listSavedTopics(scope, { activeOnly: true });
 
   const evaluated = await Promise.all(
     topics.map(async (topic) => {
       const [linkedDocumentCount, latestReport] = await Promise.all([
-        countTopicLinkedDocuments(topic.id),
-        getLatestReportForTopic(topic.id),
+        countTopicLinkedDocuments(scope, topic.id),
+        getLatestReportForTopic(scope, topic.id),
       ]);
 
       if (linkedDocumentCount < minimum) {
@@ -273,16 +285,17 @@ export async function listReportReadyTopics(
 }
 
 export async function listTopicsNeedingSources(
+  scope: WorkspaceScope,
   minLinkedDocuments = MIN_LINKED_DOCUMENTS_FOR_REPORT,
 ): Promise<TopicNeedingSources[]> {
   const minimum = Math.max(1, Math.floor(minLinkedDocuments));
-  const topics = await listSavedTopics({ activeOnly: true });
+  const topics = await listSavedTopics(scope, { activeOnly: true });
 
   const evaluated = await Promise.all(
     topics.map(async (topic) => {
       const [linkedDocumentCount, latestReport] = await Promise.all([
-        countTopicLinkedDocuments(topic.id),
-        getLatestReportForTopic(topic.id),
+        countTopicLinkedDocuments(scope, topic.id),
+        getLatestReportForTopic(scope, topic.id),
       ]);
 
       if (linkedDocumentCount >= minimum) {

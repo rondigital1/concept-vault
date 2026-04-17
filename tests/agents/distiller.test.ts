@@ -15,11 +15,13 @@ import {
   initTestSchema,
   cleanAllTables,
   closeTestDb,
+  getTestWorkspaceScope,
   insertTestDocument,
 } from '../helpers/testDb';
 import { MOCK_LLM_RESPONSES } from '../helpers/mocks';
 import { TEST_DAY, SAMPLE_DOCUMENTS } from '../helpers/fixtures';
 import { listInboxArtifacts, listArtifactsByAgentAndKind } from '@/server/repos/artifacts.repo';
+import { AI_BUDGETS } from '@/server/ai/budget-policy';
 import { AI_TASKS } from '@/server/ai/tasks';
 
 // Track which mock response to return
@@ -36,6 +38,8 @@ vi.mock('@/server/ai/openai-execution-service', () => ({
 }));
 
 describe('Distiller Agent', () => {
+  let scope: { workspaceId: string };
+
   beforeAll(async () => {
     await initTestSchema();
   });
@@ -46,6 +50,7 @@ describe('Distiller Agent', () => {
 
   beforeEach(async () => {
     await cleanAllTables();
+    scope = await getTestWorkspaceScope();
     vi.clearAllMocks();
     conceptCallCount = 0;
     flashcardCallCount = 0;
@@ -69,6 +74,36 @@ describe('Distiller Agent', () => {
   });
 
   describe('basic pipeline', () => {
+    it('passes explicit AI budgets to concept and flashcard generation', async () => {
+      const docId = await insertTestDocument({
+        title: SAMPLE_DOCUMENTS.spacedRepetition.title,
+        content: SAMPLE_DOCUMENTS.spacedRepetition.content,
+        tags: SAMPLE_DOCUMENTS.spacedRepetition.tags,
+      });
+
+      const { distillerGraph } = await import('@/server/agents/distiller.graph');
+
+      await distillerGraph({
+        workspaceId: scope.workspaceId,
+        day: TEST_DAY,
+        documentIds: [docId],
+        limit: 1,
+      });
+
+      expect(mockExecuteStructured).toHaveBeenCalledWith(
+        expect.objectContaining({
+          task: AI_TASKS.distillDocument,
+          budget: AI_BUDGETS.distillConcepts,
+        }),
+      );
+      expect(mockExecuteStructured).toHaveBeenCalledWith(
+        expect.objectContaining({
+          task: AI_TASKS.generateFlashcards,
+          budget: AI_BUDGETS.distillFlashcards,
+        }),
+      );
+    });
+
     it('should extract concepts from a document', async () => {
       // Seed a document
       const docId = await insertTestDocument({
@@ -81,6 +116,7 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         documentIds: [docId],
         limit: 1,
@@ -101,6 +137,7 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         documentIds: [docId],
         limit: 1,
@@ -119,6 +156,7 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         documentIds: [docId],
         limit: 1,
@@ -128,7 +166,7 @@ describe('Distiller Agent', () => {
       expect(result.artifactIds.length).toBeGreaterThan(0);
 
       // Verify artifacts in database
-      const inbox = await listInboxArtifacts(TEST_DAY);
+      const inbox = await listInboxArtifacts(scope, TEST_DAY);
       expect(inbox.length).toBeGreaterThan(0);
 
       // Should have both concept and flashcard artifacts
@@ -159,6 +197,7 @@ describe('Distiller Agent', () => {
 
       // Only process doc1 and doc3
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         documentIds: [doc1Id, doc3Id],
         limit: 5,
@@ -187,6 +226,7 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         topicTag: 'learning',
         limit: 5,
@@ -204,6 +244,7 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         limit: 2,
       });
@@ -221,6 +262,7 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         limit: 3,
       });
@@ -239,12 +281,13 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         documentIds: [docId],
         limit: 1,
       });
 
-      const conceptArtifacts = await listArtifactsByAgentAndKind('distiller', 'concept', {
+      const conceptArtifacts = await listArtifactsByAgentAndKind(scope, 'distiller', 'concept', {
         day: TEST_DAY,
         status: 'proposed',
       });
@@ -268,12 +311,13 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         documentIds: [docId],
         limit: 1,
       });
 
-      const flashcardArtifacts = await listArtifactsByAgentAndKind('distiller', 'flashcard', {
+      const flashcardArtifacts = await listArtifactsByAgentAndKind(scope, 'distiller', 'flashcard', {
         day: TEST_DAY,
         status: 'proposed',
       });
@@ -295,6 +339,7 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         limit: 5,
       });
@@ -315,6 +360,7 @@ describe('Distiller Agent', () => {
       const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
       const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
         day: TEST_DAY,
         topicTag: 'nonexistent-tag',
         limit: 5,
@@ -326,6 +372,8 @@ describe('Distiller Agent', () => {
 });
 
 describe('Distiller Golden Run Snapshot', () => {
+  let scope: { workspaceId: string };
+
   beforeAll(async () => {
     await initTestSchema();
   });
@@ -336,6 +384,7 @@ describe('Distiller Golden Run Snapshot', () => {
 
   beforeEach(async () => {
     await cleanAllTables();
+    scope = await getTestWorkspaceScope();
     vi.clearAllMocks();
   });
 
@@ -348,12 +397,13 @@ describe('Distiller Golden Run Snapshot', () => {
     const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
     await distillerGraph({
+      workspaceId: scope.workspaceId,
       day: TEST_DAY,
       documentIds: [docId],
       limit: 1,
     });
 
-    const conceptArtifacts = await listArtifactsByAgentAndKind('distiller', 'concept', {
+    const conceptArtifacts = await listArtifactsByAgentAndKind(scope, 'distiller', 'concept', {
       day: TEST_DAY,
     });
 
@@ -410,12 +460,13 @@ describe('Distiller Golden Run Snapshot', () => {
     const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
     await distillerGraph({
+      workspaceId: scope.workspaceId,
       day: TEST_DAY,
       documentIds: [docId],
       limit: 1,
     });
 
-    const flashcardArtifacts = await listArtifactsByAgentAndKind('distiller', 'flashcard', {
+    const flashcardArtifacts = await listArtifactsByAgentAndKind(scope, 'distiller', 'flashcard', {
       day: TEST_DAY,
     });
 
@@ -475,6 +526,7 @@ describe('Distiller Golden Run Snapshot', () => {
     const { distillerGraph } = await import('@/server/agents/distiller.graph');
 
     const result = await distillerGraph({
+      workspaceId: scope.workspaceId,
       day: TEST_DAY,
       documentIds: [docId],
       limit: 1,

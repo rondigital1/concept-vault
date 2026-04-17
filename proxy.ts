@@ -2,10 +2,15 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { auth } from '@/auth';
 import { hasOwnerAccess } from '@/server/auth/sessionIdentity';
+import { evaluateRateLimit } from '@/server/security/rateLimit';
 
 const PUBLIC_FILE = /\.[^/]+$/;
 
-const PUBLIC_PATHS = new Set(['/favicon.ico', '/robots.txt', '/sitemap.xml']);
+const PUBLIC_PATHS = new Set([
+  '/favicon.ico',
+  '/robots.txt',
+  '/sitemap.xml',
+]);
 
 function isStateChangingMethod(method: string): boolean {
   return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
@@ -58,11 +63,44 @@ function withPrivateHeaders(response: NextResponse): NextResponse {
   return response;
 }
 
+function resolveClientIp(request: NextRequest): string | null {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    const first = forwardedFor
+      .split(',')
+      .map((part) => part.trim())
+      .find(Boolean);
+    if (first) {
+      return first;
+    }
+  }
+
+  const realIp = request.headers.get('x-real-ip')?.trim();
+  if (realIp) {
+    return realIp;
+  }
+
+  return null;
+}
+
+function rateLimitResponse(scope: 'ip' | 'user', retryAfterSeconds: number): NextResponse {
+  const response = NextResponse.json(
+    { error: 'Too Many Requests', scope, retryAfterSeconds },
+    { status: 429 },
+  );
+  response.headers.set('Retry-After', String(retryAfterSeconds));
+  return withPrivateHeaders(response);
+}
+
 function isOwnerSession(request: AuthenticatedRequest): boolean {
   return hasOwnerAccess(request.auth);
 }
 
-function isPublicPath(pathname: string): boolean {
+export function isPublicPath(pathname: string): boolean {
+  if (pathname === '/api/health' || pathname === '/api/health/ready') {
+    return true;
+  }
+
   if (PUBLIC_PATHS.has(pathname)) {
     return true;
   }
@@ -94,6 +132,10 @@ function isPublicPath(pathname: string): boolean {
   return false;
 }
 
+export function isClientTelemetryPath(pathname: string): boolean {
+  return pathname === '/api/client-errors';
+}
+
 export default auth((request) => {
   const { pathname, search } = request.nextUrl;
 
@@ -109,6 +151,21 @@ export default auth((request) => {
       return withPrivateHeaders(NextResponse.json({ error: 'Forbidden' }, { status: 403 }));
     }
     return withPrivateHeaders(new NextResponse('Forbidden', { status: 403 }));
+  }
+
+  if (isClientTelemetryPath(pathname)) {
+    return withPrivateHeaders(NextResponse.next());
+  }
+
+  const rateLimitResult = evaluateRateLimit({
+    pathname,
+    method: request.method,
+    ip: resolveClientIp(request),
+    userId: request.auth?.user?.id ?? null,
+    monitorOnly: process.env.RATE_LIMIT_MONITOR_ONLY === 'true',
+  });
+  if (!rateLimitResult.allowed) {
+    return rateLimitResponse(rateLimitResult.scope, rateLimitResult.retryAfterSeconds);
   }
 
   if (request.auth) {

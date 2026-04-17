@@ -1,5 +1,6 @@
 'use server';
 
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import * as chatHistoryService from '@/server/services/chatHistory.service';
 import { revalidatePath } from 'next/cache';
 import { publicErrorMessage } from '@/server/security/publicError';
@@ -27,7 +28,8 @@ export interface SessionWithMessages {
 
 export async function listSessionsAction(): Promise<SessionSummary[]> {
   try {
-    const sessions = await chatHistoryService.listRecentSessions(50);
+    const scope = await requireSessionWorkspace();
+    const sessions = await chatHistoryService.listRecentSessions(scope, 50);
     return sessions.map((s) => ({
       id: s.id,
       title: s.title,
@@ -45,7 +47,8 @@ export async function getSessionAction(
   sessionId: string
 ): Promise<SessionWithMessages | null> {
   try {
-    const data = await chatHistoryService.getSessionWithMessages(sessionId);
+    const scope = await requireSessionWorkspace();
+    const data = await chatHistoryService.getSessionWithMessages(scope, sessionId);
     if (!data) {
       return null;
     }
@@ -68,7 +71,8 @@ export async function deleteSessionAction(
   sessionId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await chatHistoryService.deleteSession(sessionId);
+    const scope = await requireSessionWorkspace();
+    await chatHistoryService.deleteSession(scope, sessionId);
     revalidatePath('/chat');
     return { success: true };
   } catch (error) {
@@ -85,7 +89,8 @@ export async function renameSessionAction(
   title: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await chatHistoryService.renameSession(sessionId, title);
+    const scope = await requireSessionWorkspace();
+    await chatHistoryService.renameSession(scope, sessionId, title);
     revalidatePath('/chat');
     return { success: true };
   } catch (error) {

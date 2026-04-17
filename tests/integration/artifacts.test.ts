@@ -17,6 +17,7 @@ import {
   cleanAllTables,
   closeTestDb,
   insertTestRun,
+  getTestWorkspaceScope,
 } from '../helpers/testDb';
 import { TEST_DAY } from '../helpers/fixtures';
 import {
@@ -30,6 +31,10 @@ import {
 } from '@/server/repos/artifacts.repo';
 
 describe('Artifact Lifecycle', () => {
+  let scope: { workspaceId: string };
+  const createArtifact = (input: Omit<Parameters<typeof insertArtifact>[0], 'workspaceId'>) =>
+    insertArtifact({ workspaceId: scope.workspaceId, ...input });
+
   beforeAll(async () => {
     await initTestSchema();
   });
@@ -40,11 +45,12 @@ describe('Artifact Lifecycle', () => {
 
   beforeEach(async () => {
     await cleanAllTables();
+    scope = await getTestWorkspaceScope();
   });
 
   describe('insertArtifact', () => {
     it('should insert artifact with proposed status', async () => {
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -57,7 +63,7 @@ describe('Artifact Lifecycle', () => {
       expect(artifactId).toBeDefined();
       expect(artifactId).toMatch(/^[0-9a-f-]{36}$/);
 
-      const artifact = await getArtifactById(artifactId);
+      const artifact = await getArtifactById(scope, artifactId);
       expect(artifact).not.toBeNull();
       expect(artifact!.status).toBe('proposed');
       expect(artifact!.agent).toBe('webScout');
@@ -68,9 +74,9 @@ describe('Artifact Lifecycle', () => {
     });
 
     it('should associate artifact with a run', async () => {
-      const runId = await insertTestRun('webScout');
+      const runId = await insertTestRun(scope, 'webScout');
 
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -80,12 +86,12 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      const artifact = await getArtifactById(artifactId);
+      const artifact = await getArtifactById(scope, artifactId);
       expect(artifact!.run_id).toBe(runId);
     });
 
     it('should allow multiple proposed artifacts for same (agent, kind, day)', async () => {
-      const id1 = await insertArtifact({
+      const id1 = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'flashcard',
@@ -95,7 +101,7 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      const id2 = await insertArtifact({
+      const id2 = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'flashcard',
@@ -107,14 +113,14 @@ describe('Artifact Lifecycle', () => {
 
       expect(id1).not.toBe(id2);
 
-      const inbox = await listInboxArtifacts(TEST_DAY);
+      const inbox = await listInboxArtifacts(scope, TEST_DAY);
       expect(inbox).toHaveLength(2);
     });
   });
 
   describe('approveArtifact', () => {
     it('should transition status from proposed to approved', async () => {
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -124,22 +130,22 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      const result = await approveArtifact(artifactId);
+      const result = await approveArtifact(scope, artifactId);
       expect(result).toBe(true);
 
-      const artifact = await getArtifactById(artifactId);
+      const artifact = await getArtifactById(scope, artifactId);
       expect(artifact!.status).toBe('approved');
       expect(artifact!.reviewed_at).not.toBeNull();
     });
 
     it('should return false for non-existent artifact', async () => {
       const fakeId = '00000000-0000-0000-0000-000000000000';
-      const result = await approveArtifact(fakeId);
+      const result = await approveArtifact(scope, fakeId);
       expect(result).toBe(false);
     });
 
     it('should return false for already approved artifact', async () => {
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -149,15 +155,15 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await approveArtifact(artifactId);
+      await approveArtifact(scope, artifactId);
 
       // Try to approve again
-      const result = await approveArtifact(artifactId);
+      const result = await approveArtifact(scope, artifactId);
       expect(result).toBe(false);
     });
 
     it('should return false for rejected artifact', async () => {
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -167,14 +173,14 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await rejectArtifact(artifactId);
+      await rejectArtifact(scope, artifactId);
 
-      const result = await approveArtifact(artifactId);
+      const result = await approveArtifact(scope, artifactId);
       expect(result).toBe(false);
     });
 
     it('merges review metadata into source_refs when approving', async () => {
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -184,13 +190,13 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: { goal: 'learn retrieval practice' },
       });
 
-      const result = await approveArtifact(artifactId, {
+      const result = await approveArtifact(scope, artifactId, {
         documentId: '123e4567-e89b-12d3-a456-426614174000',
       });
 
       expect(result).toBe(true);
 
-      const artifact = await getArtifactById(artifactId);
+      const artifact = await getArtifactById(scope, artifactId);
       expect(artifact?.status).toBe('approved');
       expect(artifact?.source_refs).toEqual({
         goal: 'learn retrieval practice',
@@ -201,7 +207,7 @@ describe('Artifact Lifecycle', () => {
 
   describe('rejectArtifact', () => {
     it('should transition status from proposed to rejected', async () => {
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'concept',
@@ -211,22 +217,22 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      const result = await rejectArtifact(artifactId);
+      const result = await rejectArtifact(scope, artifactId);
       expect(result).toBe(true);
 
-      const artifact = await getArtifactById(artifactId);
+      const artifact = await getArtifactById(scope, artifactId);
       expect(artifact!.status).toBe('rejected');
       expect(artifact!.reviewed_at).not.toBeNull();
     });
 
     it('should return false for non-existent artifact', async () => {
       const fakeId = '00000000-0000-0000-0000-000000000000';
-      const result = await rejectArtifact(fakeId);
+      const result = await rejectArtifact(scope, fakeId);
       expect(result).toBe(false);
     });
 
     it('should return false for already rejected artifact', async () => {
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'concept',
@@ -236,10 +242,10 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await rejectArtifact(artifactId);
+      await rejectArtifact(scope, artifactId);
 
       // Try to reject again
-      const result = await rejectArtifact(artifactId);
+      const result = await rejectArtifact(scope, artifactId);
       expect(result).toBe(false);
     });
   });
@@ -247,7 +253,7 @@ describe('Artifact Lifecycle', () => {
   describe('supersede on approve', () => {
     it('should supersede previous approved artifact when approving new one', async () => {
       // First artifact
-      const artifact1Id = await insertArtifact({
+      const artifact1Id = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -258,13 +264,13 @@ describe('Artifact Lifecycle', () => {
       });
 
       // Approve first artifact
-      await approveArtifact(artifact1Id);
+      await approveArtifact(scope, artifact1Id);
 
-      const artifact1Before = await getArtifactById(artifact1Id);
+      const artifact1Before = await getArtifactById(scope, artifact1Id);
       expect(artifact1Before!.status).toBe('approved');
 
       // Second artifact (same agent, kind, day)
-      const artifact2Id = await insertArtifact({
+      const artifact2Id = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -275,20 +281,20 @@ describe('Artifact Lifecycle', () => {
       });
 
       // Approve second artifact
-      await approveArtifact(artifact2Id);
+      await approveArtifact(scope, artifact2Id);
 
       // First artifact should now be superseded
-      const artifact1After = await getArtifactById(artifact1Id);
+      const artifact1After = await getArtifactById(scope, artifact1Id);
       expect(artifact1After!.status).toBe('superseded');
       expect(artifact1After!.reviewed_at).not.toBeNull();
 
       // Second artifact should be approved
-      const artifact2After = await getArtifactById(artifact2Id);
+      const artifact2After = await getArtifactById(scope, artifact2Id);
       expect(artifact2After!.status).toBe('approved');
     });
 
     it('should not supersede artifacts with different agent', async () => {
-      const artifact1Id = await insertArtifact({
+      const artifact1Id = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -298,9 +304,9 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await approveArtifact(artifact1Id);
+      await approveArtifact(scope, artifact1Id);
 
-      const artifact2Id = await insertArtifact({
+      const artifact2Id = await createArtifact({
         runId: null,
         agent: 'distiller', // Different agent
         kind: 'web-proposal',
@@ -310,18 +316,18 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await approveArtifact(artifact2Id);
+      await approveArtifact(scope, artifact2Id);
 
       // Both should be approved (different agents)
-      const artifact1 = await getArtifactById(artifact1Id);
-      const artifact2 = await getArtifactById(artifact2Id);
+      const artifact1 = await getArtifactById(scope, artifact1Id);
+      const artifact2 = await getArtifactById(scope, artifact2Id);
 
       expect(artifact1!.status).toBe('approved');
       expect(artifact2!.status).toBe('approved');
     });
 
     it('should not supersede artifacts with different kind', async () => {
-      const artifact1Id = await insertArtifact({
+      const artifact1Id = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'concept',
@@ -331,9 +337,9 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await approveArtifact(artifact1Id);
+      await approveArtifact(scope, artifact1Id);
 
-      const artifact2Id = await insertArtifact({
+      const artifact2Id = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'flashcard', // Different kind
@@ -343,18 +349,18 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await approveArtifact(artifact2Id);
+      await approveArtifact(scope, artifact2Id);
 
       // Both should be approved (different kinds)
-      const artifact1 = await getArtifactById(artifact1Id);
-      const artifact2 = await getArtifactById(artifact2Id);
+      const artifact1 = await getArtifactById(scope, artifact1Id);
+      const artifact2 = await getArtifactById(scope, artifact2Id);
 
       expect(artifact1!.status).toBe('approved');
       expect(artifact2!.status).toBe('approved');
     });
 
     it('should not supersede artifacts with different day', async () => {
-      const artifact1Id = await insertArtifact({
+      const artifact1Id = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -364,9 +370,9 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await approveArtifact(artifact1Id);
+      await approveArtifact(scope, artifact1Id);
 
-      const artifact2Id = await insertArtifact({
+      const artifact2Id = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -376,11 +382,11 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await approveArtifact(artifact2Id);
+      await approveArtifact(scope, artifact2Id);
 
       // Both should be approved (different days)
-      const artifact1 = await getArtifactById(artifact1Id);
-      const artifact2 = await getArtifactById(artifact2Id);
+      const artifact1 = await getArtifactById(scope, artifact1Id);
+      const artifact2 = await getArtifactById(scope, artifact2Id);
 
       expect(artifact1!.status).toBe('approved');
       expect(artifact2!.status).toBe('approved');
@@ -390,7 +396,7 @@ describe('Artifact Lifecycle', () => {
   describe('list operations', () => {
     it('should list only proposed artifacts in inbox', async () => {
       // Create artifacts with different statuses
-      const proposedId = await insertArtifact({
+      const proposedId = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -400,7 +406,7 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      const toApproveId = await insertArtifact({
+      const toApproveId = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'concept',
@@ -409,9 +415,9 @@ describe('Artifact Lifecycle', () => {
         content: {},
         sourceRefs: {},
       });
-      await approveArtifact(toApproveId);
+      await approveArtifact(scope, toApproveId);
 
-      const toRejectId = await insertArtifact({
+      const toRejectId = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'flashcard',
@@ -420,9 +426,9 @@ describe('Artifact Lifecycle', () => {
         content: {},
         sourceRefs: {},
       });
-      await rejectArtifact(toRejectId);
+      await rejectArtifact(scope, toRejectId);
 
-      const inbox = await listInboxArtifacts(TEST_DAY);
+      const inbox = await listInboxArtifacts(scope, TEST_DAY);
 
       expect(inbox).toHaveLength(1);
       expect(inbox[0].id).toBe(proposedId);
@@ -430,7 +436,7 @@ describe('Artifact Lifecycle', () => {
     });
 
     it('should list only approved artifacts in active', async () => {
-      const proposedId = await insertArtifact({
+      const proposedId = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -440,7 +446,7 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      const approvedId = await insertArtifact({
+      const approvedId = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'concept',
@@ -449,9 +455,9 @@ describe('Artifact Lifecycle', () => {
         content: {},
         sourceRefs: {},
       });
-      await approveArtifact(approvedId);
+      await approveArtifact(scope, approvedId);
 
-      const active = await listActiveArtifacts(TEST_DAY);
+      const active = await listActiveArtifacts(scope, TEST_DAY);
 
       expect(active).toHaveLength(1);
       expect(active[0].id).toBe(approvedId);
@@ -459,8 +465,8 @@ describe('Artifact Lifecycle', () => {
     });
 
     it('should return empty list for day with no artifacts', async () => {
-      const inbox = await listInboxArtifacts('2099-12-31');
-      const active = await listActiveArtifacts('2099-12-31');
+      const inbox = await listInboxArtifacts(scope, '2099-12-31');
+      const active = await listActiveArtifacts(scope, '2099-12-31');
 
       expect(inbox).toEqual([]);
       expect(active).toEqual([]);
@@ -470,7 +476,7 @@ describe('Artifact Lifecycle', () => {
   describe('countArtifactsByStatus', () => {
     it('should count artifacts by status for a day', async () => {
       // Create various artifacts
-      await insertArtifact({
+      await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -480,7 +486,7 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      await insertArtifact({
+      await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -490,7 +496,7 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: {},
       });
 
-      const toApproveId = await insertArtifact({
+      const toApproveId = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'concept',
@@ -499,9 +505,9 @@ describe('Artifact Lifecycle', () => {
         content: {},
         sourceRefs: {},
       });
-      await approveArtifact(toApproveId);
+      await approveArtifact(scope, toApproveId);
 
-      const toRejectId = await insertArtifact({
+      const toRejectId = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'flashcard',
@@ -510,9 +516,9 @@ describe('Artifact Lifecycle', () => {
         content: {},
         sourceRefs: {},
       });
-      await rejectArtifact(toRejectId);
+      await rejectArtifact(scope, toRejectId);
 
-      const counts = await countArtifactsByStatus(TEST_DAY);
+      const counts = await countArtifactsByStatus(scope, TEST_DAY);
 
       expect(counts.proposed).toBe(2);
       expect(counts.approved).toBe(1);
@@ -521,7 +527,7 @@ describe('Artifact Lifecycle', () => {
     });
 
     it('should return zeros for day with no artifacts', async () => {
-      const counts = await countArtifactsByStatus('2099-12-31');
+      const counts = await countArtifactsByStatus(scope, '2099-12-31');
 
       expect(counts.proposed).toBe(0);
       expect(counts.approved).toBe(0);
@@ -545,7 +551,7 @@ describe('Artifact Lifecycle', () => {
         },
       };
 
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',
@@ -555,7 +561,7 @@ describe('Artifact Lifecycle', () => {
         sourceRefs: { query: 'test' },
       });
 
-      const artifact = await getArtifactById(artifactId);
+      const artifact = await getArtifactById(scope, artifactId);
       expect(artifact!.content).toEqual(complexContent);
     });
 
@@ -566,7 +572,7 @@ describe('Artifact Lifecycle', () => {
         citations: [{ page: 1, line: 10 }],
       };
 
-      const artifactId = await insertArtifact({
+      const artifactId = await createArtifact({
         runId: null,
         agent: 'distiller',
         kind: 'flashcard',
@@ -576,7 +582,7 @@ describe('Artifact Lifecycle', () => {
         sourceRefs,
       });
 
-      const artifact = await getArtifactById(artifactId);
+      const artifact = await getArtifactById(scope, artifactId);
       expect(artifact!.source_refs).toEqual(sourceRefs);
     });
   });

@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { PRIMARY_TOP_NAV_KEYS, getTopNavItemsWithState } from '@/app/components/topNav';
 import { EvidenceDecisionBar } from './EvidenceDecisionBar';
 import { EvidenceDetailPane } from './EvidenceDetailPane';
 import { EvidenceQueuePane } from './EvidenceQueuePane';
@@ -51,14 +53,6 @@ type Props = {
   summarizeArtifact: (item: Artifact) => string;
   activityEntries: ActivityEntry[];
 };
-
-const TOP_NAV_ITEMS = [
-  { href: '/today', label: 'Research', active: true },
-  { href: '/agents', label: 'Agents', active: false },
-  { href: '/library', label: 'Library', active: false },
-  { href: '/reports', label: 'Reports', active: false },
-  { href: '/chat', label: 'Ask Vault', active: false },
-];
 
 type IconName = 'sparkles' | 'search' | 'report' | 'runs' | 'settings' | 'bell' | 'plus' | 'library';
 
@@ -287,6 +281,9 @@ function WorkspaceChrome({
   runDetailsHref: string;
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const navItems = getTopNavItemsWithState(pathname, PRIMARY_TOP_NAV_KEYS);
+
   return (
     <div className="today-screen min-h-screen text-[color:var(--today-text)]">
       <header className="today-glass fixed inset-x-0 top-0 z-40">
@@ -296,7 +293,7 @@ function WorkspaceChrome({
           </div>
 
           <nav className="hidden items-center gap-8 md:flex">
-            {TOP_NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -305,6 +302,7 @@ function WorkspaceChrome({
                     ? 'border-b-2 border-[color:var(--today-accent-strong)] text-[color:var(--today-accent-strong)]'
                     : 'text-[color:var(--today-muted)] hover:text-[color:var(--today-accent-strong)]'
                 }`}
+                aria-current={item.active ? 'page' : undefined}
               >
                 {item.label}
               </Link>

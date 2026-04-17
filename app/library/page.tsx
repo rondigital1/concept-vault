@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getAllDocumentsForLibrary, type LibraryDocumentRow } from '@/server/services/document.service';
 import { LibraryIcon } from './components/LibraryIcon';
 import {
@@ -271,20 +272,6 @@ function SignalLane({
   );
 }
 
-function ErrorState({ error }: { error: string }) {
-  return (
-    <section className="rounded-[32px] bg-[#191919] px-6 py-10 shadow-[0_24px_80px_rgba(0,0,0,0.32)] sm:px-10 sm:py-12">
-      <p className="text-[0.7rem] font-bold uppercase tracking-[0.3em] text-[#8f8888]">Repository unavailable</p>
-      <h1 className="mt-4 text-[clamp(2.1rem,4vw,3.4rem)] font-black tracking-[-0.07em] text-white">
-        Database offline
-      </h1>
-      <p className="mt-5 max-w-2xl whitespace-pre-line text-[1rem] leading-8 text-[#b9b0b0]">
-        {error}
-      </p>
-    </section>
-  );
-}
-
 function EmptyLibraryState() {
   return (
     <section className="rounded-[32px] bg-[#191919] px-6 py-10 shadow-[0_24px_80px_rgba(0,0,0,0.32)] sm:px-10 sm:py-12">
@@ -317,24 +304,8 @@ function EmptyLibraryState() {
 }
 
 export default async function LibraryPage() {
-  let documents: LibraryDocumentRow[] = [];
-  let error: string | null = null;
-
-  try {
-    documents = await getAllDocumentsForLibrary();
-  } catch (err) {
-    error = err instanceof Error ? err.message : 'An unexpected error occurred';
-  }
-
-  if (error) {
-    return (
-      <main className="relative px-4 pb-16 pt-10 sm:px-6 lg:px-10">
-        <div className="mx-auto max-w-[1220px]">
-          <ErrorState error={error} />
-        </div>
-      </main>
-    );
-  }
+  const scope = await requireSessionWorkspace();
+  const documents = await getAllDocumentsForLibrary(scope);
 
   const favorites = documents.filter((document) => document.is_favorite);
   const documentsNeedingCleanup = documents.filter((document) => getDocumentTitleIssue(document.title));

@@ -7,6 +7,7 @@ import { DocumentRow } from '@/server/repos/distiller.repo';
 // ---------- Input/Output Types ----------
 
 export interface DistillerInput {
+  workspaceId: string;
   day: string;
   documentIds?: string[];
   limit?: number;
@@ -47,6 +48,7 @@ export interface DocumentWithConcepts {
 
 export const DistillerState = Annotation.Root({
   // Input
+  workspaceId: Annotation<string>,
   day: Annotation<string>,
   documentIds: Annotation<string[] | undefined>,
   limit: Annotation<number>,

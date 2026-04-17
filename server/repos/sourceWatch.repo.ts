@@ -1,5 +1,6 @@
 import { sql } from '@/db';
 import type { SourceWatchKind } from '@/db/types';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 
 export interface SourceWatchRow {
   id: string;
@@ -15,6 +16,7 @@ export interface SourceWatchRow {
 }
 
 export interface CreateSourceWatchInput {
+  workspaceId: string;
   url: string;
   domain: string;
   label: string;
@@ -32,7 +34,7 @@ export interface UpdateSourceWatchInput {
   checkIntervalHours?: number;
 }
 
-export async function listSourceWatchItems(): Promise<SourceWatchRow[]> {
+export async function listSourceWatchItems(scope: WorkspaceScope): Promise<SourceWatchRow[]> {
   return sql<SourceWatchRow[]>`
     SELECT
       id,
@@ -46,6 +48,7 @@ export async function listSourceWatchItems(): Promise<SourceWatchRow[]> {
       created_at,
       updated_at
     FROM source_watchlist
+    WHERE workspace_id = ${scope.workspaceId}
     ORDER BY is_active DESC, updated_at DESC, created_at DESC
   `;
 }
@@ -55,6 +58,7 @@ export async function createSourceWatchItem(
 ): Promise<SourceWatchRow> {
   const rows = await sql<SourceWatchRow[]>`
     INSERT INTO source_watchlist (
+      workspace_id,
       url,
       domain,
       label,
@@ -63,6 +67,7 @@ export async function createSourceWatchItem(
       check_interval_hours
     )
     VALUES (
+      ${input.workspaceId},
       ${input.url},
       ${input.domain},
       ${input.label},
@@ -87,6 +92,7 @@ export async function createSourceWatchItem(
 }
 
 export async function updateSourceWatchItem(
+  scope: WorkspaceScope,
   id: string,
   input: UpdateSourceWatchInput
 ): Promise<SourceWatchRow | null> {
@@ -107,7 +113,8 @@ export async function updateSourceWatchItem(
       is_active = COALESCE(${nextIsActive}, is_active),
       check_interval_hours = COALESCE(${nextCheckIntervalHours}, check_interval_hours),
       updated_at = now()
-    WHERE id = ${id}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${id}
     RETURNING
       id,
       url,
@@ -124,17 +131,24 @@ export async function updateSourceWatchItem(
   return rows[0] ?? null;
 }
 
-export async function deleteSourceWatchItem(id: string): Promise<boolean> {
+export async function deleteSourceWatchItem(
+  scope: WorkspaceScope,
+  id: string,
+): Promise<boolean> {
   const rows = await sql<Array<{ id: string }>>`
     DELETE FROM source_watchlist
-    WHERE id = ${id}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${id}
     RETURNING id
   `;
 
   return rows.length > 0;
 }
 
-export async function getDueSourceWatchItems(limit: number): Promise<SourceWatchRow[]> {
+export async function getDueSourceWatchItems(
+  scope: WorkspaceScope,
+  limit: number,
+): Promise<SourceWatchRow[]> {
   return sql<SourceWatchRow[]>`
     SELECT
       id,
@@ -149,6 +163,8 @@ export async function getDueSourceWatchItems(limit: number): Promise<SourceWatch
       updated_at
     FROM source_watchlist
     WHERE
+      workspace_id = ${scope.workspaceId}
+      AND
       is_active = true
       AND (
         last_checked_at IS NULL
@@ -159,7 +175,10 @@ export async function getDueSourceWatchItems(limit: number): Promise<SourceWatch
   `;
 }
 
-export async function markSourceWatchItemsChecked(ids: string[]): Promise<void> {
+export async function markSourceWatchItemsChecked(
+  scope: WorkspaceScope,
+  ids: string[],
+): Promise<void> {
   if (ids.length === 0) {
     return;
   }
@@ -169,6 +188,7 @@ export async function markSourceWatchItemsChecked(ids: string[]): Promise<void> 
     SET
       last_checked_at = now(),
       updated_at = now()
-    WHERE id = ANY(${ids})
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ANY(${ids})
   `;
 }

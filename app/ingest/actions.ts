@@ -1,6 +1,8 @@
 'use server';
 
 import { ingestDocument } from '@/server/services/ingest.service';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
+import { assertTrustedSource } from '@/server/security/sourceTrust';
 import { extractDocumentFromUrl, isHttpUrl } from '@/server/services/urlExtract.service';
 
 export type IngestResult =
@@ -13,6 +15,7 @@ export async function ingestContent(formData: {
   content?: string;
 }): Promise<IngestResult> {
   try {
+    const scope = await requireSessionWorkspace();
     const rawSource = formData.source?.trim();
     const source = rawSource || 'manual';
     const providedContent = formData.content?.trim() || '';
@@ -20,6 +23,15 @@ export async function ingestContent(formData: {
     let extractedTitle: string | undefined;
 
     const shouldExtractFromUrl = isHttpUrl(rawSource) && content.length < 50;
+
+    if (isHttpUrl(rawSource) && !shouldExtractFromUrl) {
+      assertTrustedSource({
+        context: 'ingest_action',
+        url: rawSource,
+        title: formData.title,
+        content,
+      });
+    }
 
     if (shouldExtractFromUrl) {
       const extraction = await extractDocumentFromUrl(rawSource);
@@ -44,7 +56,12 @@ export async function ingestContent(formData: {
     const title = formData.title?.trim() || extractedTitle || deriveTitle(content);
 
     // Call the ingest service
-    const result = await ingestDocument({ title, source, content });
+    const result = await ingestDocument({
+      workspaceId: scope.workspaceId,
+      title,
+      source,
+      content,
+    });
 
     return {
       success: true,

@@ -1,12 +1,29 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { updateAgentProfile } from '@/server/repos/agentProfiles.repo';
 import { listSavedTopics } from '@/server/repos/savedTopics.repo';
-import { cleanAllTables, closeTestDb, initTestSchema } from '../helpers/testDb';
+import {
+  cleanAllTables,
+  closeTestDb,
+  getTestWorkspaceScope,
+  initTestSchema,
+} from '../helpers/testDb';
 
-const mockPipelineFlow = vi.hoisted(() => vi.fn());
+const mockAuth = vi.hoisted(() => vi.fn());
+const mockDrainPipelineJobQueue = vi.hoisted(() => vi.fn());
+const mockEnqueuePipelineJob = vi.hoisted(() => vi.fn());
+const mockExecutePipelineInline = vi.hoisted(() => vi.fn());
+const mockSchedulePipelineJobDrain = vi.hoisted(() => vi.fn());
 
-vi.mock('@/server/flows/pipeline.flow', () => ({
-  pipelineFlow: mockPipelineFlow,
+vi.mock('@/server/jobs/pipelineJobs', () => ({
+  drainPipelineJobQueue: mockDrainPipelineJobQueue,
+  enqueuePipelineJob: mockEnqueuePipelineJob,
+  executePipelineInline: mockExecutePipelineInline,
+  isPipelineInlineExecutionEnabled: () => false,
+  schedulePipelineJobDrain: mockSchedulePipelineJobDrain,
+}));
+
+vi.mock('@/auth', () => ({
+  auth: mockAuth,
 }));
 
 describe('topics route', () => {
@@ -22,32 +39,29 @@ describe('topics route', () => {
     await cleanAllTables();
     vi.clearAllMocks();
     vi.resetModules();
+    const validation = await import('@/server/http/requestValidation');
+    validation.resetValidationFailureCounts();
 
-    mockPipelineFlow.mockResolvedValue({
+    const scope = await getTestWorkspaceScope();
+    mockAuth.mockResolvedValue({
+      user: {
+        id: 'test-user',
+        email: 'test@example.com',
+        membershipRole: 'owner',
+      },
+      workspace: {
+        id: scope.workspaceId,
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+      },
+    });
+
+    mockEnqueuePipelineJob.mockResolvedValue({
+      jobId: 'job-topic-setup-1',
       runId: 'run-topic-setup-1',
-      status: 'ok',
-      mode: 'topic_setup',
-      trigger: 'auto_topic',
-      counts: {
-        docsTargeted: 0,
-        docsCurated: 0,
-        docsCurateFailed: 0,
-        webProposals: 0,
-        analyzedEvidence: 0,
-        docsProcessed: 0,
-        conceptsProposed: 0,
-        flashcardsProposed: 0,
-        topicLinksCreated: 0,
-      },
-      artifacts: {
-        webProposalIds: [],
-        analysisArtifactIds: [],
-        conceptIds: [],
-        flashcardIds: [],
-      },
-      reportId: null,
-      notionPageId: null,
-      errors: [],
+      status: 'queued',
+      reused: false,
+      queueDepth: 1,
     });
   });
 
@@ -85,8 +99,10 @@ describe('topics route', () => {
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.setupRunId).toBe('run-topic-setup-1');
+    expect(body.setupJobId).toBe('job-topic-setup-1');
 
-    const topic = (await listSavedTopics())[0];
+    const scope = await getTestWorkspaceScope();
+    const topic = (await listSavedTopics(scope))[0];
     expect(topic).toBeDefined();
     expect(topic?.max_docs_per_run).toBe(7);
     expect(topic?.min_quality_results).toBe(8);
@@ -101,12 +117,48 @@ describe('topics route', () => {
       },
     });
 
-    expect(mockPipelineFlow).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(mockEnqueuePipelineJob).toHaveBeenCalledWith({
+      scope: expect.objectContaining({ workspaceId: scope.workspaceId }),
+      route: '/api/topics',
+      input: expect.objectContaining({
+        workspaceId: scope.workspaceId,
         topicId: topic?.id,
         runMode: 'topic_setup',
         trigger: 'auto_topic',
       }),
+    });
+  });
+
+  it('rejects malformed topic payloads consistently', async () => {
+    const { POST } = await import('@/app/api/topics/route');
+
+    const response = await POST(
+      new Request('http://localhost/api/topics', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          goal: 'Track agent runs and evidence quality',
+          maxQueries: 'bad',
+        }),
+      }),
     );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Invalid request payload',
+      details: expect.arrayContaining([
+        expect.objectContaining({
+          path: 'name',
+          message: 'Required',
+        }),
+        expect.objectContaining({
+          path: 'maxQueries',
+          message: 'maxQueries must be a number',
+        }),
+      ]),
+    });
+    expect(mockEnqueuePipelineJob).not.toHaveBeenCalled();
+    const validation = await import('@/server/http/requestValidation');
+    expect(validation.getValidationFailureCount('/api/topics')).toBe(1);
   });
 });

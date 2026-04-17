@@ -33,8 +33,10 @@ export const AI_TASKS = {
 export type AITaskType = (typeof AI_TASKS)[keyof typeof AI_TASKS];
 
 export interface AIExecutionAttribution {
-  requestId?: string;
   jobId?: string;
+  requestId?: string;
+  runId?: string;
+  stepId?: string;
   userId?: string;
   workspaceId?: string;
 }

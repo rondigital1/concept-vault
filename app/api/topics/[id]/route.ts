@@ -1,4 +1,12 @@
 import { NextResponse } from 'next/server';
+import { detectWorkspaceAccess, recordAuthorizationDenied } from '@/server/auth/authzAudit';
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
+import { updateTopicRequestSchema } from '@/server/http/requestSchemas';
+import {
+  parseJsonRequest,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
 import {
   countTopicLinkedDocuments,
   getSavedTopicsByIds,
@@ -55,11 +63,24 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const scope = await requireSessionWorkspace();
     const { id } = await params;
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = await parseJsonRequest(request, updateTopicRequestSchema, {
+      route: '/api/topics/[id]',
+      allowEmptyObject: true,
+    });
 
-    const existingTopic = (await getSavedTopicsByIds([id]))[0] ?? null;
+    const existingTopic = (await getSavedTopicsByIds(scope, [id]))[0] ?? null;
     if (!existingTopic) {
+      if ((await detectWorkspaceAccess({ table: 'saved_topics', recordId: id, workspaceId: scope.workspaceId })) === 'forbidden') {
+        recordAuthorizationDenied({
+          table: 'saved_topics',
+          action: 'update',
+          recordId: id,
+          workspaceId: scope.workspaceId,
+          userId: scope.userId,
+        });
+      }
       return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
     }
 
@@ -88,7 +109,7 @@ export async function PATCH(
           : currentSettings.skipPublishByDefault,
     };
 
-    const topic = await updateSavedTopic(id, {
+    const topic = await updateSavedTopic(scope, id, {
       name: typeof body.name === 'string' ? body.name.trim().slice(0, 80) : undefined,
       goal: typeof body.goal === 'string' ? body.goal.trim().slice(0, 500) : undefined,
       focusTags: normalizeFocusTags(body.focusTags),
@@ -127,7 +148,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Topic not found' }, { status: 404 });
     }
 
-    const linkedDocumentCount = await countTopicLinkedDocuments(topic.id);
+    const linkedDocumentCount = await countTopicLinkedDocuments(scope, topic.id);
 
     return NextResponse.json({
       topic,
@@ -154,6 +175,12 @@ export async function PATCH(
       },
     });
   } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return validationErrorResponse(error);
+    }
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json(
       { error: publicErrorMessage(error, 'Failed to update topic') },
       { status: 400 },

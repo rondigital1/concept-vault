@@ -1,21 +1,32 @@
 import { NextResponse } from 'next/server';
-import { pipelineFlow, PipelineInput } from '@/server/flows/pipeline.flow';
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
+import { PipelineInput } from '@/server/flows/pipeline.flow';
+import { refreshConceptsRequestSchema } from '@/server/http/requestSchemas';
+import {
+  parseJsonRequest,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
+import {
+  enqueuePipelineJob,
+  executePipelineInline,
+  isPipelineInlineExecutionEnabled,
+  schedulePipelineJobDrain,
+} from '@/server/jobs/pipelineJobs';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
-type Body = {
-  day?: string;
-  topicId?: string;
-  documentIds?: string[];
-  limit?: number;
-};
-
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => ({}))) as Body;
+    const scope = await requireSessionWorkspace();
+    const body = await parseJsonRequest(request, refreshConceptsRequestSchema, {
+      route: '/api/runs/refresh-concepts',
+      allowEmptyObject: true,
+    });
 
     const input: PipelineInput = {
+      workspaceId: scope.workspaceId,
       trigger: 'manual',
       runMode: 'concept_only',
       enableCategorization: true,
@@ -26,9 +37,27 @@ export async function POST(request: Request) {
     if (Array.isArray(body.documentIds)) input.documentIds = body.documentIds.filter((id): id is string => typeof id === 'string');
     if (typeof body.limit === 'number' && Number.isFinite(body.limit)) input.limit = body.limit;
 
-    const result = await pipelineFlow(input);
-    return NextResponse.json(result);
+    if (isPipelineInlineExecutionEnabled()) {
+      const result = await executePipelineInline(input);
+      return NextResponse.json(result);
+    }
+
+    const queued = await enqueuePipelineJob({
+      scope,
+      route: '/api/runs/refresh-concepts',
+      input,
+    });
+
+    schedulePipelineJobDrain();
+
+    return NextResponse.json(queued, { status: queued.reused && queued.status === 'succeeded' ? 200 : 202 });
   } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return validationErrorResponse(error);
+    }
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json(
       { error: publicErrorMessage(error, 'Failed to refresh concepts') },
       { status: 500 },

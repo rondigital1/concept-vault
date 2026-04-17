@@ -5,6 +5,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import * as chatHistoryRepo from '@/server/repos/chatHistory.repo';
 
 // ---------- Types ----------
@@ -41,10 +42,11 @@ export interface SessionSummary {
  * If sessionId is null, creates a new session with a default title.
  */
 export async function getOrCreateSession(
+  scope: WorkspaceScope,
   sessionId: string | null
 ): Promise<ChatSession> {
   if (sessionId) {
-    const existing = await chatHistoryRepo.getSession(sessionId);
+    const existing = await chatHistoryRepo.getSession(scope, sessionId);
     if (existing) {
       return rowToSession(existing);
     }
@@ -53,7 +55,7 @@ export async function getOrCreateSession(
   // Create new session
   const newId = sessionId || uuidv4();
   const defaultTitle = 'New conversation';
-  const row = await chatHistoryRepo.createSession(newId, defaultTitle);
+  const row = await chatHistoryRepo.createSession(scope, newId, defaultTitle);
   return rowToSession(row);
 }
 
@@ -61,27 +63,29 @@ export async function getOrCreateSession(
  * Persist a message to the database.
  */
 export async function persistMessage(
+  scope: WorkspaceScope,
   sessionId: string,
   role: 'user' | 'assistant',
   content: string
 ): Promise<void> {
   const messageType = role === 'user' ? 'human' : 'ai';
-  await chatHistoryRepo.insertMessage(sessionId, { type: messageType, content });
-  await chatHistoryRepo.updateSessionTimestamp(sessionId);
+  await chatHistoryRepo.insertMessage(scope, sessionId, { type: messageType, content });
+  await chatHistoryRepo.updateSessionTimestamp(scope, sessionId);
 }
 
 /**
  * Get a session with all its messages.
  */
 export async function getSessionWithMessages(
+  scope: WorkspaceScope,
   sessionId: string
 ): Promise<SessionWithMessages | null> {
-  const sessionRow = await chatHistoryRepo.getSession(sessionId);
+  const sessionRow = await chatHistoryRepo.getSession(scope, sessionId);
   if (!sessionRow) {
     return null;
   }
 
-  const messageRows = await chatHistoryRepo.getSessionMessages(sessionId);
+  const messageRows = await chatHistoryRepo.getSessionMessages(scope, sessionId);
   const messages: ChatMessage[] = messageRows.map((row) => ({
     role: row.message.type === 'human' ? 'user' : 'assistant',
     content: row.message.content,
@@ -96,8 +100,11 @@ export async function getSessionWithMessages(
 /**
  * List recent sessions for the sidebar.
  */
-export async function listRecentSessions(limit = 20): Promise<SessionSummary[]> {
-  const rows = await chatHistoryRepo.listSessions(limit);
+export async function listRecentSessions(
+  scope: WorkspaceScope,
+  limit = 20,
+): Promise<SessionSummary[]> {
+  const rows = await chatHistoryRepo.listSessions(scope, limit);
   return rows.map((row) => ({
     id: row.id,
     title: row.title,
@@ -110,28 +117,29 @@ export async function listRecentSessions(limit = 20): Promise<SessionSummary[]> 
 /**
  * Delete a session and all its messages.
  */
-export async function deleteSession(sessionId: string): Promise<void> {
-  await chatHistoryRepo.deleteSession(sessionId);
+export async function deleteSession(scope: WorkspaceScope, sessionId: string): Promise<void> {
+  await chatHistoryRepo.deleteSession(scope, sessionId);
 }
 
 /**
  * Rename a session.
  */
 export async function renameSession(
+  scope: WorkspaceScope,
   sessionId: string,
   title: string
 ): Promise<void> {
-  await chatHistoryRepo.updateSessionTitle(sessionId, title);
+  await chatHistoryRepo.updateSessionTitle(scope, sessionId, title);
 }
 
 /**
  * Auto-generate session title from first user message.
  */
-export async function autoTitleSession(sessionId: string): Promise<void> {
-  const firstMessage = await chatHistoryRepo.getFirstUserMessage(sessionId);
+export async function autoTitleSession(scope: WorkspaceScope, sessionId: string): Promise<void> {
+  const firstMessage = await chatHistoryRepo.getFirstUserMessage(scope, sessionId);
   if (firstMessage) {
     const title = truncatePreview(firstMessage, 50);
-    await chatHistoryRepo.updateSessionTitle(sessionId, title);
+    await chatHistoryRepo.updateSessionTitle(scope, sessionId, title);
   }
 }
 

@@ -9,6 +9,7 @@ import {
   OpenAIExecutionService,
   type OpenAIClientLike,
 } from '@/server/ai/openai-execution-service';
+import { logger } from '@/server/observability/logger';
 import { AI_TASKS } from '@/server/ai/tasks';
 
 const StructuredSchema = z.object({
@@ -157,6 +158,7 @@ describe('AI model tiering', () => {
 
   it('blocks execution when the projected budget exceeds the request cap', async () => {
     const create = vi.fn().mockResolvedValue(createResponse('summary', 'gpt-5.4'));
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
     const service = createService({
       responses: {
         create,
@@ -189,6 +191,14 @@ describe('AI model tiering', () => {
     ).rejects.toBeInstanceOf(AIBudgetExceededError);
 
     expect(create).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      'ai.budget.exceeded',
+      expect.objectContaining({
+        task: AI_TASKS.generateFinalReport,
+        budgetScope: 'request',
+      }),
+    );
+    warnSpy.mockRestore();
   });
 
   it('validates structured outputs with schema checks', async () => {

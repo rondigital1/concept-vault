@@ -2,6 +2,7 @@
  * Node implementations for the Distiller agent.
  */
 import { openAIExecutionService } from '@/server/ai/openai-execution-service';
+import { AI_BUDGETS } from '@/server/ai/budget-policy';
 import { buildPrompt } from '@/server/ai/prompt-builder';
 import { AI_TASKS } from '@/server/ai/tasks';
 import { ConceptExtractionSchema } from '@/server/langchain/schemas/concept.schema';
@@ -28,11 +29,11 @@ export async function fetchDocuments(state: DistillerStateType): Promise<Partial
   let documents: DocumentRow[];
 
   if (state.documentIds && state.documentIds.length > 0) {
-    documents = await getDocumentsByIds(state.documentIds, limit);
+    documents = await getDocumentsByIds({ workspaceId: state.workspaceId }, state.documentIds, limit);
   } else if (state.topicTag) {
-    documents = await getDocumentsByTag(state.topicTag, limit);
+    documents = await getDocumentsByTag({ workspaceId: state.workspaceId }, state.topicTag, limit);
   } else {
-    documents = await getRecentDocuments(limit);
+    documents = await getRecentDocuments({ workspaceId: state.workspaceId }, limit);
   }
 
   return {
@@ -89,8 +90,9 @@ export async function extractConcepts(state: DistillerStateType): Promise<Partia
       schema: ConceptExtractionSchema,
       schemaName: 'distilled_concepts',
       allowEscalationOnValidationFailure: true,
+      budget: AI_BUDGETS.distillConcepts,
       attribution: {
-        jobId: state.runId,
+        runId: state.runId,
       },
     });
 
@@ -136,11 +138,12 @@ export async function saveConcepts(state: DistillerStateType): Promise<Partial<D
         summary: concept.summary,
         evidence: concept.evidence,
       };
-      const conceptId = await insertConcept(doc.id, conceptInput);
+      const conceptId = await insertConcept({ workspaceId: state.workspaceId }, doc.id, conceptInput);
       conceptIdMap.set(concept.label, conceptId);
       conceptsProposed++;
 
       const artifactId = await insertArtifact({
+        workspaceId: state.workspaceId,
         runId: state.runId ?? null,
         agent: 'distiller',
         kind: 'concept',
@@ -224,8 +227,9 @@ export async function generateFlashcards(state: DistillerStateType): Promise<Par
       prompt,
       schema: FlashcardGenerationSchema,
       schemaName: 'generated_flashcards',
+      budget: AI_BUDGETS.distillFlashcards,
       attribution: {
-        jobId: state.runId,
+        runId: state.runId,
       },
     });
 
@@ -265,10 +269,16 @@ export async function saveFlashcards(state: DistillerStateType): Promise<Partial
         front: flashcard.front,
         back: flashcard.back,
       };
-      const flashcardId = await insertFlashcard(doc.id, flashcard.conceptId, flashcardInput);
+      const flashcardId = await insertFlashcard(
+        { workspaceId: state.workspaceId },
+        doc.id,
+        flashcard.conceptId,
+        flashcardInput,
+      );
       flashcardsProposed++;
 
       const artifactId = await insertArtifact({
+        workspaceId: state.workspaceId,
         runId: state.runId ?? null,
         agent: 'distiller',
         kind: 'flashcard',

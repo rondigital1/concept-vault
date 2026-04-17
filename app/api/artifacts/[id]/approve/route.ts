@@ -1,7 +1,10 @@
 import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
+import { detectWorkspaceAccess, recordAuthorizationDenied } from '@/server/auth/authzAudit';
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { approveArtifact, getArtifactById } from '@/server/repos/artifacts.repo';
 import { publicErrorMessage } from '@/server/security/publicError';
+import { BlockedSourceError } from '@/server/security/sourceTrust';
 import { extractDocumentFromUrl, isHttpUrl } from '@/server/services/urlExtract.service';
 import { ingestDocument } from '@/server/services/ingest.service';
 
@@ -59,6 +62,7 @@ type ApprovedWebProposalImport = {
 };
 
 async function importApprovedWebProposal(
+  workspaceId: string,
   artifact: { id: string; title: string; content: unknown },
 ): Promise<ApprovedWebProposalImport> {
   const url = parseWebProposalUrl(artifact.content);
@@ -74,6 +78,7 @@ async function importApprovedWebProposal(
         : '';
     const ingestTitle = (titleFromExtraction || artifact.title || url).slice(0, 300);
     return await ingestDocument({
+      workspaceId,
       title: ingestTitle,
       source: url,
       content: extracted.content,
@@ -81,6 +86,10 @@ async function importApprovedWebProposal(
       enableAutoDistill: false,
     });
   } catch (importError) {
+    if (importError instanceof BlockedSourceError) {
+      throw importError;
+    }
+
     const summaryFallback = parseWebProposalSummary(artifact.content);
     if (!summaryFallback) {
       throw importError;
@@ -93,6 +102,7 @@ async function importApprovedWebProposal(
 
     const ingestTitle = (artifact.title || url).slice(0, 300);
     return ingestDocument({
+      workspaceId,
       title: ingestTitle,
       source: url,
       content: summaryFallback,
@@ -123,6 +133,12 @@ function isLockTimeoutError(error: unknown): boolean {
 }
 
 function resolveApproveError(error: unknown): { status: number; message: string } {
+  if (error instanceof BlockedSourceError) {
+    return {
+      status: error.status,
+      message: publicErrorMessage(error, 'Blocked by source trust policy'),
+    };
+  }
   if (isSchemaMissingError(error)) {
     return {
       status: 503,
@@ -149,10 +165,20 @@ export async function POST(
   const expectsJson = isJsonRequest(contentType);
 
   try {
+    const scope = await requireSessionWorkspace();
     const { id } = await params;
 
-    const artifact = await getArtifactById(id);
+    const artifact = await getArtifactById(scope, id);
     if (!artifact || artifact.status !== 'proposed') {
+      if ((await detectWorkspaceAccess({ table: 'artifacts', recordId: id, workspaceId: scope.workspaceId })) === 'forbidden') {
+        recordAuthorizationDenied({
+          table: 'artifacts',
+          action: 'approve',
+          recordId: id,
+          workspaceId: scope.workspaceId,
+          userId: scope.userId,
+        });
+      }
       const message = 'Artifact not found or already reviewed';
       if (!expectsJson) {
         return NextResponse.redirect(buildRedirectUrl(request, { errorMessage: message }), { status: 303 });
@@ -171,7 +197,7 @@ export async function POST(
         return NextResponse.json({ error: message }, { status: 422 });
       }
 
-      webImportResult = await importApprovedWebProposal({
+      webImportResult = await importApprovedWebProposal(scope.workspaceId, {
         id: artifact.id,
         title: artifact.title,
         content: artifact.content,
@@ -179,11 +205,21 @@ export async function POST(
     }
 
     const approved = await approveArtifact(
+      scope,
       id,
       webImportResult ? { documentId: webImportResult.documentId } : undefined,
     );
 
     if (!approved) {
+      if ((await detectWorkspaceAccess({ table: 'artifacts', recordId: id, workspaceId: scope.workspaceId })) === 'forbidden') {
+        recordAuthorizationDenied({
+          table: 'artifacts',
+          action: 'approve',
+          recordId: id,
+          workspaceId: scope.workspaceId,
+          userId: scope.userId,
+        });
+      }
       const message = 'Artifact not found or already reviewed';
       if (!expectsJson) {
         return NextResponse.redirect(buildRedirectUrl(request, { errorMessage: message }), { status: 303 });
@@ -216,6 +252,12 @@ export async function POST(
         : null,
     });
   } catch (error) {
+    if (error instanceof WorkspaceAccessError) {
+      if (!expectsJson) {
+        return NextResponse.redirect(buildRedirectUrl(request, { errorMessage: error.message }), { status: 303 });
+      }
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     const resolved = resolveApproveError(error);
     if (!expectsJson) {
       return NextResponse.redirect(

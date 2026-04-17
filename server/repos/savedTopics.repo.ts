@@ -1,4 +1,6 @@
 import { sql } from '@/db';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
+import { logger } from '@/server/observability/logger';
 
 export type TopicCadence = 'daily' | 'weekly';
 type JsonParam = Parameters<typeof sql.json>[0];
@@ -39,6 +41,7 @@ export interface LinkedTopicDocumentRow {
 }
 
 export interface CreateSavedTopicInput {
+  workspaceId: string;
   name: string;
   goal: string;
   focusTags?: string[];
@@ -113,7 +116,9 @@ function rowSelection() {
   `;
 }
 
-export async function listSavedTopics(options?: {
+export async function listSavedTopics(
+  scope: WorkspaceScope,
+  options?: {
   activeOnly?: boolean;
   trackedOnly?: boolean;
 }): Promise<SavedTopicRow[]> {
@@ -124,7 +129,9 @@ export async function listSavedTopics(options?: {
     return sql<SavedTopicRow[]>`
       SELECT ${rowSelection()}
       FROM saved_topics
-      WHERE is_active = true AND is_tracked = true
+      WHERE workspace_id = ${scope.workspaceId}
+        AND is_active = true
+        AND is_tracked = true
       ORDER BY updated_at DESC, created_at DESC
     `;
   }
@@ -133,7 +140,8 @@ export async function listSavedTopics(options?: {
     return sql<SavedTopicRow[]>`
       SELECT ${rowSelection()}
       FROM saved_topics
-      WHERE is_active = true
+      WHERE workspace_id = ${scope.workspaceId}
+        AND is_active = true
       ORDER BY updated_at DESC, created_at DESC
     `;
   }
@@ -142,7 +150,8 @@ export async function listSavedTopics(options?: {
     return sql<SavedTopicRow[]>`
       SELECT ${rowSelection()}
       FROM saved_topics
-      WHERE is_tracked = true
+      WHERE workspace_id = ${scope.workspaceId}
+        AND is_tracked = true
       ORDER BY updated_at DESC, created_at DESC
     `;
   }
@@ -150,11 +159,15 @@ export async function listSavedTopics(options?: {
   return sql<SavedTopicRow[]>`
     SELECT ${rowSelection()}
     FROM saved_topics
+    WHERE workspace_id = ${scope.workspaceId}
     ORDER BY updated_at DESC, created_at DESC
   `;
 }
 
-export async function getSavedTopicsByIds(topicIds: string[]): Promise<SavedTopicRow[]> {
+export async function getSavedTopicsByIds(
+  scope: WorkspaceScope,
+  topicIds: string[],
+): Promise<SavedTopicRow[]> {
   if (topicIds.length === 0) {
     return [];
   }
@@ -162,7 +175,8 @@ export async function getSavedTopicsByIds(topicIds: string[]): Promise<SavedTopi
   return sql<SavedTopicRow[]>`
     SELECT ${rowSelection()}
     FROM saved_topics
-    WHERE id = ANY(${topicIds})
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ANY(${topicIds})
     ORDER BY updated_at DESC, created_at DESC
   `;
 }
@@ -173,6 +187,7 @@ export async function createSavedTopic(input: CreateSavedTopicInput): Promise<Sa
 
   const rows = await sql<SavedTopicRow[]>`
     INSERT INTO saved_topics (
+      workspace_id,
       name,
       goal,
       focus_tags,
@@ -187,6 +202,7 @@ export async function createSavedTopic(input: CreateSavedTopicInput): Promise<Sa
       metadata
     )
     VALUES (
+      ${input.workspaceId},
       ${input.name},
       ${input.goal},
       ${sql.array(focusTags)},
@@ -207,6 +223,7 @@ export async function createSavedTopic(input: CreateSavedTopicInput): Promise<Sa
 }
 
 export async function updateSavedTopic(
+  scope: WorkspaceScope,
   topicId: string,
   input: UpdateSavedTopicInput,
 ): Promise<SavedTopicRow | null> {
@@ -230,13 +247,17 @@ export async function updateSavedTopic(
       metadata = COALESCE(${nextMetadata ? sql.json(nextMetadata as JsonParam) : null}, metadata),
       updated_at = now()
     WHERE id = ${topicId}
+      AND workspace_id = ${scope.workspaceId}
     RETURNING ${rowSelection()}
   `;
 
   return rows[0] ?? null;
 }
 
-export async function upsertTopicSetup(input: UpsertTopicSetupInput): Promise<SavedTopicRow | null> {
+export async function upsertTopicSetup(
+  scope: WorkspaceScope,
+  input: UpsertTopicSetupInput,
+): Promise<SavedTopicRow | null> {
   const focusTags = normalizeTags(input.focusTags);
 
   const rows = await sql<SavedTopicRow[]>`
@@ -246,21 +267,26 @@ export async function upsertTopicSetup(input: UpsertTopicSetupInput): Promise<Sa
       metadata = COALESCE(metadata, '{}'::jsonb) || ${sql.json((input.metadata ?? {}) as JsonParam)},
       updated_at = now()
     WHERE id = ${input.topicId}
+      AND workspace_id = ${scope.workspaceId}
     RETURNING ${rowSelection()}
   `;
 
   return rows[0] ?? null;
 }
 
-export async function setTopicSignal(topicId: string): Promise<void> {
+export async function setTopicSignal(scope: WorkspaceScope, topicId: string): Promise<void> {
   await sql`
     UPDATE saved_topics
     SET last_signal_at = now(), updated_at = now()
-    WHERE id = ${topicId}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${topicId}
   `;
 }
 
-export async function markTopicsUpdatedByTags(tags: string[]): Promise<number> {
+export async function markTopicsUpdatedByTags(
+  scope: WorkspaceScope,
+  tags: string[],
+): Promise<number> {
   const normalized = normalizeTags(tags);
   if (normalized.length === 0) {
     return 0;
@@ -269,7 +295,8 @@ export async function markTopicsUpdatedByTags(tags: string[]): Promise<number> {
   const rows = await sql<Array<{ id: string }>>`
     UPDATE saved_topics
     SET last_signal_at = now(), updated_at = now()
-    WHERE is_active = true
+    WHERE workspace_id = ${scope.workspaceId}
+      AND is_active = true
       AND cardinality(focus_tags) > 0
       AND focus_tags && ${sql.array(normalized)}
     RETURNING id
@@ -278,24 +305,33 @@ export async function markTopicsUpdatedByTags(tags: string[]): Promise<number> {
   return rows.length;
 }
 
-export async function markTopicRunCompleted(topicId: string, mode: string): Promise<void> {
+export async function markTopicRunCompleted(
+  scope: WorkspaceScope,
+  topicId: string,
+  mode: string,
+): Promise<void> {
   await sql`
     UPDATE saved_topics
     SET
       last_run_at = now(),
       last_run_mode = ${mode},
       updated_at = now()
-    WHERE id = ${topicId}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${topicId}
   `;
 }
 
-export async function listDueTrackedTopics(referenceTime = new Date()): Promise<SavedTopicRow[]> {
+export async function listDueTrackedTopics(
+  scope: WorkspaceScope,
+  referenceTime = new Date(),
+): Promise<SavedTopicRow[]> {
   const iso = referenceTime.toISOString();
 
   return sql<SavedTopicRow[]>`
     SELECT ${rowSelection()}
     FROM saved_topics
-    WHERE is_active = true
+    WHERE workspace_id = ${scope.workspaceId}
+      AND is_active = true
       AND is_tracked = true
       AND (
         (cadence = 'daily' AND (last_run_at IS NULL OR last_run_at < (${iso}::timestamptz - interval '24 hours')))
@@ -306,14 +342,19 @@ export async function listDueTrackedTopics(referenceTime = new Date()): Promise<
   `;
 }
 
-export async function getTopicDocuments(focusTags: string[], limit: number): Promise<TopicDocumentRow[]> {
+export async function getTopicDocuments(
+  scope: WorkspaceScope,
+  focusTags: string[],
+  limit: number,
+): Promise<TopicDocumentRow[]> {
   const normalized = normalizeTags(focusTags);
 
   if (normalized.length > 0) {
     return sql<TopicDocumentRow[]>`
       SELECT id, title, tags
       FROM documents
-      WHERE tags && ${sql.array(normalized)}
+      WHERE workspace_id = ${scope.workspaceId}
+        AND tags && ${sql.array(normalized)}
       ORDER BY imported_at DESC
       LIMIT ${limit}
     `;
@@ -322,161 +363,253 @@ export async function getTopicDocuments(focusTags: string[], limit: number): Pro
   return sql<TopicDocumentRow[]>`
     SELECT id, title, tags
     FROM documents
+    WHERE workspace_id = ${scope.workspaceId}
     ORDER BY imported_at DESC
     LIMIT ${limit}
   `;
 }
 
-export async function getTopicLinkedDocuments(topicId: string, limit: number): Promise<TopicDocumentRow[]> {
+export async function getTopicLinkedDocuments(
+  scope: WorkspaceScope,
+  topicId: string,
+  limit: number,
+): Promise<TopicDocumentRow[]> {
   return sql<TopicDocumentRow[]>`
     SELECT d.id, d.title, d.tags
     FROM topic_documents td
     JOIN documents d ON d.id = td.document_id
-    WHERE td.topic_id = ${topicId}
+    JOIN saved_topics st ON st.id = td.topic_id
+    WHERE st.workspace_id = ${scope.workspaceId}
+      AND td.topic_id = ${topicId}
     ORDER BY td.updated_at DESC
     LIMIT ${limit}
   `;
 }
 
-export async function countTopicLinkedDocuments(topicId: string): Promise<number> {
+export async function countTopicLinkedDocuments(
+  scope: WorkspaceScope,
+  topicId: string,
+): Promise<number> {
   const rows = await sql<Array<{ count: number }>>`
     SELECT COUNT(*)::integer AS count
-    FROM topic_documents
-    WHERE topic_id = ${topicId}
+    FROM topic_documents td
+    INNER JOIN saved_topics st ON st.id = td.topic_id
+    WHERE st.workspace_id = ${scope.workspaceId}
+      AND td.topic_id = ${topicId}
   `;
 
   return rows[0]?.count ?? 0;
 }
 
-function overlap(tags: string[], focusTags: string[]): string[] {
-  const focus = new Set(focusTags);
-  return tags.filter((tag) => focus.has(tag));
-}
-
 export async function linkTopicToMatchingDocuments(
+  scope: WorkspaceScope,
   topicId: string,
   focusTags: string[],
   limit = 200,
 ): Promise<{ linkedCount: number; documentIds: string[] }> {
+  const startedAt = Date.now();
   const normalizedFocus = normalizeTags(focusTags);
   if (normalizedFocus.length === 0) {
+    logger.info('db.saved_topics.link_topic_documents.completed', {
+      durationMs: Date.now() - startedAt,
+      topicId,
+      focusTagCount: 0,
+      linkedCount: 0,
+      limit,
+      emptyFocusTags: true,
+    });
     return { linkedCount: 0, documentIds: [] };
   }
 
-  const docs = await sql<Array<{ id: string; tags: string[] }>>`
-    SELECT id, tags
-    FROM documents
-    WHERE tags && ${sql.array(normalizedFocus)}
-    ORDER BY imported_at DESC
-    LIMIT ${limit}
-  `;
-
-  if (docs.length === 0) {
-    return { linkedCount: 0, documentIds: [] };
-  }
-
-  let linkedCount = 0;
-  const documentIds: string[] = [];
-
-  for (const doc of docs) {
-    const matchedTags = overlap(doc.tags ?? [], normalizedFocus);
-    if (matchedTags.length === 0) {
-      continue;
-    }
-
-    const rows = await sql<Array<{ topic_id: string }>>`
-      INSERT INTO topic_documents (topic_id, document_id, matched_tags, linked_at, updated_at)
-      VALUES (${topicId}, ${doc.id}, ${sql.array(matchedTags)}, now(), now())
-      ON CONFLICT (topic_id, document_id)
-      DO UPDATE
-        SET matched_tags = EXCLUDED.matched_tags,
-            updated_at = now()
-      RETURNING topic_id
+  try {
+    const rows = await sql<Array<{ document_id: string }>>`
+      WITH candidate_documents AS (
+        SELECT
+          d.id,
+          d.tags,
+          ROW_NUMBER() OVER (ORDER BY d.imported_at DESC, d.id DESC) AS ord
+        FROM documents d
+        WHERE d.workspace_id = ${scope.workspaceId}
+          AND d.tags && ${sql.array(normalizedFocus)}
+        ORDER BY d.imported_at DESC, d.id DESC
+        LIMIT ${limit}
+      ),
+      upserted_links AS (
+        INSERT INTO topic_documents (topic_id, document_id, matched_tags, linked_at, updated_at)
+        SELECT
+          st.id,
+          d.id,
+          ARRAY(
+            SELECT tag
+            FROM unnest(d.tags) WITH ORDINALITY AS matched(tag, ord)
+            WHERE tag = ANY(${sql.array(normalizedFocus)})
+            ORDER BY ord
+          ),
+          now(),
+          now()
+        FROM saved_topics st
+        INNER JOIN candidate_documents d ON true
+        WHERE st.workspace_id = ${scope.workspaceId}
+          AND st.id = ${topicId}
+        ON CONFLICT (topic_id, document_id)
+        DO UPDATE
+          SET matched_tags = EXCLUDED.matched_tags,
+              updated_at = now()
+        RETURNING document_id
+      )
+      SELECT u.document_id
+      FROM upserted_links u
+      INNER JOIN candidate_documents d ON d.id = u.document_id
+      ORDER BY d.ord
     `;
 
     if (rows.length > 0) {
-      linkedCount += 1;
-      documentIds.push(doc.id);
+      await setTopicSignal(scope, topicId);
     }
-  }
 
-  if (linkedCount > 0) {
-    await setTopicSignal(topicId);
-  }
+    logger.info('db.saved_topics.link_topic_documents.completed', {
+      durationMs: Date.now() - startedAt,
+      topicId,
+      focusTagCount: normalizedFocus.length,
+      linkedCount: rows.length,
+      limit,
+    });
 
-  return { linkedCount, documentIds };
+    return {
+      linkedCount: rows.length,
+      documentIds: rows.map((row) => row.document_id),
+    };
+  } catch (error) {
+    logger.error('db.saved_topics.link_topic_documents.failed', {
+      durationMs: Date.now() - startedAt,
+      topicId,
+      focusTagCount: normalizedFocus.length,
+      limit,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 export async function linkDocumentToMatchingTopics(
+  scope: WorkspaceScope,
   documentId: string,
   documentTags: string[],
 ): Promise<{ topicIds: string[] }> {
+  const startedAt = Date.now();
   const normalized = normalizeTags(documentTags);
   if (normalized.length === 0) {
+    logger.info('db.saved_topics.link_document_topics.completed', {
+      durationMs: Date.now() - startedAt,
+      documentId,
+      documentTagCount: 0,
+      linkedCount: 0,
+      emptyDocumentTags: true,
+    });
     return { topicIds: [] };
   }
 
-  const topics = await sql<Array<{ id: string; focus_tags: string[] }>>`
-    SELECT id, focus_tags
-    FROM saved_topics
-    WHERE is_active = true
-      AND cardinality(focus_tags) > 0
-      AND focus_tags && ${sql.array(normalized)}
-  `;
-
-  if (topics.length === 0) {
-    return { topicIds: [] };
-  }
-
-  const topicIds: string[] = [];
-
-  for (const topic of topics) {
-    const matchedTags = overlap(normalized, topic.focus_tags ?? []);
-    if (matchedTags.length === 0) {
-      continue;
-    }
-
-    await sql`
-      INSERT INTO topic_documents (topic_id, document_id, matched_tags, linked_at, updated_at)
-      VALUES (${topic.id}, ${documentId}, ${sql.array(matchedTags)}, now(), now())
-      ON CONFLICT (topic_id, document_id)
-      DO UPDATE
-        SET matched_tags = EXCLUDED.matched_tags,
-            updated_at = now()
+  try {
+    const rows = await sql<Array<{ topic_id: string }>>`
+      WITH candidate_topics AS (
+        SELECT st.id, st.focus_tags
+        FROM saved_topics st
+        WHERE st.workspace_id = ${scope.workspaceId}
+          AND st.is_active = true
+          AND cardinality(st.focus_tags) > 0
+          AND st.focus_tags && ${sql.array(normalized)}
+      ),
+      upserted_links AS (
+        INSERT INTO topic_documents (topic_id, document_id, matched_tags, linked_at, updated_at)
+        SELECT
+          st.id,
+          d.id,
+          ARRAY(
+            SELECT tag
+            FROM unnest(${sql.array(normalized)}) WITH ORDINALITY AS matched(tag, ord)
+            WHERE tag = ANY(st.focus_tags)
+            ORDER BY ord
+          ),
+          now(),
+          now()
+        FROM candidate_topics st
+        INNER JOIN documents d ON d.id = ${documentId}
+        WHERE d.workspace_id = ${scope.workspaceId}
+        ON CONFLICT (topic_id, document_id)
+        DO UPDATE
+          SET matched_tags = EXCLUDED.matched_tags,
+              updated_at = now()
+        RETURNING topic_id
+      ),
+      signaled_topics AS (
+        UPDATE saved_topics st
+        SET last_signal_at = now(), updated_at = now()
+        WHERE st.workspace_id = ${scope.workspaceId}
+          AND st.id IN (SELECT topic_id FROM upserted_links)
+        RETURNING st.id
+      )
+      SELECT id AS topic_id
+      FROM signaled_topics
     `;
 
-    await setTopicSignal(topic.id);
-    topicIds.push(topic.id);
-  }
+    logger.info('db.saved_topics.link_document_topics.completed', {
+      durationMs: Date.now() - startedAt,
+      documentId,
+      documentTagCount: normalized.length,
+      linkedCount: rows.length,
+    });
 
-  return { topicIds };
+    return { topicIds: rows.map((row) => row.topic_id) };
+  } catch (error) {
+    logger.error('db.saved_topics.link_document_topics.failed', {
+      durationMs: Date.now() - startedAt,
+      documentId,
+      documentTagCount: normalized.length,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
-export async function countTopicSignalsSince(topicId: string, since: string | null): Promise<number> {
+export async function countTopicSignalsSince(
+  scope: WorkspaceScope,
+  topicId: string,
+  since: string | null,
+): Promise<number> {
   if (!since) {
     const rows = await sql<Array<{ count: number }>>`
       SELECT COUNT(*)::integer AS count
-      FROM topic_documents
-      WHERE topic_id = ${topicId}
+      FROM topic_documents td
+      INNER JOIN saved_topics st ON st.id = td.topic_id
+      WHERE st.workspace_id = ${scope.workspaceId}
+        AND td.topic_id = ${topicId}
     `;
     return rows[0]?.count ?? 0;
   }
 
   const rows = await sql<Array<{ count: number }>>`
     SELECT COUNT(*)::integer AS count
-    FROM topic_documents
-    WHERE topic_id = ${topicId}
+    FROM topic_documents td
+    INNER JOIN saved_topics st ON st.id = td.topic_id
+    WHERE st.workspace_id = ${scope.workspaceId}
+      AND td.topic_id = ${topicId}
       AND updated_at > ${since}
   `;
 
   return rows[0]?.count ?? 0;
 }
 
-export async function listTopicDocumentLinks(topicId: string, limit: number): Promise<LinkedTopicDocumentRow[]> {
+export async function listTopicDocumentLinks(
+  scope: WorkspaceScope,
+  topicId: string,
+  limit: number,
+): Promise<LinkedTopicDocumentRow[]> {
   return sql<LinkedTopicDocumentRow[]>`
-    SELECT topic_id, document_id, matched_tags, linked_at, updated_at
-    FROM topic_documents
-    WHERE topic_id = ${topicId}
+    SELECT td.topic_id, td.document_id, td.matched_tags, td.linked_at, td.updated_at
+    FROM topic_documents td
+    INNER JOIN saved_topics st ON st.id = td.topic_id
+    WHERE st.workspace_id = ${scope.workspaceId}
+      AND td.topic_id = ${topicId}
     ORDER BY updated_at DESC
     LIMIT ${limit}
   `;

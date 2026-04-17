@@ -1,5 +1,6 @@
 'use server';
 
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import {
   deleteDocument,
   updateDocumentTitle,
@@ -10,7 +11,8 @@ import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function deleteDocumentAction(documentId: string) {
   try {
-    await deleteDocument(documentId);
+    const scope = await requireSessionWorkspace();
+    await deleteDocument(scope, documentId);
     revalidatePath('/library');
     return { success: true };
   } catch (error) {
@@ -27,7 +29,8 @@ export async function updateDocumentTitleAction(
   title: string
 ) {
   try {
-    await updateDocumentTitle(documentId, title);
+    const scope = await requireSessionWorkspace();
+    await updateDocumentTitle(scope, documentId, title);
     revalidatePath('/library');
     revalidatePath(`/library/${documentId}`);
     return { success: true };
@@ -42,7 +45,8 @@ export async function updateDocumentTitleAction(
 
 export async function toggleFavoriteAction(documentId: string) {
   try {
-    const isFavorite = await toggleFavorite(documentId);
+    const scope = await requireSessionWorkspace();
+    const isFavorite = await toggleFavorite(scope, documentId);
     revalidatePath('/library');
     return { success: true, isFavorite };
   } catch (error) {

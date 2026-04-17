@@ -1,4 +1,5 @@
 import { sql } from '@/db';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import {
   type AgentKey,
   type AgentProfileSettingsMap,
@@ -191,53 +192,61 @@ function buildExecutionEvents(runs: RecentRunSummary[]): ExecutionEvent[] {
   }));
 }
 
-async function listStageRows(stepName: string): Promise<StepRow[]> {
+async function listStageRows(scope: WorkspaceScope, stepName: string): Promise<StepRow[]> {
   return sql<StepRow[]>`
-    SELECT id, run_id, step_name, status, started_at, ended_at, output, error
-    FROM run_steps
-    WHERE step_name = ${stepName}
-    ORDER BY started_at DESC
+    SELECT rs.id, rs.run_id, rs.step_name, rs.status, rs.started_at, rs.ended_at, rs.output, rs.error
+    FROM run_steps rs
+    INNER JOIN runs r ON r.id = rs.run_id
+    WHERE r.workspace_id = ${scope.workspaceId}
+      AND rs.step_name = ${stepName}
+    ORDER BY rs.started_at DESC
     LIMIT 180
   `;
 }
 
-async function listRecentRuns(limit: number): Promise<RunRow[]> {
+async function listRecentRuns(scope: WorkspaceScope, limit: number): Promise<RunRow[]> {
   return sql<RunRow[]>`
     SELECT id, kind, status, started_at, ended_at, metadata
     FROM runs
+    WHERE workspace_id = ${scope.workspaceId}
     ORDER BY started_at DESC
     LIMIT ${limit}
   `;
 }
 
-async function listPipelineRuns(limit: number): Promise<RunRow[]> {
+async function listPipelineRuns(scope: WorkspaceScope, limit: number): Promise<RunRow[]> {
   return sql<RunRow[]>`
     SELECT id, kind, status, started_at, ended_at, metadata
     FROM runs
-    WHERE kind = 'pipeline'
+    WHERE workspace_id = ${scope.workspaceId}
+      AND kind = 'pipeline'
     ORDER BY started_at DESC
     LIMIT ${limit}
   `;
 }
 
-async function listStepsForRuns(runIds: string[]): Promise<StepRow[]> {
+async function listStepsForRuns(scope: WorkspaceScope, runIds: string[]): Promise<StepRow[]> {
   if (runIds.length === 0) {
     return [];
   }
 
   return sql<StepRow[]>`
-    SELECT id, run_id, step_name, status, started_at, ended_at, output, error
-    FROM run_steps
-    WHERE run_id = ANY(${runIds})
-    ORDER BY started_at ASC
+    SELECT rs.id, rs.run_id, rs.step_name, rs.status, rs.started_at, rs.ended_at, rs.output, rs.error
+    FROM run_steps rs
+    INNER JOIN runs r ON r.id = rs.run_id
+    WHERE r.workspace_id = ${scope.workspaceId}
+      AND rs.run_id = ANY(${runIds})
+    ORDER BY rs.started_at ASC
   `;
 }
 
-async function listTopicLinkedCounts(): Promise<Map<string, number>> {
+async function listTopicLinkedCounts(scope: WorkspaceScope): Promise<Map<string, number>> {
   const rows = await sql<Array<{ topic_id: string; count: number }>>`
-    SELECT topic_id, COUNT(*)::integer AS count
-    FROM topic_documents
-    GROUP BY topic_id
+    SELECT td.topic_id, COUNT(*)::integer AS count
+    FROM topic_documents td
+    INNER JOIN saved_topics st ON st.id = td.topic_id
+    WHERE st.workspace_id = ${scope.workspaceId}
+    GROUP BY td.topic_id
   `;
 
   return new Map(rows.map((row) => [row.topic_id, row.count]));
@@ -412,10 +421,11 @@ function buildStageRegistryEntry(
 }
 
 async function buildSelectedRun(
+  scope: WorkspaceScope,
   runId: string,
   recentRuns: RecentRunSummary[],
 ): Promise<SelectedRunDetail | null> {
-  const trace = await getRunTrace(runId);
+  const trace = await getRunTrace(scope, runId);
   if (!trace) {
     return null;
   }
@@ -441,7 +451,7 @@ async function buildSelectedRun(
     lastError: null,
   };
 
-  const artifacts = await listArtifactsByRunId(runId);
+  const artifacts = await listArtifactsByRunId(scope, runId);
   const report = artifacts.find((artifact) => artifact.kind === 'research-report') ?? null;
 
   return {
@@ -459,7 +469,9 @@ async function buildSelectedRun(
   };
 }
 
-export async function getAgentsView(options?: {
+export async function getAgentsView(
+  scope: WorkspaceScope,
+  options?: {
   selectedTopicId?: string | null;
   selectedRunId?: string | null;
 }): Promise<AgentsView> {
@@ -476,17 +488,18 @@ export async function getAgentsView(options?: {
   ] =
     await Promise.all([
       getAgentProfileSettingsMap(),
-      listSavedTopics(),
-      listTopicLinkedCounts(),
-      listRecentRuns(12),
-      listPipelineRuns(60),
-      listStageRows('pipeline_curate'),
-      listStageRows('pipeline_webscout'),
-      listStageRows('pipeline_distill'),
+      listSavedTopics(scope),
+      listTopicLinkedCounts(scope),
+      listRecentRuns(scope, 12),
+      listPipelineRuns(scope, 60),
+      listStageRows(scope, 'pipeline_curate'),
+      listStageRows(scope, 'pipeline_webscout'),
+      listStageRows(scope, 'pipeline_distill'),
       sql<Array<{ count: number }>>`
         SELECT COUNT(*)::integer AS count
         FROM artifacts
-        WHERE kind = 'research-report'
+        WHERE workspace_id = ${scope.workspaceId}
+          AND kind = 'research-report'
           AND created_at >= now() - interval '30 days'
       `,
     ]);
@@ -495,7 +508,7 @@ export async function getAgentsView(options?: {
   const topicById = new Map(topicOptions.map((topic) => [topic.id, topic]));
 
   const recentRunIds = recentRunRows.map((run) => run.id);
-  const recentStepRows = await listStepsForRuns(recentRunIds);
+  const recentStepRows = await listStepsForRuns(scope, recentRunIds);
   const stepsByRun = new Map<string, StepRow[]>();
   for (const row of recentStepRows) {
     const existing = stepsByRun.get(row.run_id) ?? [];
@@ -516,7 +529,7 @@ export async function getAgentsView(options?: {
     recentRuns[0]?.id ??
     null;
 
-  const selectedRun = selectedRunId ? await buildSelectedRun(selectedRunId, recentRuns) : null;
+  const selectedRun = selectedRunId ? await buildSelectedRun(scope, selectedRunId, recentRuns) : null;
 
   return {
     globalProfiles: profiles,

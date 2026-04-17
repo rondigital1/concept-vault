@@ -5,6 +5,7 @@
  */
 
 import { sql } from '@/db';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 
 type JsonParam = Parameters<typeof sql.json>[0];
 
@@ -39,12 +40,13 @@ export interface ChatMessageRow {
  * Create a new chat session
  */
 export async function createSession(
+  scope: WorkspaceScope,
   id: string,
   title: string
 ): Promise<ChatSessionRow> {
   const rows = await sql<ChatSessionRow[]>`
-    INSERT INTO chat_sessions (id, title)
-    VALUES (${id}::uuid, ${title})
+    INSERT INTO chat_sessions (id, workspace_id, title)
+    VALUES (${id}::uuid, ${scope.workspaceId}, ${title})
     RETURNING id, title, created_at, updated_at
   `;
   return rows[0];
@@ -53,11 +55,15 @@ export async function createSession(
 /**
  * Get a session by ID
  */
-export async function getSession(sessionId: string): Promise<ChatSessionRow | null> {
+export async function getSession(
+  scope: WorkspaceScope,
+  sessionId: string,
+): Promise<ChatSessionRow | null> {
   const rows = await sql<ChatSessionRow[]>`
     SELECT id, title, created_at, updated_at
     FROM chat_sessions
-    WHERE id = ${sessionId}::uuid
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${sessionId}::uuid
   `;
   return rows[0] ?? null;
 }
@@ -65,7 +71,10 @@ export async function getSession(sessionId: string): Promise<ChatSessionRow | nu
 /**
  * List recent sessions with preview
  */
-export async function listSessions(limit = 20): Promise<ChatSessionWithPreview[]> {
+export async function listSessions(
+  scope: WorkspaceScope,
+  limit = 20,
+): Promise<ChatSessionWithPreview[]> {
   const rows = await sql<ChatSessionWithPreview[]>`
     SELECT
       s.id,
@@ -86,6 +95,7 @@ export async function listSessions(limit = 20): Promise<ChatSessionWithPreview[]
         WHERE h.session_id = s.id
       ) as message_count
     FROM chat_sessions s
+    WHERE s.workspace_id = ${scope.workspaceId}
     ORDER BY s.updated_at DESC
     LIMIT ${limit}
   `;
@@ -96,34 +106,41 @@ export async function listSessions(limit = 20): Promise<ChatSessionWithPreview[]
  * Update session title
  */
 export async function updateSessionTitle(
+  scope: WorkspaceScope,
   sessionId: string,
   title: string
 ): Promise<void> {
   await sql`
     UPDATE chat_sessions
     SET title = ${title}, updated_at = now()
-    WHERE id = ${sessionId}::uuid
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${sessionId}::uuid
   `;
 }
 
 /**
  * Update session timestamp (called when new messages are added)
  */
-export async function updateSessionTimestamp(sessionId: string): Promise<void> {
+export async function updateSessionTimestamp(
+  scope: WorkspaceScope,
+  sessionId: string,
+): Promise<void> {
   await sql`
     UPDATE chat_sessions
     SET updated_at = now()
-    WHERE id = ${sessionId}::uuid
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${sessionId}::uuid
   `;
 }
 
 /**
  * Delete a session and all its messages (cascade)
  */
-export async function deleteSession(sessionId: string): Promise<void> {
+export async function deleteSession(scope: WorkspaceScope, sessionId: string): Promise<void> {
   await sql`
     DELETE FROM chat_sessions
-    WHERE id = ${sessionId}::uuid
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${sessionId}::uuid
   `;
 }
 
@@ -133,12 +150,15 @@ export async function deleteSession(sessionId: string): Promise<void> {
  * Get all messages for a session
  */
 export async function getSessionMessages(
+  scope: WorkspaceScope,
   sessionId: string
 ): Promise<ChatMessageRow[]> {
   const rows = await sql<ChatMessageRow[]>`
-    SELECT id, session_id, message, created_at
-    FROM chat_history
-    WHERE session_id = ${sessionId}::uuid
+    SELECT h.id, h.session_id, h.message, h.created_at
+    FROM chat_history h
+    INNER JOIN chat_sessions s ON s.id = h.session_id
+    WHERE s.workspace_id = ${scope.workspaceId}
+      AND h.session_id = ${sessionId}::uuid
     ORDER BY created_at ASC
   `;
   return rows;
@@ -148,12 +168,16 @@ export async function getSessionMessages(
  * Add a message to a session
  */
 export async function insertMessage(
+  scope: WorkspaceScope,
   sessionId: string,
   message: { type: string; content: string }
 ): Promise<string> {
   const rows = await sql<Array<{ id: string }>>`
     INSERT INTO chat_history (session_id, message)
-    VALUES (${sessionId}::uuid, ${sql.json(message as JsonParam)})
+    SELECT s.id, ${sql.json(message as JsonParam)}
+    FROM chat_sessions s
+    WHERE s.workspace_id = ${scope.workspaceId}
+      AND s.id = ${sessionId}::uuid
     RETURNING id
   `;
   return rows[0].id;
@@ -163,13 +187,16 @@ export async function insertMessage(
  * Get the first user message for a session (for preview/title generation)
  */
 export async function getFirstUserMessage(
+  scope: WorkspaceScope,
   sessionId: string
 ): Promise<string | null> {
   const rows = await sql<Array<{ content: string }>>`
-    SELECT message->>'content' as content
-    FROM chat_history
-    WHERE session_id = ${sessionId}::uuid
-      AND message->>'type' = 'human'
+    SELECT h.message->>'content' as content
+    FROM chat_history h
+    INNER JOIN chat_sessions s ON s.id = h.session_id
+    WHERE s.workspace_id = ${scope.workspaceId}
+      AND h.session_id = ${sessionId}::uuid
+      AND h.message->>'type' = 'human'
     ORDER BY created_at ASC
     LIMIT 1
   `;

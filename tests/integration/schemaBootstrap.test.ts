@@ -63,12 +63,12 @@ describe('Schema Migrations', () => {
 
     const before = await getSchemaStatus(migrationSql);
     expect(before.ok).toBe(false);
-    expect(before.pendingVersions).toEqual(['0001', '0002']);
+    expect(before.pendingVersions).toEqual(['0001', '0002', '0003', '0004', '0005']);
 
     const result = await runMigrations(migrationSql);
     expect(result.ok).toBe(true);
-    expect(result.appliedVersions).toEqual(['0001', '0002']);
-    expect(result.currentVersion).toBe('0002');
+    expect(result.appliedVersions).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(result.currentVersion).toBe('0005');
 
     const tables = await migrationSql<Array<{
       schema_migrations: string | null;
@@ -99,8 +99,8 @@ describe('Schema Migrations', () => {
       ORDER BY version ASC
     `;
 
-    expect(migrationRows).toHaveLength(2);
-    expect(migrationRows.at(-1)?.version).toBe('0002');
+    expect(migrationRows).toHaveLength(5);
+    expect(migrationRows.at(-1)?.version).toBe('0005');
     expect(migrationRows[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -112,15 +112,15 @@ describe('Schema Migrations', () => {
 
     const before = await getSchemaStatus(migrationSql);
     expect(before.ok).toBe(false);
-    expect(before.pendingVersions).toEqual(['0001', '0002']);
+    expect(before.pendingVersions).toEqual(['0001', '0002', '0003', '0004', '0005']);
 
     const result = await runMigrations(migrationSql);
     expect(result.ok).toBe(true);
-    expect(result.appliedVersions).toEqual(['0001', '0002']);
+    expect(result.appliedVersions).toEqual(['0001', '0002', '0003', '0004', '0005']);
 
     const after = await getSchemaStatus(migrationSql);
     expect(after.ok).toBe(true);
-    expect(after.currentVersion).toBe('0002');
+    expect(after.currentVersion).toBe('0005');
   });
 
   it('treats repeated migration runs as a no-op', async () => {
@@ -132,13 +132,13 @@ describe('Schema Migrations', () => {
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
     expect(second.appliedVersions).toEqual([]);
-    expect(second.currentVersion).toBe('0002');
+    expect(second.currentVersion).toBe('0005');
 
     const rows = await migrationSql<Array<{ count: number }>>`
       SELECT COUNT(*)::integer AS count
       FROM schema_migrations
     `;
-    expect(rows[0]?.count).toBe(2);
+    expect(rows[0]?.count).toBe(5);
   });
 
   it('fails loudly when the tracked schema drifts from migration files', async () => {

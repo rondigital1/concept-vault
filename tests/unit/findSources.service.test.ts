@@ -46,6 +46,8 @@ function pipelineResult(overrides: Record<string, unknown> = {}) {
 }
 
 describe('findSources service', () => {
+  const workspaceId = 'workspace-1';
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockSetupTopicContext.mockResolvedValue(undefined);
@@ -57,14 +59,16 @@ describe('findSources service', () => {
     const { findSources } = await import('@/server/services/findSources.service');
 
     const result = await findSources({
+      workspaceId,
       day: TEST_DAY,
       topicId: 'topic-1',
       minQualityResults: 4,
     });
 
-    expect(mockSetupTopicContext).toHaveBeenCalledWith('topic-1');
+    expect(mockSetupTopicContext).toHaveBeenCalledWith({ workspaceId }, 'topic-1');
     expect(mockPipelineFlow).toHaveBeenCalledWith(
       expect.objectContaining({
+        workspaceId,
         day: TEST_DAY,
         topicId: 'topic-1',
         runMode: 'scout_only',
@@ -112,17 +116,19 @@ describe('findSources service', () => {
     const { findSources } = await import('@/server/services/findSources.service');
 
     const result = await findSources({
+      workspaceId,
       day: TEST_DAY,
       scope: 'all_topics',
       goal: 'ignore this for batch runs',
     });
 
-    expect(mockListTopicsNeedingSources).toHaveBeenCalledWith(3);
-    expect(mockSetupTopicContext).toHaveBeenNthCalledWith(1, 'topic-1');
-    expect(mockSetupTopicContext).toHaveBeenNthCalledWith(2, 'topic-2');
+    expect(mockListTopicsNeedingSources).toHaveBeenCalledWith({ workspaceId }, 3);
+    expect(mockSetupTopicContext).toHaveBeenNthCalledWith(1, { workspaceId }, 'topic-1');
+    expect(mockSetupTopicContext).toHaveBeenNthCalledWith(2, { workspaceId }, 'topic-2');
     expect(mockPipelineFlow).toHaveBeenCalledTimes(2);
     expect(mockPipelineFlow.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
+        workspaceId,
         day: TEST_DAY,
         topicId: 'topic-1',
         runMode: 'scout_only',
@@ -174,6 +180,7 @@ describe('findSources service', () => {
     const { findSources } = await import('@/server/services/findSources.service');
 
     const result = await findSources({
+      workspaceId,
       day: TEST_DAY,
       scope: 'all_topics',
       maxTopics: 1,
@@ -218,6 +225,7 @@ describe('findSources service', () => {
     const { findSources } = await import('@/server/services/findSources.service');
 
     const result = await findSources({
+      workspaceId,
       day: TEST_DAY,
       scope: 'all_topics',
     });
@@ -250,6 +258,7 @@ describe('findSources service', () => {
     const { findSources } = await import('@/server/services/findSources.service');
 
     const result = await findSources({
+      workspaceId,
       day: TEST_DAY,
       goal: 'memory techniques',
     });
@@ -258,6 +267,7 @@ describe('findSources service', () => {
     expect(mockSetupTopicContext).not.toHaveBeenCalled();
     expect(mockPipelineFlow).toHaveBeenCalledWith(
       expect.objectContaining({
+        workspaceId,
         day: TEST_DAY,
         goal: 'memory techniques',
         runMode: 'scout_only',

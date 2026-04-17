@@ -11,8 +11,57 @@
  */
 import { sql } from '@/db';
 import { runMigrations } from '@/db/migrations';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 
 type JsonParam = Parameters<typeof sql.json>[0];
+
+type TestWorkspaceContext = WorkspaceScope & {
+  userId: string;
+};
+
+async function createTestWorkspace(seed = 'default'): Promise<TestWorkspaceContext> {
+  const suffix = `${seed}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const userRows = await sql<Array<{ id: string }>>`
+    INSERT INTO users (email, display_name)
+    VALUES (${`test-${suffix}@example.com`}, ${`Test User ${suffix}`})
+    RETURNING id
+  `;
+  const userId = userRows[0].id;
+
+  const workspaceRows = await sql<Array<{ id: string }>>`
+    INSERT INTO workspaces (slug, name, owner_user_id)
+    VALUES (${`test-${suffix}`}, ${`Test Workspace ${suffix}`}, ${userId})
+    RETURNING id
+  `;
+  const workspaceId = workspaceRows[0].id;
+
+  await sql`
+    INSERT INTO memberships (user_id, workspace_id, role, is_default)
+    VALUES (${userId}, ${workspaceId}, 'owner', true)
+  `;
+
+  return { userId, workspaceId };
+}
+
+export async function getTestWorkspaceScope(): Promise<WorkspaceScope> {
+  const rows = await sql<Array<{ workspace_id: string }>>`
+    SELECT workspace_id
+    FROM memberships
+    ORDER BY is_default DESC, created_at ASC
+    LIMIT 1
+  `;
+
+  if (rows[0]?.workspace_id) {
+    return { workspaceId: rows[0].workspace_id };
+  }
+
+  const workspace = await createTestWorkspace();
+  return { workspaceId: workspace.workspaceId };
+}
+
+export async function createAdditionalTestWorkspace(seed?: string): Promise<TestWorkspaceContext> {
+  return createTestWorkspace(seed ?? 'extra');
+}
 
 /**
  * Initialize the test database schema.
@@ -59,6 +108,7 @@ export async function cleanAllTables(): Promise<void> {
     agent_profiles,
     topic_documents,
     saved_topics,
+    pipeline_jobs,
     artifacts,
     run_steps,
     runs,
@@ -80,6 +130,7 @@ export async function closeTestDb(): Promise<void> {
  * Insert a test document and return its ID.
  */
 export async function insertTestDocument(params: {
+  workspaceId?: string;
   title?: string;
   source?: string;
   content?: string;
@@ -90,12 +141,13 @@ export async function insertTestDocument(params: {
   const source = params.source ?? 'https://example.com/test';
   const content = params.content ?? 'This is test content for the document.';
   const tags = params.tags ?? [];
+  const workspaceId = params.workspaceId ?? (await getTestWorkspaceScope()).workspaceId;
   // Use content-based hash or provided hash
   const contentHash = params.contentHash ?? `hash_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   const rows = await sql<Array<{ id: string }>>`
-    INSERT INTO documents (title, source, content, tags, content_hash)
-    VALUES (${title}, ${source}, ${content}, ${sql.array(tags)}, ${contentHash})
+    INSERT INTO documents (workspace_id, title, source, content, tags, content_hash)
+    VALUES (${workspaceId}, ${title}, ${source}, ${content}, ${sql.array(tags)}, ${contentHash})
     RETURNING id
   `;
 
@@ -106,11 +158,21 @@ export async function insertTestDocument(params: {
  * Insert a test run and return its ID.
  */
 export async function insertTestRun(
+  scopeOrKind?: WorkspaceScope | 'distill' | 'curate' | 'webScout' | 'research' | 'pipeline',
   kind: 'distill' | 'curate' | 'webScout' | 'research' | 'pipeline' = 'distill',
 ): Promise<string> {
+  const scope =
+    typeof scopeOrKind === 'object' && scopeOrKind !== null
+      ? scopeOrKind
+      : await getTestWorkspaceScope();
+  const resolvedKind =
+    typeof scopeOrKind === 'string'
+      ? scopeOrKind
+      : kind;
+
   const rows = await sql<Array<{ id: string }>>`
-    INSERT INTO runs (kind, status)
-    VALUES (${kind}, 'running')
+    INSERT INTO runs (workspace_id, kind, status)
+    VALUES (${scope.workspaceId}, ${resolvedKind}, 'running')
     RETURNING id
   `;
 
@@ -121,6 +183,7 @@ export async function insertTestRun(
  * Insert a test artifact and return its ID.
  */
 export async function insertTestArtifact(params: {
+  workspaceId?: string;
   runId?: string | null;
   agent?: string;
   kind?: string;
@@ -137,10 +200,12 @@ export async function insertTestArtifact(params: {
   const content = params.content ?? { url: 'https://example.com' };
   const sourceRefs = params.sourceRefs ?? {};
   const status = params.status ?? 'proposed';
+  const workspaceId = params.workspaceId ?? (await getTestWorkspaceScope()).workspaceId;
 
   const rows = await sql<Array<{ id: string }>>`
-    INSERT INTO artifacts (run_id, agent, kind, day, title, content, source_refs, status)
+    INSERT INTO artifacts (workspace_id, run_id, agent, kind, day, title, content, source_refs, status)
     VALUES (
+      ${workspaceId},
       ${params.runId ?? null},
       ${agent},
       ${kind},
@@ -169,6 +234,7 @@ export async function getTestArtifact(id: string): Promise<{
   status: string;
   reviewed_at: string | null;
 } | null> {
+  const scope = await getTestWorkspaceScope();
   const rows = await sql<Array<{
     id: string;
     agent: string;
@@ -181,7 +247,8 @@ export async function getTestArtifact(id: string): Promise<{
   }>>`
     SELECT id, agent, kind, day, title, content, status, reviewed_at
     FROM artifacts
-    WHERE id = ${id}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${id}
   `;
 
   return rows[0] ?? null;
@@ -194,6 +261,7 @@ export async function getTestArtifactsByDayAndStatus(
   day: string,
   status: string
 ): Promise<Array<{ id: string; agent: string; kind: string; title: string; status: string }>> {
+  const scope = await getTestWorkspaceScope();
   const rows = await sql<Array<{
     id: string;
     agent: string;
@@ -203,7 +271,9 @@ export async function getTestArtifactsByDayAndStatus(
   }>>`
     SELECT id, agent, kind, title, status
     FROM artifacts
-    WHERE day = ${day} AND status = ${status}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND day = ${day}
+      AND status = ${status}
     ORDER BY created_at ASC
   `;
 

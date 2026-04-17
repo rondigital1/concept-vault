@@ -1,4 +1,5 @@
 import { Inter } from 'next/font/google';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getAgentsView } from '@/server/services/agents.service';
 import { AgentsWorkspaceClient } from './AgentsWorkspaceClient';
 
@@ -29,10 +30,11 @@ export default async function AgentsPage({
 }: {
   searchParams?: Promise<PageSearchParams> | PageSearchParams;
 }) {
+  const scope = await requireSessionWorkspace();
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
   const selectedTopicId = firstQueryParam(resolvedSearchParams.topicId);
   const selectedRunId = firstQueryParam(resolvedSearchParams.runId);
-  const initialView = await getAgentsView({ selectedTopicId, selectedRunId });
+  const initialView = await getAgentsView(scope, { selectedTopicId, selectedRunId });
 
   return (
     <AgentsWorkspaceClient

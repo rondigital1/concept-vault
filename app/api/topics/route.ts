@@ -1,11 +1,29 @@
 import { NextResponse } from 'next/server';
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
+import { createTopicRequestSchema } from '@/server/http/requestSchemas';
+import {
+  formString,
+  isFormRequest,
+  isJsonRequest,
+  parseBooleanFlag,
+  parseFormRequest,
+  parseJsonRequest,
+  parseNumberFromForm,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
 import { createSavedTopic, listSavedTopics } from '@/server/repos/savedTopics.repo';
 import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
 import {
   isAgentDefaultRunMode,
   mergeTopicWorkflowMetadata,
 } from '@/server/agents/configuration';
-import { pipelineFlow } from '@/server/flows/pipeline.flow';
+import {
+  enqueuePipelineJob,
+  executePipelineInline,
+  isPipelineInlineExecutionEnabled,
+  schedulePipelineJobDrain,
+} from '@/server/jobs/pipelineJobs';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
@@ -29,44 +47,6 @@ type CreateTopicBody = {
   enableCategorizationByDefault?: boolean;
   skipPublishByDefault?: boolean;
 };
-
-function isJsonRequest(contentType: string): boolean {
-  return contentType.includes('application/json');
-}
-
-function isFormRequest(contentType: string): boolean {
-  return (
-    contentType.includes('application/x-www-form-urlencoded') ||
-    contentType.includes('multipart/form-data')
-  );
-}
-
-function parseBoolean(value: unknown, fallback: boolean): boolean {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) {
-    return fallback;
-  }
-
-  if (['true', '1', 'on', 'yes'].includes(normalized)) {
-    return true;
-  }
-  if (['false', '0', 'off', 'no'].includes(normalized)) {
-    return false;
-  }
-  return fallback;
-}
-
-function formString(form: FormData, key: string): string | undefined {
-  const value = form.get(key);
-  return typeof value === 'string' ? value : undefined;
-}
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
   const parsed =
@@ -157,11 +137,15 @@ function normalizeTopicName(value: string): string {
 
 export async function GET(request: Request) {
   try {
+    const scope = await requireSessionWorkspace();
     const url = new URL(request.url);
     const activeOnly = url.searchParams.get('activeOnly') === 'true';
-    const topics = await listSavedTopics({ activeOnly });
+    const topics = await listSavedTopics(scope, { activeOnly });
     return NextResponse.json({ topics });
   } catch (error) {
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error listing saved topics:', error);
     return NextResponse.json(
       { error: publicErrorMessage(error, 'Failed to list topics') },
@@ -175,59 +159,45 @@ export async function POST(request: Request) {
   const expectsJson = isJsonRequest(contentType);
 
   try {
-    let body: CreateTopicBody = {};
+    const scope = await requireSessionWorkspace();
+    let body: CreateTopicBody;
 
     if (expectsJson) {
-      body = (await request.json()) as CreateTopicBody;
+      body = await parseJsonRequest(request, createTopicRequestSchema, {
+        route: '/api/topics',
+      });
     } else if (isFormRequest(contentType)) {
-      const form = await request.formData();
-      const rawName = formString(form, 'name');
-      const rawGoal = formString(form, 'goal');
-      const rawFocusTags = formString(form, 'focusTags');
-      const rawMaxDocsPerRun = formString(form, 'maxDocsPerRun');
-      const rawMinQualityResults = formString(form, 'minQualityResults');
-      const rawMinRelevanceScore = formString(form, 'minRelevanceScore');
-      const rawMaxIterations = formString(form, 'maxIterations');
-      const rawMaxQueries = formString(form, 'maxQueries');
-      const rawIsActive = formString(form, 'isActive');
-      const rawIsTracked = formString(form, 'isTracked');
-      const rawCadence = formString(form, 'cadence');
-
-      body = {
-        name: rawName,
-        goal: rawGoal,
-        focusTags: typeof rawFocusTags === 'string' ? normalizeFocusTags(rawFocusTags) : undefined,
-        maxDocsPerRun: typeof rawMaxDocsPerRun === 'string' ? Number(rawMaxDocsPerRun) : undefined,
-        minQualityResults:
-          typeof rawMinQualityResults === 'string' ? Number(rawMinQualityResults) : undefined,
-        minRelevanceScore:
-          typeof rawMinRelevanceScore === 'string' ? Number(rawMinRelevanceScore) : undefined,
-        maxIterations: typeof rawMaxIterations === 'string' ? Number(rawMaxIterations) : undefined,
-        maxQueries: typeof rawMaxQueries === 'string' ? Number(rawMaxQueries) : undefined,
-        isActive: parseBoolean(rawIsActive, true),
-        isTracked: parseBoolean(rawIsTracked, false),
-        cadence: rawCadence === 'daily' || rawCadence === 'weekly' ? rawCadence : undefined,
-      };
+      body = await parseFormRequest(request, createTopicRequestSchema, {
+        route: '/api/topics',
+        mapFormData: (form) => ({
+          name: formString(form, 'name'),
+          goal: formString(form, 'goal'),
+          focusTags: normalizeFocusTags(formString(form, 'focusTags')),
+          maxDocsPerRun: parseNumberFromForm(form.get('maxDocsPerRun')),
+          minQualityResults: parseNumberFromForm(form.get('minQualityResults')),
+          minRelevanceScore: parseNumberFromForm(form.get('minRelevanceScore')),
+          maxIterations: parseNumberFromForm(form.get('maxIterations')),
+          maxQueries: parseNumberFromForm(form.get('maxQueries')),
+          isActive: parseBooleanFlag(form.get('isActive')) ?? true,
+          isTracked: parseBooleanFlag(form.get('isTracked')) ?? false,
+          cadence: formString(form, 'cadence'),
+          defaultRunMode: formString(form, 'defaultRunMode'),
+          enableCategorizationByDefault: parseBooleanFlag(form.get('enableCategorizationByDefault')),
+          skipPublishByDefault: parseBooleanFlag(form.get('skipPublishByDefault')),
+        }),
+      });
+    } else {
+      body = await parseJsonRequest(request, createTopicRequestSchema, {
+        route: '/api/topics',
+      });
     }
 
-    const name = typeof body.name === 'string' ? normalizeTopicName(body.name) : '';
-    const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
-
-    if (!name) {
-      if (!expectsJson) {
-        return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
-      }
-      return NextResponse.json({ error: 'name is required' }, { status: 400 });
-    }
-    if (!goal) {
-      if (!expectsJson) {
-        return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
-      }
-      return NextResponse.json({ error: 'goal is required' }, { status: 400 });
-    }
+    const name = normalizeTopicName(body.name ?? '');
+    const goal = body.goal?.trim() ?? '';
 
     const profiles = await getAgentProfileSettingsMap();
     const topic = await createSavedTopic({
+      workspaceId: scope.workspaceId,
       name: name.slice(0, 80),
       goal: goal.slice(0, 500),
       focusTags: normalizeFocusTags(body.focusTags),
@@ -273,15 +243,31 @@ export async function POST(request: Request) {
     });
 
     let setupRunId: string | null = null;
+    let setupJobId: string | null = null;
     try {
-      const setupResult = await pipelineFlow({
+      const setupInput = {
+        workspaceId: scope.workspaceId,
         topicId: topic.id,
-        runMode: 'topic_setup',
-        trigger: 'auto_topic',
+        runMode: 'topic_setup' as const,
+        trigger: 'auto_topic' as const,
         enableCategorization: false,
         idempotencyKey: `topic_setup:${topic.id}:${new Date().toISOString().slice(0, 10)}`,
-      });
-      setupRunId = setupResult.runId;
+      };
+
+      if (isPipelineInlineExecutionEnabled()) {
+        const setupResult = await executePipelineInline(setupInput);
+        setupRunId = setupResult.runId;
+      } else {
+        const queued = await enqueuePipelineJob({
+          scope,
+          route: '/api/topics',
+          input: setupInput,
+        });
+        setupRunId = queued.runId;
+        setupJobId = queued.jobId;
+
+        schedulePipelineJobDrain();
+      }
     } catch (setupError) {
       console.error('Topic setup pipeline failed:', setupError);
     }
@@ -290,8 +276,20 @@ export async function POST(request: Request) {
       return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
     }
 
-    return NextResponse.json({ topic, setupRunId }, { status: 201 });
+    return NextResponse.json({ topic, setupRunId, setupJobId }, { status: 201 });
   } catch (error) {
+    if (error instanceof RequestValidationError) {
+      if (!expectsJson) {
+        return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
+      }
+      return validationErrorResponse(error);
+    }
+    if (error instanceof WorkspaceAccessError) {
+      if (!expectsJson) {
+        return NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 });
+      }
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     const internalMessage = error instanceof Error ? error.message : String(error);
     const isDuplicate = internalMessage.includes('saved_topics_name_key');
 

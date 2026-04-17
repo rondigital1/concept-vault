@@ -3,6 +3,7 @@ import { TodayWorkbenchClient } from './TodayWorkbenchClient';
 import type { LatestReportPreview, PageSearchParams, TodayData, WorkbenchTopic } from './types';
 import { asObject, firstQueryParam, formatDisplayDate, readNumber, readString } from './utils';
 import { listSavedTopics, type SavedTopicRow } from '@/server/repos/savedTopics.repo';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getEvidenceReviewView } from '@/server/services/today.service';
 import { listReportReadyTopics } from '@/server/services/topicWorkflow.service';
 
@@ -23,6 +24,7 @@ export default async function TodayPage({
 }: {
   searchParams?: Promise<PageSearchParams> | PageSearchParams;
 }) {
+  const scope = await requireSessionWorkspace();
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
   const requestedTopicId = firstQueryParam(resolvedSearchParams.topicId) ?? null;
   const requestedArtifactId = firstQueryParam(resolvedSearchParams.artifactId) ?? null;
@@ -32,9 +34,9 @@ export default async function TodayPage({
   const artifactActionInfo = firstQueryParam(resolvedSearchParams.artifactActionInfo);
 
   const [todayResult, topicsResult, reportReadyTopicsResult] = await Promise.allSettled([
-    getEvidenceReviewView(),
-    listSavedTopics({ activeOnly: true }),
-    listReportReadyTopics(),
+    getEvidenceReviewView(scope),
+    listSavedTopics(scope, { activeOnly: true }),
+    listReportReadyTopics(scope),
   ]);
 
   const today = todayResult.status === 'fulfilled' ? todayResult.value : buildFallbackToday();

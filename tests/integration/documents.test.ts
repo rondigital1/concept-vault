@@ -14,12 +14,14 @@ import {
   initTestSchema,
   cleanAllTables,
   closeTestDb,
+  getTestWorkspaceScope,
   insertTestDocument,
   insertTestArtifact,
 } from '../helpers/testDb';
 import { SAMPLE_DOCUMENTS } from '../helpers/fixtures';
 import { ingestDocument } from '@/server/services/ingest.service';
 import { getAllDocumentsForLibrary } from '@/server/services/document.service';
+import { searchDocuments } from '@/server/repos/documents.repo';
 import {
   getRecentDocumentsForQuery,
   getDocumentsByTags,
@@ -33,6 +35,8 @@ import {
 } from '@/server/repos/distiller.repo';
 
 describe('Document Repository', () => {
+  let scope: { workspaceId: string };
+
   beforeAll(async () => {
     await initTestSchema();
   });
@@ -43,11 +47,13 @@ describe('Document Repository', () => {
 
   beforeEach(async () => {
     await cleanAllTables();
+    scope = await getTestWorkspaceScope();
   });
 
   describe('ingestDocument', () => {
     it('should create a new document and return created=true', async () => {
       const result = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Test Document',
         source: 'https://example.com/test',
         content: 'This is test content.',
@@ -62,6 +68,7 @@ describe('Document Repository', () => {
 
       // First insert
       const result1 = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Document 1',
         source: 'https://example.com/doc1',
         content,
@@ -71,6 +78,7 @@ describe('Document Repository', () => {
 
       // Second insert with same content
       const result2 = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Document 2', // Different title
         source: 'https://example.com/doc2', // Different source
         content, // Same content
@@ -86,12 +94,14 @@ describe('Document Repository', () => {
       const content2 = 'Test content\nwith Windows newlines';
 
       const result1 = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Document 1',
         source: 'https://example.com/doc1',
         content: content1,
       });
 
       const result2 = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Document 2',
         source: 'https://example.com/doc2',
         content: content2,
@@ -104,12 +114,14 @@ describe('Document Repository', () => {
 
     it('should treat whitespace-trimmed content as same', async () => {
       const result1 = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Document 1',
         source: 'https://example.com/doc1',
         content: '  Test content with whitespace  ',
       });
 
       const result2 = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Document 2',
         source: 'https://example.com/doc2',
         content: 'Test content with whitespace',
@@ -124,12 +136,14 @@ describe('Document Repository', () => {
       const content2 = 'Line 1\n\nLine 2';
 
       const result1 = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Document 1',
         source: 'https://example.com/doc1',
         content: content1,
       });
 
       const result2 = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: 'Document 2',
         source: 'https://example.com/doc2',
         content: content2,
@@ -147,7 +161,7 @@ describe('Document Repository', () => {
       const doc2Id = await insertTestDocument({ title: 'Second Document' });
       const doc3Id = await insertTestDocument({ title: 'Third Document' });
 
-      const recent = await getRecentDocuments(10);
+      const recent = await getRecentDocuments(scope, 10);
 
       expect(recent).toHaveLength(3);
       // Most recent first (reverse order of insertion)
@@ -163,13 +177,52 @@ describe('Document Repository', () => {
       await insertTestDocument({ title: 'Doc 4' });
       await insertTestDocument({ title: 'Doc 5' });
 
-      const recent = await getRecentDocuments(3);
+      const recent = await getRecentDocuments(scope, 3);
       expect(recent).toHaveLength(3);
     });
 
     it('should return empty array when no documents exist', async () => {
-      const recent = await getRecentDocuments(10);
+      const recent = await getRecentDocuments(scope, 10);
       expect(recent).toEqual([]);
+    });
+  });
+
+  describe('searchDocuments', () => {
+    it('finds documents by indexed content and title matches', async () => {
+      const contentMatchId = await insertTestDocument({
+        title: 'Longform Note',
+        content: 'Retrieval practice improves durable memory formation in advanced learning systems.',
+      });
+      const titleMatchId = await insertTestDocument({
+        title: 'Retrieval Practice Field Guide',
+        content: 'A concise summary.',
+      });
+      await insertTestDocument({
+        title: 'Unrelated',
+        content: 'Finance and accounting systems.',
+      });
+
+      const results = await searchDocuments(scope, 'retrieval practice');
+
+      expect(results.map((row) => row.id)).toEqual([titleMatchId, contentMatchId]);
+    });
+
+    it('respects the explicit search result limit', async () => {
+      const expectedIds: string[] = [];
+
+      for (let index = 0; index < 4; index += 1) {
+        const id = await insertTestDocument({
+          title: `Agent systems ${index + 1}`,
+          content: `Agent systems research note ${index + 1}.`,
+          source: `https://example.com/agent-systems-${index + 1}`,
+        });
+        expectedIds.unshift(id);
+      }
+
+      const results = await searchDocuments(scope, 'agent systems', 2);
+
+      expect(results).toHaveLength(2);
+      expect(results.map((row) => row.id)).toEqual(expectedIds.slice(0, 2));
     });
   });
 
@@ -179,7 +232,7 @@ describe('Document Repository', () => {
       const doc2Id = await insertTestDocument({ title: 'Document 2' });
       const doc3Id = await insertTestDocument({ title: 'Document 3' });
 
-      const docs = await getDocumentsByIds([doc1Id, doc3Id], 10);
+      const docs = await getDocumentsByIds(scope, [doc1Id, doc3Id], 10);
 
       expect(docs).toHaveLength(2);
       expect(docs.map(d => d.id).sort()).toEqual([doc1Id, doc3Id].sort());
@@ -190,14 +243,14 @@ describe('Document Repository', () => {
       const doc2Id = await insertTestDocument({ title: 'Document 2' });
       const doc3Id = await insertTestDocument({ title: 'Document 3' });
 
-      const docs = await getDocumentsByIds([doc1Id, doc2Id, doc3Id], 2);
+      const docs = await getDocumentsByIds(scope, [doc1Id, doc2Id, doc3Id], 2);
 
       expect(docs).toHaveLength(2);
     });
 
     it('should return empty array for non-existent IDs', async () => {
       const fakeId = '00000000-0000-0000-0000-000000000000';
-      const docs = await getDocumentsByIds([fakeId], 10);
+      const docs = await getDocumentsByIds(scope, [fakeId], 10);
       expect(docs).toEqual([]);
     });
   });
@@ -217,7 +270,7 @@ describe('Document Repository', () => {
         tags: ['finance', 'investing']
       });
 
-      const docs = await getDocumentsByTag('learning', 10);
+      const docs = await getDocumentsByTag(scope, 'learning', 10);
 
       expect(docs).toHaveLength(2);
       expect(docs.every(d => d.tags.includes('learning'))).toBe(true);
@@ -226,7 +279,7 @@ describe('Document Repository', () => {
     it('should return empty array for non-existent tag', async () => {
       await insertTestDocument({ title: 'Doc', tags: ['learning'] });
 
-      const docs = await getDocumentsByTag('nonexistent', 10);
+      const docs = await getDocumentsByTag(scope, 'nonexistent', 10);
       expect(docs).toEqual([]);
     });
   });
@@ -247,7 +300,7 @@ describe('Document Repository', () => {
       });
 
       // Query for documents with learning OR memory tags
-      const docs = await getDocumentsByTags(['learning', 'memory'], 10);
+      const docs = await getDocumentsByTags(scope, ['learning', 'memory'], 10);
 
       expect(docs).toHaveLength(2);
     });
@@ -262,7 +315,7 @@ describe('Document Repository', () => {
         tags: ['learning']
       });
 
-      const docs = await getDocumentsByTags(['learning'], 10);
+      const docs = await getDocumentsByTags(scope, ['learning'], 10);
 
       expect(docs[0].id).toBe(doc2Id); // Most recent first
       expect(docs[1].id).toBe(doc1Id);
@@ -275,20 +328,20 @@ describe('Document Repository', () => {
         const url = 'https://example.com/existing-article';
         await insertTestDocument({ source: url });
 
-        const exists = await checkUrlExists(url);
+        const exists = await checkUrlExists(scope, url);
         expect(exists).toBe(true);
       });
 
       it('should return false for non-existent URL', async () => {
-        const exists = await checkUrlExists('https://example.com/nonexistent');
+        const exists = await checkUrlExists(scope, 'https://example.com/nonexistent');
         expect(exists).toBe(false);
       });
 
       it('should be case-sensitive', async () => {
         await insertTestDocument({ source: 'https://Example.com/Article' });
 
-        const existsExact = await checkUrlExists('https://Example.com/Article');
-        const existsLower = await checkUrlExists('https://example.com/article');
+        const existsExact = await checkUrlExists(scope, 'https://Example.com/Article');
+        const existsLower = await checkUrlExists(scope, 'https://example.com/article');
 
         expect(existsExact).toBe(true);
         expect(existsLower).toBe(false);
@@ -307,7 +360,7 @@ describe('Document Repository', () => {
           'https://example.com/new2',
         ];
 
-        const newUrls = await filterExistingUrls(urls);
+        const newUrls = await filterExistingUrls(scope, urls);
 
         expect(newUrls).toHaveLength(2);
         expect(newUrls).toContain('https://example.com/new1');
@@ -322,7 +375,7 @@ describe('Document Repository', () => {
           'https://example.com/new2',
         ];
 
-        const newUrls = await filterExistingUrls(urls);
+        const newUrls = await filterExistingUrls(scope, urls);
 
         expect(newUrls).toEqual(urls);
       });
@@ -336,13 +389,13 @@ describe('Document Repository', () => {
           'https://example.com/existing2',
         ];
 
-        const newUrls = await filterExistingUrls(urls);
+        const newUrls = await filterExistingUrls(scope, urls);
 
         expect(newUrls).toEqual([]);
       });
 
       it('should handle empty input array', async () => {
-        const newUrls = await filterExistingUrls([]);
+        const newUrls = await filterExistingUrls(scope, []);
         expect(newUrls).toEqual([]);
       });
     });
@@ -353,12 +406,13 @@ describe('Document Repository', () => {
       const content = SAMPLE_DOCUMENTS.spacedRepetition.content;
 
       const result = await ingestDocument({
+        workspaceId: scope.workspaceId,
         title: SAMPLE_DOCUMENTS.spacedRepetition.title,
         source: SAMPLE_DOCUMENTS.spacedRepetition.source,
         content,
       });
 
-      const docs = await getDocumentsByIds([result.documentId], 1);
+      const docs = await getDocumentsByIds(scope, [result.documentId], 1);
 
       // Content should be preserved (after normalization)
       expect(docs[0].content).toContain('Spaced repetition is a learning technique');
@@ -370,7 +424,7 @@ describe('Document Repository', () => {
         tags: ['spaced repetition', 'learning', 'memory science'],
       });
 
-      const docs = await getDocumentsByIds([docId], 1);
+      const docs = await getDocumentsByIds(scope, [docId], 1);
 
       expect(docs[0].tags).toEqual(['spaced repetition', 'learning', 'memory science']);
     });
@@ -390,7 +444,7 @@ describe('Document Repository', () => {
         sourceRefs: { documentId },
       });
 
-      const docs = await getAllDocumentsForLibrary();
+      const docs = await getAllDocumentsForLibrary(scope);
       expect(docs).toHaveLength(1);
       expect(docs[0].id).toBe(documentId);
       expect(docs[0].is_webscout_discovered).toBe(true);
@@ -406,7 +460,7 @@ describe('Document Repository', () => {
         content: { url: source, summary: 'Useful article' },
       });
 
-      const docs = await getAllDocumentsForLibrary();
+      const docs = await getAllDocumentsForLibrary(scope);
       const doc = docs.find((row) => row.id === documentId);
 
       expect(doc).toBeDefined();

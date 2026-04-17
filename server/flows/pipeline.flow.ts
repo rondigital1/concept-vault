@@ -49,6 +49,7 @@ export type PipelineRunMode =
 export type PipelineTrigger = 'manual' | 'auto_document' | 'auto_topic' | 'scheduler' | 'cron';
 
 export interface PipelineInput {
+  workspaceId?: string;
   day?: string;
   topicId?: string;
   documentIds?: string[];
@@ -101,6 +102,11 @@ export interface PipelineResult {
   errors: PipelineError[];
 }
 
+export interface PipelineExecutionOptions {
+  runId?: string;
+  skipIdempotencyLookup?: boolean;
+}
+
 interface ResolvedTargets {
   day: string;
   documentIds: string[];
@@ -127,6 +133,36 @@ interface ExistingRunRow {
   id: string;
   status: RunStatus;
   metadata: Record<string, unknown>;
+}
+
+async function resolvePipelineWorkspaceId(input: PipelineInput): Promise<string> {
+  if (typeof input.workspaceId === 'string' && input.workspaceId.trim()) {
+    return input.workspaceId.trim();
+  }
+
+  const membershipRows = await sql<Array<{ workspace_id: string }>>`
+    SELECT workspace_id
+    FROM memberships
+    ORDER BY is_default DESC, created_at ASC
+    LIMIT 1
+  `;
+
+  if (membershipRows[0]?.workspace_id) {
+    return membershipRows[0].workspace_id;
+  }
+
+  const workspaceRows = await sql<Array<{ id: string }>>`
+    SELECT id
+    FROM workspaces
+    ORDER BY created_at ASC
+    LIMIT 1
+  `;
+
+  if (workspaceRows[0]?.id) {
+    return workspaceRows[0].id;
+  }
+
+  throw new Error('No workspace available for pipeline execution');
 }
 
 function todayISODate(): string {
@@ -244,6 +280,7 @@ async function appendFlowStep(runId: string, step: Omit<RunStep, 'timestamp' | '
 
 async function resolveTargets(
   input: PipelineInput,
+  workspaceId: string,
   profiles: AgentProfileSettingsMap,
   providedTopic: SavedTopicRow | null = null,
 ): Promise<ResolvedTargets> {
@@ -254,7 +291,7 @@ async function resolveTargets(
 
   let topic: SavedTopicRow | null = providedTopic;
   if (!topic && typeof input.topicId === 'string' && input.topicId.trim()) {
-    const topics = await getSavedTopicsByIds([input.topicId.trim()]);
+    const topics = await getSavedTopicsByIds({ workspaceId }, [input.topicId.trim()]);
     topic = topics[0] ?? null;
     if (!topic) {
       throw new Error(`Topic ${input.topicId.trim()} not found`);
@@ -277,24 +314,24 @@ async function resolveTargets(
   let seedTitles: string[] = [];
 
   if (explicitDocumentIds.length > 0) {
-    const docs = await getDocumentsByIds(explicitDocumentIds, limit);
+    const docs = await getDocumentsByIds({ workspaceId }, explicitDocumentIds, limit);
     targetDocumentIds = docs.map((doc) => doc.id);
     seedTags = [...seedTags, ...docs.flatMap((doc) => doc.tags ?? [])];
     seedTitles = docs.map((doc) => doc.title);
   } else if (topic) {
-    const linkedDocs = await getTopicLinkedDocuments(topic.id, limit);
+    const linkedDocs = await getTopicLinkedDocuments({ workspaceId }, topic.id, limit);
     if (linkedDocs.length > 0) {
       targetDocumentIds = linkedDocs.map((doc) => doc.id);
       seedTags = [...seedTags, ...linkedDocs.flatMap((doc) => doc.tags ?? [])];
       seedTitles = linkedDocs.map((doc) => doc.title);
     } else {
-      const docs = await getTopicDocuments(topic.focus_tags ?? [], limit);
+      const docs = await getTopicDocuments({ workspaceId }, topic.focus_tags ?? [], limit);
       targetDocumentIds = docs.map((doc) => doc.id);
       seedTags = [...seedTags, ...docs.flatMap((doc) => doc.tags ?? [])];
       seedTitles = docs.map((doc) => doc.title);
     }
   } else {
-    const docs = await getRecentDocuments(limit);
+    const docs = await getRecentDocuments({ workspaceId }, limit);
     targetDocumentIds = docs.map((doc) => doc.id);
     seedTags = [...seedTags, ...docs.flatMap((doc) => doc.tags ?? [])];
     seedTitles = docs.map((doc) => doc.title);
@@ -318,7 +355,7 @@ async function resolveTargets(
   }
 
   if (!goal) {
-    const topTags = await getTopTags(5);
+    const topTags = await getTopTags({ workspaceId }, 5);
     if (topTags.length > 0) {
       const derived = topTags.map((item) => item.tag);
       goal = `Find high-quality learning resources about: ${derived.join(', ')}`;
@@ -383,7 +420,10 @@ async function resolveTargets(
   };
 }
 
-async function splitDistillerArtifactIds(artifactIds: string[]): Promise<{
+async function splitDistillerArtifactIds(
+  workspaceId: string,
+  artifactIds: string[],
+): Promise<{
   conceptIds: string[];
   flashcardIds: string[];
 }> {
@@ -394,7 +434,8 @@ async function splitDistillerArtifactIds(artifactIds: string[]): Promise<{
   const rows = await sql<Array<{ id: string; kind: string }>>`
     SELECT id, kind
     FROM artifacts
-    WHERE id = ANY(${artifactIds})
+    WHERE workspace_id = ${workspaceId}
+      AND id = ANY(${artifactIds})
   `;
 
   return {
@@ -403,11 +444,15 @@ async function splitDistillerArtifactIds(artifactIds: string[]): Promise<{
   };
 }
 
-async function findExistingRunByIdempotencyKey(idempotencyKey: string): Promise<ExistingRunRow | null> {
+async function findExistingRunByIdempotencyKey(
+  workspaceId: string,
+  idempotencyKey: string,
+): Promise<ExistingRunRow | null> {
   const rows = await sql<Array<ExistingRunRow>>`
     SELECT id, status, metadata
     FROM runs
-    WHERE kind = 'pipeline'
+    WHERE workspace_id = ${workspaceId}
+      AND kind = 'pipeline'
       AND metadata->>'idempotencyKey' = ${idempotencyKey}
     ORDER BY started_at DESC
     LIMIT 1
@@ -416,15 +461,20 @@ async function findExistingRunByIdempotencyKey(idempotencyKey: string): Promise<
   return rows[0] ?? null;
 }
 
-async function hydratePipelineResultFromRun(runId: string): Promise<PipelineResult | null> {
+async function hydratePipelineResultFromRun(
+  workspaceId: string,
+  runId: string,
+): Promise<PipelineResult | null> {
   const rows = await sql<Array<{ output: Record<string, unknown> | null }>>`
     SELECT output
-    FROM run_steps
-    WHERE run_id = ${runId}
-      AND step_name = 'pipeline'
-      AND status = 'ok'
-      AND output IS NOT NULL
-    ORDER BY started_at DESC
+    FROM run_steps rs
+    INNER JOIN runs r ON r.id = rs.run_id
+    WHERE r.workspace_id = ${workspaceId}
+      AND rs.run_id = ${runId}
+      AND rs.step_name = 'pipeline'
+      AND rs.status = 'ok'
+      AND rs.output IS NOT NULL
+    ORDER BY rs.started_at DESC
     LIMIT 1
   `;
 
@@ -480,12 +530,16 @@ function finalizeStatus(
   return 'ok';
 }
 
-export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineResult> {
+export async function pipelineFlow(
+  input: PipelineInput = {},
+  options: PipelineExecutionOptions = {},
+): Promise<PipelineResult> {
+  const workspaceId = await resolvePipelineWorkspaceId(input);
   const trigger = input.trigger ?? 'manual';
   const profiles = await getAgentProfileSettingsMap();
   const preselectedTopic =
     typeof input.topicId === 'string' && input.topicId.trim()
-      ? (await getSavedTopicsByIds([input.topicId.trim()]))[0] ?? null
+      ? (await getSavedTopicsByIds({ workspaceId }, [input.topicId.trim()]))[0] ?? null
       : null;
   const preselectedTopicWorkflowSettings = preselectedTopic
     ? resolveTopicWorkflowSettings({
@@ -504,10 +558,10 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
       ? input.idempotencyKey.trim()
       : null;
 
-  if (idempotencyKey) {
-    const existing = await findExistingRunByIdempotencyKey(idempotencyKey);
+  if (!options.skipIdempotencyLookup && idempotencyKey) {
+    const existing = await findExistingRunByIdempotencyKey(workspaceId, idempotencyKey);
     if (existing && existing.status !== 'error') {
-      const hydrated = await hydratePipelineResultFromRun(existing.id);
+      const hydrated = await hydratePipelineResultFromRun(workspaceId, existing.id);
       if (hydrated) {
         return hydrated;
       }
@@ -528,12 +582,15 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
     }
   }
 
-  const runId = await createRun('pipeline', {
-    runMode: mode,
-    trigger,
-    topicId: input.topicId ?? null,
-    idempotencyKey,
-  });
+  const runId =
+    options.runId ??
+    (await createRun({ workspaceId }, 'pipeline', {
+      runMode: mode,
+      trigger,
+      workspaceId,
+      topicId: input.topicId ?? null,
+      idempotencyKey,
+    }));
 
   const errors: PipelineError[] = [];
   const counts = defaultCounts();
@@ -565,7 +622,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
       },
     });
 
-    const resolved = await resolveTargets(input, profiles, preselectedTopic);
+    const resolved = await resolveTargets(input, workspaceId, profiles, preselectedTopic);
     counts.docsTargeted = resolved.documentIds.length;
     const enableCategorization =
       input.enableCategorization ?? resolved.workflowSettings.enableCategorizationByDefault;
@@ -588,7 +645,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
 
     if (mode === 'skip') {
       if (resolved.topic) {
-        await markTopicRunCompleted(resolved.topic.id, mode);
+        await markTopicRunCompleted({ workspaceId }, resolved.topic.id, mode);
       }
 
       const result: PipelineResult = {
@@ -626,7 +683,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
         });
       } else {
         try {
-          const setupResult = await setupTopicContext(resolved.topic.id);
+          const setupResult = await setupTopicContext({ workspaceId }, resolved.topic.id);
           counts.topicLinksCreated = setupResult.linkedCount;
           await appendFlowStep(runId, {
             name: 'pipeline_topic_setup',
@@ -687,6 +744,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
         try {
           const curateResult = await curatorGraph(
             {
+              workspaceId,
               documentId,
               enableCategorization,
             },
@@ -698,7 +756,11 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
           counts.docsCurated += 1;
           curateTags.push(...curateResult.tags);
 
-          const linkedTopics = await linkDocumentToMatchingTopics(documentId, curateResult.tags);
+          const linkedTopics = await linkDocumentToMatchingTopics(
+            { workspaceId },
+            documentId,
+            curateResult.tags,
+          );
           for (const topicId of linkedTopics.topicIds) {
             topicLinkSet.add(topicId);
           }
@@ -750,6 +812,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
       try {
         webScoutResult = await webScoutGraph(
           {
+            workspaceId,
             goal: resolved.goal,
             mode: resolved.mode,
             day: resolved.day,
@@ -811,6 +874,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
 
         try {
           const analysisArtifactId = await insertArtifact({
+            workspaceId,
             runId,
             agent: 'research',
             kind: 'web-analysis',
@@ -880,6 +944,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
       try {
         const distillResult = await distillerGraph(
           {
+            workspaceId,
             day: resolved.day,
             documentIds: resolved.documentIds,
             limit: resolved.limit,
@@ -894,7 +959,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
         counts.conceptsProposed = distillResult.counts.conceptsProposed;
         counts.flashcardsProposed = distillResult.counts.flashcardsProposed;
 
-        const splitArtifacts = await splitDistillerArtifactIds(distillResult.artifactIds);
+        const splitArtifacts = await splitDistillerArtifactIds(workspaceId, distillResult.artifactIds);
         artifacts.conceptIds = splitArtifacts.conceptIds;
         artifacts.flashcardIds = splitArtifacts.flashcardIds;
 
@@ -998,6 +1063,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
     if (reportContent) {
       try {
         reportId = await insertReport({
+          workspaceId,
           runId,
           day: resolved.day,
           title: reportContent.title,
@@ -1056,7 +1122,7 @@ export async function pipelineFlow(input: PipelineInput = {}): Promise<PipelineR
     });
 
     if (resolved.topic) {
-      await markTopicRunCompleted(resolved.topic.id, mode);
+      await markTopicRunCompleted({ workspaceId }, resolved.topic.id, mode);
     }
 
     const status = finalizeStatus(mode, errors, analyzedFindings, reportId);

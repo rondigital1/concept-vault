@@ -13,7 +13,11 @@ import {
 } from 'react';
 import { LoadingSpinner } from '@/app/components/LoadingSpinner';
 import { ToastContainer, toast } from '@/app/components/Toast';
-import { TOP_NAV_ITEMS as EXISTING_TOP_NAV_ITEMS } from '@/app/components/topNav';
+import {
+  PRIMARY_TOP_NAV_KEYS,
+  getTopNavItemsWithState,
+  isTopNavItemActive,
+} from '@/app/components/topNav';
 import {
   formatLibraryRelativeDate,
   getDocumentTitleIssue,
@@ -84,15 +88,12 @@ const MODE_CONFIG: Record<IngestMode, ModeConfig> = {
 };
 
 const SIDE_NAV_ITEMS = [
-  { href: '/', label: 'Dashboard', icon: 'list' as const },
   { href: '/today', label: 'Research', icon: 'brain' as const },
   { href: '/library', label: 'Library', icon: 'database' as const },
   { href: '/ingest', label: 'Add Content', icon: 'terminal' as const },
   { href: '/reports', label: 'Reports', icon: 'network' as const },
   { href: '/chat', label: 'Ask Vault', icon: 'article' as const },
 ];
-
-const TOP_NAV_ITEMS = EXISTING_TOP_NAV_ITEMS.filter((item) => item.href !== '/chat');
 
 const monoLabelClass = 'text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8b8484]';
 const monoInputClass =
@@ -267,12 +268,9 @@ function renderIcon(icon: 'terminal' | 'brain' | 'database' | 'network' | 'setti
   }
 }
 
-function isRouteActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
 function TopNav({ userName, pathname }: { userName: string; pathname: string }) {
   const userInitials = getUserInitials(userName);
+  const navItems = getTopNavItemsWithState(pathname, [...PRIMARY_TOP_NAV_KEYS, 'ingest']);
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-16 bg-[rgba(19,19,19,0.55)] backdrop-blur-2xl">
@@ -289,17 +287,17 @@ function TopNav({ userName, pathname }: { userName: string; pathname: string }) 
           </div>
         </Link>
         <nav className="hidden items-center gap-10 md:flex">
-          {TOP_NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={`relative text-[1.1rem] font-medium tracking-[-0.035em] transition-colors ${
-                isRouteActive(pathname, item.href) ? 'text-white' : 'text-[#8f8a8a] hover:text-white'
+                item.active ? 'text-white' : 'text-[#8f8a8a] hover:text-white'
               }`}
-              aria-current={isRouteActive(pathname, item.href) ? 'page' : undefined}
+              aria-current={item.active ? 'page' : undefined}
             >
               {item.label}
-              {isRouteActive(pathname, item.href) && <span className="absolute inset-x-0 -bottom-2 h-0.5 rounded-full bg-white" />}
+              {item.active && <span className="absolute inset-x-0 -bottom-2 h-0.5 rounded-full bg-white" />}
             </Link>
           ))}
         </nav>
@@ -342,11 +340,11 @@ function SideNav({ pathname }: { pathname: string }) {
               key={item.href}
               href={item.href}
               className={`flex items-center gap-4 rounded-full px-5 py-3 text-[0.78rem] uppercase tracking-[0.16em] transition ${
-                isRouteActive(pathname, item.href)
+                isTopNavItemActive(pathname, item.href)
                   ? 'bg-[#f3f0f0] text-[#171717]'
                   : 'text-[#787373] hover:bg-white/6 hover:text-white'
               }`}
-              aria-current={isRouteActive(pathname, item.href) ? 'page' : undefined}
+              aria-current={isTopNavItemActive(pathname, item.href) ? 'page' : undefined}
             >
               {renderIcon(item.icon)}
               <span>{item.label}</span>
@@ -381,9 +379,9 @@ function SideNav({ pathname }: { pathname: string }) {
             key={item.href}
             href={item.href}
             className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.22em] ${
-              isRouteActive(pathname, item.href) ? 'bg-[#f3f0f0] text-[#141414]' : 'bg-[#1f1f1f] text-[#b3adad]'
+              isTopNavItemActive(pathname, item.href) ? 'bg-[#f3f0f0] text-[#141414]' : 'bg-[#1f1f1f] text-[#b3adad]'
             }`}
-            aria-current={isRouteActive(pathname, item.href) ? 'page' : undefined}
+            aria-current={isTopNavItemActive(pathname, item.href) ? 'page' : undefined}
           >
             {renderIcon(item.icon)}
             <span>{item.label}</span>

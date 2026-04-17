@@ -13,6 +13,8 @@ describe('agent profiles route', () => {
 
   beforeEach(async () => {
     await cleanAllTables();
+    const validation = await import('@/server/http/requestValidation');
+    validation.resetValidationFailureCounts();
   });
 
   it('updates and normalizes global agent defaults', async () => {
@@ -72,5 +74,30 @@ describe('agent profiles route', () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: 'Unknown agent profile' });
+  });
+
+  it('rejects malformed profile payloads consistently', async () => {
+    const { PATCH } = await import('@/app/api/agents/profiles/[agentKey]/route');
+
+    const response = await PATCH(
+      new Request('http://localhost/api/agents/profiles/webScout', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(['not-an-object']),
+      }),
+      {
+        params: Promise.resolve({ agentKey: 'webScout' }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Invalid request payload',
+      details: expect.arrayContaining([
+        expect.objectContaining({
+          path: '$',
+        }),
+      ]),
+    });
   });
 });

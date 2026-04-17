@@ -1,17 +1,28 @@
 import { NextResponse } from 'next/server';
 import type { FindSourcesInput } from '@/server/services/findSources.service';
 import { findSources } from '@/server/services/findSources.service';
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
+import { findSourcesRequestSchema } from '@/server/http/requestSchemas';
+import {
+  parseJsonRequest,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
-type Body = FindSourcesInput;
-
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => ({}))) as Body;
+    const scope = await requireSessionWorkspace();
+    const body = await parseJsonRequest(request, findSourcesRequestSchema, {
+      route: '/api/runs/find-sources',
+      allowEmptyObject: true,
+    });
 
-    const input: FindSourcesInput = {};
+    const input: FindSourcesInput = {
+      workspaceId: scope.workspaceId,
+    };
 
     if (typeof body.day === 'string' && body.day.trim()) input.day = body.day.trim();
     if (typeof body.topicId === 'string' && body.topicId.trim()) input.topicId = body.topicId.trim();
@@ -26,6 +37,12 @@ export async function POST(request: Request) {
     const result = await findSources(input);
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return validationErrorResponse(error);
+    }
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json(
       { error: publicErrorMessage(error, 'Failed to find new sources') },
       { status: 500 },

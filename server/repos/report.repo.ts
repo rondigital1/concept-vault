@@ -6,11 +6,13 @@
  */
 
 import { sql } from '@/db';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import { ArtifactRow } from './artifacts.repo';
 
 type JsonParam = Parameters<typeof sql.json>[0];
 
 export interface ReportInput {
+  workspaceId: string;
   runId: string;
   day: string;
   title: string;
@@ -23,7 +25,7 @@ export interface ReportInput {
  * Supersedes any existing approved report for the same day.
  */
 export async function insertReport(input: ReportInput): Promise<string> {
-  const { runId, day, title, content, sourceRefs = {} } = input;
+  const { workspaceId, runId, day, title, content, sourceRefs = {} } = input;
   const topicId =
     typeof sourceRefs.topicId === 'string' && sourceRefs.topicId.trim()
       ? sourceRefs.topicId.trim()
@@ -39,7 +41,8 @@ export async function insertReport(input: ReportInput): Promise<string> {
     await txSql`
       UPDATE artifacts
       SET status = 'superseded', reviewed_at = now()
-      WHERE agent = 'research'
+      WHERE workspace_id = ${workspaceId}
+        AND agent = 'research'
         AND kind = 'research-report'
         AND day = ${day}
         AND status = 'approved'
@@ -47,8 +50,9 @@ export async function insertReport(input: ReportInput): Promise<string> {
     `;
 
     const rows = await txSql<Array<{ id: string }>>`
-      INSERT INTO artifacts (run_id, agent, kind, day, title, content, source_refs, status, reviewed_at)
+      INSERT INTO artifacts (workspace_id, run_id, agent, kind, day, title, content, source_refs, status, reviewed_at)
       VALUES (
+        ${workspaceId},
         ${runId},
         'research',
         'research-report',
@@ -71,11 +75,14 @@ export async function insertReport(input: ReportInput): Promise<string> {
 /**
  * List all research reports, newest first.
  */
-export async function listReports(): Promise<ArtifactRow[]> {
+export async function listReports(scope: WorkspaceScope): Promise<ArtifactRow[]> {
   return sql<ArtifactRow[]>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
-    WHERE agent = 'research' AND kind = 'research-report' AND status = 'approved'
+    WHERE workspace_id = ${scope.workspaceId}
+      AND agent = 'research'
+      AND kind = 'research-report'
+      AND status = 'approved'
     ORDER BY created_at DESC
   `;
 }
@@ -83,20 +90,30 @@ export async function listReports(): Promise<ArtifactRow[]> {
 /**
  * Get a single report by ID.
  */
-export async function getReportById(id: string): Promise<ArtifactRow | null> {
+export async function getReportById(
+  scope: WorkspaceScope,
+  id: string,
+): Promise<ArtifactRow | null> {
   const rows = await sql<ArtifactRow[]>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
-    WHERE id = ${id} AND agent = 'research' AND kind = 'research-report'
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${id}
+      AND agent = 'research'
+      AND kind = 'research-report'
   `;
   return rows[0] ?? null;
 }
 
-export async function getLatestReportForTopic(topicId: string): Promise<ArtifactRow | null> {
+export async function getLatestReportForTopic(
+  scope: WorkspaceScope,
+  topicId: string,
+): Promise<ArtifactRow | null> {
   const rows = await sql<ArtifactRow[]>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
-    WHERE agent = 'research'
+    WHERE workspace_id = ${scope.workspaceId}
+      AND agent = 'research'
       AND kind = 'research-report'
       AND status = 'approved'
       AND source_refs->>'topicId' = ${topicId}
@@ -106,11 +123,16 @@ export async function getLatestReportForTopic(topicId: string): Promise<Artifact
   return rows[0] ?? null;
 }
 
-export async function countReportsForTopicSince(topicId: string, sinceIso: string): Promise<number> {
+export async function countReportsForTopicSince(
+  scope: WorkspaceScope,
+  topicId: string,
+  sinceIso: string,
+): Promise<number> {
   const rows = await sql<Array<{ count: number }>>`
     SELECT COUNT(*)::integer AS count
     FROM artifacts
-    WHERE agent = 'research'
+    WHERE workspace_id = ${scope.workspaceId}
+      AND agent = 'research'
       AND kind = 'research-report'
       AND status = 'approved'
       AND source_refs->>'topicId' = ${topicId}
@@ -122,11 +144,14 @@ export async function countReportsForTopicSince(topicId: string, sinceIso: strin
 /**
  * Mark a report as read.
  */
-export async function markReportRead(id: string): Promise<boolean> {
+export async function markReportRead(scope: WorkspaceScope, id: string): Promise<boolean> {
   const rows = await sql<Array<{ id: string }>>`
     UPDATE artifacts
     SET read_at = now()
-    WHERE id = ${id} AND kind = 'research-report' AND read_at IS NULL
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${id}
+      AND kind = 'research-report'
+      AND read_at IS NULL
     RETURNING id
   `;
   return rows.length > 0;

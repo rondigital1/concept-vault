@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getDocument } from '@/server/services/document.service';
 import { listCollections, getCollectionIdsForDocument } from '@/server/repos/collections.repo';
 import { DocumentClient } from './DocumentClient';
@@ -8,11 +9,12 @@ type PageProps = {
 };
 
 export default async function DocumentPage(props: PageProps) {
+  const scope = await requireSessionWorkspace();
   const params = await props.params;
   const [document, collections, memberCollectionIds] = await Promise.all([
-    getDocument(params.id),
-    listCollections(),
-    getCollectionIdsForDocument(params.id),
+    getDocument(scope, params.id),
+    listCollections(scope),
+    getCollectionIdsForDocument(scope, params.id),
   ]);
 
   if (!document) {

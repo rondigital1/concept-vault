@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getCollection } from '@/server/repos/collections.repo';
 import { getDocument } from '@/server/services/document.service';
 import { Badge } from '@/app/components/Badge';
@@ -20,15 +21,16 @@ function getSourceDisplay(source: string): string {
 }
 
 export default async function CollectionPage(props: PageProps) {
+  const scope = await requireSessionWorkspace();
   const params = await props.params;
-  const collection = await getCollection(params.id);
+  const collection = await getCollection(scope, params.id);
 
   if (!collection) {
     notFound();
   }
 
   const documents = await Promise.all(
-    collection.document_ids.map((docId) => getDocument(docId)),
+    collection.document_ids.map((docId) => getDocument(scope, docId)),
   );
   const validDocs = documents.filter(Boolean);
 

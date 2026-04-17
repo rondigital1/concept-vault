@@ -1,20 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { PRIMARY_TOP_NAV_KEYS, getTopNavItemsWithState } from '@/app/components/topNav';
 
 type Props = {
   activeAgentCount: number;
   selectedTopicName: string | null;
   children: ReactNode;
 };
-
-const TOP_NAV_ITEMS = [
-  { href: '/today', label: 'Research' },
-  { href: '/agents', label: 'Agents', active: true },
-  { href: '/library', label: 'Library' },
-  { href: '/reports', label: 'Reports' },
-];
 
 function Icon({
   name,
@@ -135,6 +130,9 @@ function RailLink({
 }
 
 export function AgentsChrome({ activeAgentCount, selectedTopicName, children }: Props) {
+  const pathname = usePathname();
+  const navItems = getTopNavItemsWithState(pathname, PRIMARY_TOP_NAV_KEYS);
+
   return (
     <div className="agents-screen">
       <header className="agents-glass fixed inset-x-0 top-0 z-40">
@@ -144,12 +142,12 @@ export function AgentsChrome({ activeAgentCount, selectedTopicName, children }: 
           </div>
 
           <nav className="hidden items-center gap-8 md:flex">
-            {TOP_NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <NavLink
                 key={item.href}
                 href={item.href}
                 label={item.label}
-                active={Boolean(item.active)}
+                active={item.active}
               />
             ))}
           </nav>

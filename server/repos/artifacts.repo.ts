@@ -6,6 +6,7 @@
  */
 
 import { sql } from '@/db';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 
 // Type accepted by sql.json() (postgres JSONValue); used to assert Record<string, unknown> from API/agents.
 type JsonParam = Parameters<typeof sql.json>[0];
@@ -28,6 +29,7 @@ export interface ArtifactRow {
 }
 
 export interface ArtifactInput {
+  workspaceId: string;
   runId: string | null;
   agent: string;
   kind: string;
@@ -44,8 +46,9 @@ export interface ArtifactInput {
  */
 export async function insertArtifact(input: ArtifactInput): Promise<string> {
   const rows = await sql<Array<{ id: string }>>`
-    INSERT INTO artifacts (run_id, agent, kind, day, title, content, source_refs, status)
+    INSERT INTO artifacts (workspace_id, run_id, agent, kind, day, title, content, source_refs, status)
     VALUES (
+      ${input.workspaceId},
       ${input.runId},
       ${input.agent},
       ${input.kind},
@@ -71,6 +74,7 @@ export async function insertArtifact(input: ArtifactInput): Promise<string> {
  * Returns true if approved, false if artifact not found or already processed.
  */
 export async function approveArtifact(
+  scope: WorkspaceScope,
   artifactId: string,
   reviewMetadata?: Record<string, unknown>,
 ): Promise<boolean> {
@@ -90,7 +94,9 @@ export async function approveArtifact(
     const artifact = await txSql<Array<Pick<ArtifactRow, 'agent' | 'kind' | 'day'>>>`
       SELECT agent, kind, day
       FROM artifacts
-      WHERE id = ${artifactId} AND status = 'proposed'
+      WHERE id = ${artifactId}
+        AND workspace_id = ${scope.workspaceId}
+        AND status = 'proposed'
       FOR UPDATE
     `;
 
@@ -104,7 +110,8 @@ export async function approveArtifact(
     await txSql`
       UPDATE artifacts
       SET status = 'superseded', reviewed_at = now()
-      WHERE agent = ${agent}
+      WHERE workspace_id = ${scope.workspaceId}
+        AND agent = ${agent}
         AND kind = ${kind}
         AND day = ${day}
         AND status = 'approved'
@@ -121,6 +128,7 @@ export async function approveArtifact(
           ? sql`, source_refs = COALESCE(source_refs, '{}'::jsonb) || ${sql.json(metadataPatch as JsonParam)}`
           : sql``}
       WHERE id = ${artifactId} AND status = 'proposed'
+        AND workspace_id = ${scope.workspaceId}
       RETURNING id
     `;
 
@@ -137,7 +145,7 @@ export async function approveArtifact(
  * 
  * Returns true if rejected, false if artifact not found or already processed.
  */
-export async function rejectArtifact(artifactId: string): Promise<boolean> {
+export async function rejectArtifact(scope: WorkspaceScope, artifactId: string): Promise<boolean> {
   let rejected = false;
 
   await sql.begin(async (tx) => {
@@ -148,7 +156,9 @@ export async function rejectArtifact(artifactId: string): Promise<boolean> {
     const result = await txSql<Array<{ id: string }>>`
       UPDATE artifacts
       SET status = 'rejected', reviewed_at = now()
-      WHERE id = ${artifactId} AND status = 'proposed'
+      WHERE id = ${artifactId}
+        AND workspace_id = ${scope.workspaceId}
+        AND status = 'proposed'
       RETURNING id
     `;
     rejected = result.length > 0;
@@ -162,11 +172,15 @@ export async function rejectArtifact(artifactId: string): Promise<boolean> {
 /**
  * Get artifact by ID.
  */
-export async function getArtifactById(artifactId: string): Promise<ArtifactRow | null> {
+export async function getArtifactById(
+  scope: WorkspaceScope,
+  artifactId: string,
+): Promise<ArtifactRow | null> {
   const rows = await sql<Array<ArtifactRow>>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
     WHERE id = ${artifactId}
+      AND workspace_id = ${scope.workspaceId}
   `;
   return rows[0] ?? null;
 }
@@ -174,11 +188,13 @@ export async function getArtifactById(artifactId: string): Promise<ArtifactRow |
 /**
  * List artifacts in the inbox (proposed status) for a given day.
  */
-export async function listInboxArtifacts(day: string): Promise<ArtifactRow[]> {
+export async function listInboxArtifacts(scope: WorkspaceScope, day: string): Promise<ArtifactRow[]> {
   const rows = await sql<ArtifactRow[]>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
-    WHERE day = ${day} AND status = 'proposed'
+    WHERE workspace_id = ${scope.workspaceId}
+      AND day = ${day}
+      AND status = 'proposed'
     ORDER BY created_at ASC
   `;
   return rows;
@@ -187,11 +203,13 @@ export async function listInboxArtifacts(day: string): Promise<ArtifactRow[]> {
 /**
  * List approved (active) artifacts for a given day.
  */
-export async function listActiveArtifacts(day: string): Promise<ArtifactRow[]> {
+export async function listActiveArtifacts(scope: WorkspaceScope, day: string): Promise<ArtifactRow[]> {
   const rows = await sql<ArtifactRow[]>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
-    WHERE day = ${day} AND status = 'approved'
+    WHERE workspace_id = ${scope.workspaceId}
+      AND day = ${day}
+      AND status = 'approved'
     ORDER BY created_at ASC
   `;
   return rows;
@@ -200,11 +218,12 @@ export async function listActiveArtifacts(day: string): Promise<ArtifactRow[]> {
 /**
  * List all artifacts for a given day (any status).
  */
-export async function listArtifactsByDay(day: string): Promise<ArtifactRow[]> {
+export async function listArtifactsByDay(scope: WorkspaceScope, day: string): Promise<ArtifactRow[]> {
   const rows = await sql<ArtifactRow[]>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
-    WHERE day = ${day}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND day = ${day}
     ORDER BY created_at ASC
   `;
   return rows;
@@ -214,6 +233,7 @@ export async function listArtifactsByDay(day: string): Promise<ArtifactRow[]> {
  * List artifacts by agent and kind.
  */
 export async function listArtifactsByAgentAndKind(
+  scope: WorkspaceScope,
   agent: string,
   kind: string,
   options?: { day?: string; status?: string }
@@ -221,14 +241,19 @@ export async function listArtifactsByAgentAndKind(
   let query = sql<ArtifactRow[]>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
-    WHERE agent = ${agent} AND kind = ${kind}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND agent = ${agent}
+      AND kind = ${kind}
   `;
 
   if (options?.day) {
     query = sql<ArtifactRow[]>`
       SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
       FROM artifacts
-      WHERE agent = ${agent} AND kind = ${kind} AND day = ${options.day}
+      WHERE workspace_id = ${scope.workspaceId}
+        AND agent = ${agent}
+        AND kind = ${kind}
+        AND day = ${options.day}
       ${options.status ? sql`AND status = ${options.status}` : sql``}
       ORDER BY created_at ASC
     `;
@@ -236,7 +261,10 @@ export async function listArtifactsByAgentAndKind(
     query = sql<ArtifactRow[]>`
       SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
       FROM artifacts
-      WHERE agent = ${agent} AND kind = ${kind} AND status = ${options.status}
+      WHERE workspace_id = ${scope.workspaceId}
+        AND agent = ${agent}
+        AND kind = ${kind}
+        AND status = ${options.status}
       ORDER BY created_at ASC
     `;
   }
@@ -247,11 +275,15 @@ export async function listArtifactsByAgentAndKind(
 /**
  * List all artifacts created by a specific run.
  */
-export async function listArtifactsByRunId(runId: string): Promise<ArtifactRow[]> {
+export async function listArtifactsByRunId(
+  scope: WorkspaceScope,
+  runId: string,
+): Promise<ArtifactRow[]> {
   const rows = await sql<ArtifactRow[]>`
     SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at, reviewed_at, read_at
     FROM artifacts
-    WHERE run_id = ${runId}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND run_id = ${runId}
     ORDER BY created_at ASC
   `;
   return rows;
@@ -260,11 +292,15 @@ export async function listArtifactsByRunId(runId: string): Promise<ArtifactRow[]
 /**
  * Count artifacts by status for a given day.
  */
-export async function countArtifactsByStatus(day: string): Promise<Record<string, number>> {
+export async function countArtifactsByStatus(
+  scope: WorkspaceScope,
+  day: string,
+): Promise<Record<string, number>> {
   const rows = await sql<Array<{ status: string; count: string }>>`
     SELECT status, COUNT(*)::text as count
     FROM artifacts
-    WHERE day = ${day}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND day = ${day}
     GROUP BY status
   `;
 

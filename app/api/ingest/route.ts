@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
+import { ingestRequestSchema } from '@/server/http/requestSchemas';
+import {
+  parseJsonRequest,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
 import { ingestDocument } from "@/server/services/ingest.service";
 import { extractDocumentFromUrl, isHttpUrl } from "@/server/services/urlExtract.service";
+import { schedulePipelineJobDrain } from '@/server/jobs/pipelineJobs';
 import { publicErrorMessage } from '@/server/security/publicError';
+import { assertTrustedSource, BlockedSourceError } from '@/server/security/sourceTrust';
 
 export const runtime = "nodejs";
-
-type IngestRequest = {
-  title?: string;
-  source?: string;
-  content?: string;
-};
 
 function badRequest(message: string) {
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
@@ -17,13 +20,10 @@ function badRequest(message: string) {
 
 export async function POST(request: Request) {
   try {
-
-    let body: IngestRequest;
-    try {
-      body = (await request.json()) as IngestRequest;
-    } catch {
-      return badRequest("Invalid JSON body");
-    }
+    const scope = await requireSessionWorkspace();
+    const body = await parseJsonRequest(request, ingestRequestSchema, {
+      route: '/api/ingest',
+    });
 
     const source =
       typeof body.source === "string" && body.source.trim()
@@ -34,6 +34,15 @@ export async function POST(request: Request) {
     let extractedTitle: string | undefined;
 
     const shouldExtractFromUrl = isHttpUrl(source) && content.length < 50;
+
+    if (isHttpUrl(source) && !shouldExtractFromUrl) {
+      assertTrustedSource({
+        context: '/api/ingest',
+        url: source,
+        title: body.title,
+        content,
+      });
+    }
 
     if (shouldExtractFromUrl) {
       try {
@@ -61,18 +70,35 @@ export async function POST(request: Request) {
           ? extractedTitle.slice(0, 200)
         : deriveTitleFromContent(content);
 
-    const result = await ingestDocument({ title, source, content });
+    const result = await ingestDocument({ workspaceId: scope.workspaceId, title, source, content });
+
+    if (result.enrichmentQueued) {
+      schedulePipelineJobDrain();
+    }
 
     return NextResponse.json(
       {
         ok: true,
         documentId: result.documentId,
         created: result.created,
+        enrichmentJobId: result.enrichmentJobId,
         enrichmentRunId: result.enrichmentRunId,
       },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error: unknown) {
+    if (error instanceof RequestValidationError) {
+      return validationErrorResponse(error);
+    }
+    if (error instanceof BlockedSourceError) {
+      return badRequest(publicErrorMessage(error, 'Blocked by source trust policy'));
+    }
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json(
+        { ok: false, error: "UNAUTHORIZED", message: error.message },
+        { status: error.status }
+      );
+    }
     const message = publicErrorMessage(error, 'Failed to ingest document');
     return NextResponse.json(
       { ok: false, error: "INGEST_FAILED", message },

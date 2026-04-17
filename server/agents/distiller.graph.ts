@@ -107,6 +107,7 @@ export async function distillerGraph(
 
   const result = await graph.invoke(
     {
+      workspaceId: input.workspaceId,
       day: input.day,
       documentIds,
       limit,

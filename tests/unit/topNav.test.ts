@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isTopNavItemActive } from '@/app/components/topNav';
+import {
+  PRIMARY_TOP_NAV_KEYS,
+  getTopNavItemsWithState,
+  isImmersiveAppRoute,
+  isTopNavItemActive,
+} from '@/app/components/topNav';
 
 describe('isTopNavItemActive', () => {
   it('activates exact route matches', () => {
@@ -20,5 +25,26 @@ describe('isTopNavItemActive', () => {
   it('stays inactive for unrelated routes', () => {
     expect(isTopNavItemActive('/agent-control-center', '/today')).toBe(false);
     expect(isTopNavItemActive('/ingest', '/chat')).toBe(false);
+  });
+});
+
+describe('getTopNavItemsWithState', () => {
+  it('marks the current primary section active', () => {
+    const items = getTopNavItemsWithState('/reports/123', PRIMARY_TOP_NAV_KEYS);
+    expect(items.find((item) => item.key === 'reports')?.active).toBe(true);
+    expect(items.filter((item) => item.active)).toHaveLength(1);
+  });
+});
+
+describe('isImmersiveAppRoute', () => {
+  it('treats major route detail pages as immersive', () => {
+    expect(isImmersiveAppRoute('/reports')).toBe(true);
+    expect(isImmersiveAppRoute('/reports/123')).toBe(true);
+    expect(isImmersiveAppRoute('/library/collections/abc')).toBe(true);
+  });
+
+  it('leaves non-workbench routes on the default shell', () => {
+    expect(isImmersiveAppRoute('/chat')).toBe(false);
+    expect(isImmersiveAppRoute('/web-scout')).toBe(false);
   });
 });

@@ -21,8 +21,14 @@ export function FindSourcesButton(props: Props) {
       const body: Record<string, unknown> = isBatch
         ? { scope: 'all_topics' }
         : { topicId: props.topicId };
+      const endpoint = isBatch ? '/api/runs/find-sources' : '/api/runs/pipeline';
 
-      const response = await fetch('/api/runs/find-sources', {
+      if (!isBatch) {
+        body.runMode = 'scout_only';
+        body.enableCategorization = true;
+      }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
@@ -47,10 +53,7 @@ export function FindSourcesButton(props: Props) {
             (failed > 0 ? `, ${failed} failed` : ''),
         );
       } else {
-        const proposals = payload?.counts?.webProposals ?? 0;
-        toast.success(
-          `Found ${proposals} source proposal${proposals === 1 ? '' : 's'} for ${props.topicName}`,
-        );
+        toast.success(`Queued source discovery for ${props.topicName}`);
       }
 
       router.refresh();

@@ -1,4 +1,5 @@
 import { sql } from '@/db';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import { RunTrace, RunStep, RunKind, RunStatus } from './runTrace.types';
 
 type JsonParam = Parameters<typeof sql.json>[0];
@@ -135,14 +136,15 @@ function toDbStep(step: RunStep) {
 }
 
 export async function createRun(
+  scope: WorkspaceScope,
   kind: RunKind,
   metadata: Record<string, unknown> = {},
 ): Promise<string> {
   const rows = await sql<
     Array<{ id: string; started_at: string }>
   >`
-    INSERT INTO runs (kind, status, started_at, metadata)
-    VALUES (${kind}, 'running', now(), ${sql.json(sanitizeJsonForDb(metadata) as JsonParam)})
+    INSERT INTO runs (workspace_id, kind, status, started_at, metadata)
+    VALUES (${scope.workspaceId}, ${kind}, 'running', now(), ${sql.json(sanitizeJsonForDb(metadata) as JsonParam)})
     RETURNING id, started_at
   `;
 
@@ -206,11 +208,15 @@ export async function finishRun(runId: string, status: RunStatus): Promise<void>
   if (!updated[0]) throw new Error(`Run ${runId} not found`);
 }
 
-export async function getRunTrace(runId: string): Promise<RunTrace | null> {
+export async function getRunTrace(
+  scope: WorkspaceScope,
+  runId: string,
+): Promise<RunTrace | null> {
   const runRows = await sql<Array<DbRunRow>>`
     SELECT id, kind, status, started_at, ended_at, metadata
     FROM runs
-    WHERE id = ${runId}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${runId}
   `;
 
   const run = runRows[0];

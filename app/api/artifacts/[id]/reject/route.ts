@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { detectWorkspaceAccess, recordAuthorizationDenied } from '@/server/auth/authzAudit';
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { rejectArtifact } from '@/server/repos/artifacts.repo';
 import { publicErrorMessage } from '@/server/security/publicError';
 
@@ -85,10 +87,20 @@ export async function POST(
   const expectsJson = isJsonRequest(contentType);
 
   try {
+    const scope = await requireSessionWorkspace();
     const { id } = await params;
-    const rejected = await rejectArtifact(id);
+    const rejected = await rejectArtifact(scope, id);
 
     if (!rejected) {
+      if ((await detectWorkspaceAccess({ table: 'artifacts', recordId: id, workspaceId: scope.workspaceId })) === 'forbidden') {
+        recordAuthorizationDenied({
+          table: 'artifacts',
+          action: 'reject',
+          recordId: id,
+          workspaceId: scope.workspaceId,
+          userId: scope.userId,
+        });
+      }
       const message = 'Artifact not found or already reviewed';
       if (!expectsJson) {
         return NextResponse.redirect(buildRedirectUrl(request, { errorMessage: message }), { status: 303 });
@@ -102,6 +114,15 @@ export async function POST(
 
     return NextResponse.json({ ok: true, id, status: 'rejected' });
   } catch (error) {
+    if (error instanceof WorkspaceAccessError) {
+      if (!expectsJson) {
+        return NextResponse.redirect(
+          buildRedirectUrl(request, { errorMessage: error.message }),
+          { status: 303 },
+        );
+      }
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     const resolved = resolveRejectError(error);
     if (!expectsJson) {
       return NextResponse.redirect(

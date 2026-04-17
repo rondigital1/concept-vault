@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import type { CollectionRow } from '@/server/repos/collections.repo';
 import type { DocumentListItem } from '@/server/repos/documents.repo';
+import { PRIMARY_TOP_NAV_KEYS, getTopNavItemsWithState } from '@/app/components/topNav';
 import { getDocumentTitleIssue } from '../documentPresentation';
 import { LibraryIcon } from './LibraryIcon';
 import { LibrarySidebar } from './LibrarySidebar';
@@ -15,17 +16,14 @@ type Props = {
   children: React.ReactNode;
 };
 
-const TOP_NAV_ITEMS = [
-  { href: '/today', label: 'Research' },
-  { href: '/agents', label: 'Agents' },
-  { href: '/library', label: 'Documents' },
-  { href: '/reports', label: 'Results' },
-];
-
 export function LibraryShell({ documents, collections, children }: Props) {
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const navItems = getTopNavItemsWithState(pathname, PRIMARY_TOP_NAV_KEYS).map((item) => ({
+    ...item,
+    label: item.key === 'library' ? 'Documents' : item.key === 'reports' ? 'Results' : item.label,
+  }));
 
   const selectedId = pathname.match(/^\/library\/([0-9a-f-]+)$/)?.[1] ?? null;
   const filteredDocs = useMemo(() => {
@@ -81,23 +79,19 @@ export function LibraryShell({ documents, collections, children }: Props) {
           </div>
 
           <nav className="hidden items-center gap-8 md:flex lg:gap-10">
-            {TOP_NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`relative text-[1rem] font-medium tracking-[-0.035em] transition-colors lg:text-[1.08rem] ${
-                    isActive ? 'text-white' : 'text-[#8f8a8a] hover:text-white'
-                  }`}
-                >
-                  {item.label}
-                  {isActive ? <span className="absolute inset-x-0 -bottom-2 h-0.5 rounded-full bg-white" /> : null}
-                </Link>
-              );
-            })}
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={item.active ? 'page' : undefined}
+                className={`relative text-[1rem] font-medium tracking-[-0.035em] transition-colors lg:text-[1.08rem] ${
+                  item.active ? 'text-white' : 'text-[#8f8a8a] hover:text-white'
+                }`}
+              >
+                {item.label}
+                {item.active ? <span className="absolute inset-x-0 -bottom-2 h-0.5 rounded-full bg-white" /> : null}
+              </Link>
+            ))}
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3">

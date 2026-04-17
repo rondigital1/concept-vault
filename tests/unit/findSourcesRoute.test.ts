@@ -2,14 +2,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_DAY } from '../helpers/fixtures';
 
 const mockFindSources = vi.hoisted(() => vi.fn());
+const mockAuth = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/services/findSources.service', () => ({
   findSources: mockFindSources,
 }));
 
+vi.mock('@/auth', () => ({
+  auth: mockAuth,
+}));
+
 describe('find sources route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAuth.mockResolvedValue({
+      user: {
+        id: 'test-user',
+        email: 'test@example.com',
+        membershipRole: 'owner',
+      },
+      workspace: {
+        id: 'workspace-1',
+        name: 'Test Workspace',
+        slug: 'test-workspace',
+      },
+    });
   });
 
   it('parses and forwards a single-topic request', async () => {
@@ -56,6 +73,7 @@ describe('find sources route', () => {
     );
 
     expect(mockFindSources).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
       day: TEST_DAY,
       topicId: 'topic-1',
       minQualityResults: 4,
@@ -96,6 +114,7 @@ describe('find sources route', () => {
     );
 
     expect(mockFindSources).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
       day: TEST_DAY,
       scope: 'all_topics',
       maxTopics: 2,
@@ -103,5 +122,38 @@ describe('find sources route', () => {
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual(payload);
+  });
+
+  it('rejects malformed requests consistently', async () => {
+    const { POST } = await import('@/app/api/runs/find-sources/route');
+
+    const response = await POST(
+      new Request('http://localhost/api/runs/find-sources', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'everywhere',
+          maxTopics: 'bad',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'Invalid request payload',
+      details: expect.arrayContaining([
+        expect.objectContaining({
+          path: 'scope',
+          message: 'scope must be topic or all_topics',
+        }),
+        expect.objectContaining({
+          path: 'maxTopics',
+          message: 'maxTopics must be a number',
+        }),
+      ]),
+    });
+    expect(mockFindSources).not.toHaveBeenCalled();
+    const validation = await import('@/server/http/requestValidation');
+    expect(validation.getValidationFailureCount('/api/runs/find-sources')).toBe(1);
   });
 });

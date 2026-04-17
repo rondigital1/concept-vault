@@ -22,6 +22,8 @@ vi.mock('@/server/repos/report.repo', () => ({
 }));
 
 describe('topicWorkflow run mode decisions', () => {
+  const scope = { workspaceId: 'workspace-1' };
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockCountTopicLinkedDocuments.mockResolvedValue(0);
@@ -35,7 +37,7 @@ describe('topicWorkflow run mode decisions', () => {
 
     const { decideScheduledRunMode } = await import('@/server/services/topicWorkflow.service');
 
-    const decision = await decideScheduledRunMode({
+    const decision = await decideScheduledRunMode(scope, {
       id: 'topic-1',
       name: 'AI',
       goal: 'Learn AI',
@@ -64,7 +66,7 @@ describe('topicWorkflow run mode decisions', () => {
 
     const { decideScheduledRunMode } = await import('@/server/services/topicWorkflow.service');
 
-    const decision = await decideScheduledRunMode({
+    const decision = await decideScheduledRunMode(scope, {
       id: 'topic-1',
       name: 'AI',
       goal: 'Learn AI',
@@ -95,7 +97,7 @@ describe('topicWorkflow run mode decisions', () => {
 
     const { decideScheduledRunMode } = await import('@/server/services/topicWorkflow.service');
 
-    const decision = await decideScheduledRunMode({
+    const decision = await decideScheduledRunMode(scope, {
       id: 'topic-1',
       name: 'AI',
       goal: 'Learn AI',
@@ -127,7 +129,7 @@ describe('topicWorkflow run mode decisions', () => {
 
     const { decideScheduledRunMode } = await import('@/server/services/topicWorkflow.service');
 
-    const decision = await decideScheduledRunMode({
+    const decision = await decideScheduledRunMode(scope, {
       id: 'topic-1',
       name: 'AI',
       goal: 'Learn AI',
@@ -153,6 +155,8 @@ describe('topicWorkflow run mode decisions', () => {
 });
 
 describe('topicWorkflow report readiness', () => {
+  const scope = { workspaceId: 'workspace-1' };
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetLatestReportForTopic.mockResolvedValue(null);
@@ -222,22 +226,26 @@ describe('topicWorkflow report readiness', () => {
       },
     ]);
 
-    mockCountTopicLinkedDocuments.mockImplementation(async (topicId: string) => {
+    mockCountTopicLinkedDocuments.mockImplementation(
+      async (_scope: { workspaceId: string }, topicId: string) => {
       if (topicId === 'topic-a') return 3;
       if (topicId === 'topic-b') return 6;
       return 2;
-    });
+      },
+    );
 
-    mockGetLatestReportForTopic.mockImplementation(async (topicId: string) => {
+    mockGetLatestReportForTopic.mockImplementation(
+      async (_scope: { workspaceId: string }, topicId: string) => {
       if (topicId === 'topic-b') {
         return { created_at: '2026-03-02T10:00:00.000Z' };
       }
       return null;
-    });
+      },
+    );
 
     const { listReportReadyTopics } = await import('@/server/services/topicWorkflow.service');
 
-    const readyTopics = await listReportReadyTopics(3);
+    const readyTopics = await listReportReadyTopics(scope, 3);
 
     expect(readyTopics).toEqual([
       expect.objectContaining({
@@ -280,14 +288,16 @@ describe('topicWorkflow report readiness', () => {
 
     const { listReportReadyTopics } = await import('@/server/services/topicWorkflow.service');
 
-    const readyTopics = await listReportReadyTopics(0);
+    const readyTopics = await listReportReadyTopics(scope, 0);
 
     expect(readyTopics).toHaveLength(1);
-    expect(mockCountTopicLinkedDocuments).toHaveBeenCalledWith('topic-a');
+    expect(mockCountTopicLinkedDocuments).toHaveBeenCalledWith(scope, 'topic-a');
   });
 });
 
 describe('topicWorkflow topics needing sources', () => {
+  const scope = { workspaceId: 'workspace-1' };
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetLatestReportForTopic.mockResolvedValue(null);
@@ -357,24 +367,28 @@ describe('topicWorkflow topics needing sources', () => {
       },
     ]);
 
-    mockCountTopicLinkedDocuments.mockImplementation(async (topicId: string) => {
+    mockCountTopicLinkedDocuments.mockImplementation(
+      async (_scope: { workspaceId: string }, topicId: string) => {
       if (topicId === 'topic-a') return 1;
       if (topicId === 'topic-b') return 3;
       return 0;
-    });
+      },
+    );
 
-    mockGetLatestReportForTopic.mockImplementation(async (topicId: string) => {
+    mockGetLatestReportForTopic.mockImplementation(
+      async (_scope: { workspaceId: string }, topicId: string) => {
       if (topicId === 'topic-a') {
         return { created_at: '2026-03-02T10:00:00.000Z' };
       }
       return null;
-    });
+      },
+    );
 
     const { listTopicsNeedingSources } = await import('@/server/services/topicWorkflow.service');
 
-    const topics = await listTopicsNeedingSources(3);
+    const topics = await listTopicsNeedingSources(scope, 3);
 
-    expect(mockListSavedTopics).toHaveBeenCalledWith({ activeOnly: true });
+    expect(mockListSavedTopics).toHaveBeenCalledWith(scope, { activeOnly: true });
     expect(topics).toEqual([
       expect.objectContaining({
         topic: expect.objectContaining({ id: 'topic-a', name: 'Agents' }),
@@ -416,6 +430,6 @@ describe('topicWorkflow topics needing sources', () => {
 
     const { listTopicsNeedingSources } = await import('@/server/services/topicWorkflow.service');
 
-    await expect(listTopicsNeedingSources(3)).resolves.toEqual([]);
+    await expect(listTopicsNeedingSources(scope, 3)).resolves.toEqual([]);
   });
 });

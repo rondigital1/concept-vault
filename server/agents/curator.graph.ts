@@ -24,6 +24,7 @@ import { finalizeTags } from './helpers/tags';
 // ---------- Types ----------
 
 export interface CuratorInput {
+  workspaceId: string;
   documentId: string;
   enableCategorization?: boolean;
 }
@@ -38,6 +39,7 @@ export interface CuratorOutput {
 
 const CuratorState = Annotation.Root({
   // Input
+  workspaceId: Annotation<string>,
   documentId: Annotation<string>,
   enableCategorization: Annotation<boolean>,
   // Working state
@@ -55,7 +57,7 @@ type CuratorStateType = typeof CuratorState.State;
 // ---------- Nodes ----------
 
 async function loadDocument(state: CuratorStateType): Promise<Partial<CuratorStateType>> {
-  const document = await getDocument(state.documentId);
+  const document = await getDocument({ workspaceId: state.workspaceId }, state.documentId);
 
   if (!document) {
     return { document: null, error: `Document ${state.documentId} not found` };
@@ -94,7 +96,7 @@ async function findRelated(state: CuratorStateType): Promise<Partial<CuratorStat
     return { relatedDocs: [] };
   }
 
-  const relatedDocs = await findRelatedDocs(state.document.id);
+  const relatedDocs = await findRelatedDocs({ workspaceId: state.workspaceId }, state.document.id);
   return { relatedDocs };
 }
 
@@ -103,7 +105,7 @@ async function persistTags(state: CuratorStateType): Promise<Partial<CuratorStat
     return {};
   }
 
-  await setDocumentTags(state.document.id, state.tags);
+  await setDocumentTags({ workspaceId: state.workspaceId }, state.document.id, state.tags);
   return {};
 }
 
@@ -162,6 +164,7 @@ export async function curatorGraph(
 
   const result = await graph.invoke(
     {
+      workspaceId: input.workspaceId,
       documentId: input.documentId,
       enableCategorization: input.enableCategorization ?? false,
       document: null,

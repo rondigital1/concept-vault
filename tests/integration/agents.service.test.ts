@@ -5,11 +5,14 @@ import { getAgentsView } from '@/server/services/agents.service';
 import {
   cleanAllTables,
   closeTestDb,
+  getTestWorkspaceScope,
   initTestSchema,
   insertTestArtifact,
 } from '../helpers/testDb';
 
 describe('agents service', () => {
+  let scope: { workspaceId: string };
+
   beforeAll(async () => {
     await initTestSchema();
   });
@@ -20,10 +23,11 @@ describe('agents service', () => {
 
   beforeEach(async () => {
     await cleanAllTables();
+    scope = await getTestWorkspaceScope();
   });
 
   it('aggregates live registry metrics and selected run detail from run traces', async () => {
-    const run1 = await createRun('pipeline', { runMode: 'full_report' });
+    const run1 = await createRun(scope, 'pipeline', { runMode: 'full_report' });
     const run1Start = new Date(Date.now() - 5 * 60 * 1000);
     const run1End = new Date(run1Start.getTime() + 2 * 60 * 1000);
     await sql`UPDATE runs SET started_at = ${run1Start.toISOString()} WHERE id = ${run1}`;
@@ -70,6 +74,7 @@ describe('agents service', () => {
     await finishRun(run1, 'ok');
     await sql`UPDATE runs SET ended_at = ${run1End.toISOString()} WHERE id = ${run1}`;
     await insertTestArtifact({
+      workspaceId: scope.workspaceId,
       runId: run1,
       agent: 'research',
       kind: 'research-report',
@@ -77,7 +82,7 @@ describe('agents service', () => {
       status: 'approved',
     });
 
-    const run2 = await createRun('pipeline', { runMode: 'scout_only' });
+    const run2 = await createRun(scope, 'pipeline', { runMode: 'scout_only' });
     const run2Start = new Date(Date.now() - 15 * 60 * 1000);
     const run2End = new Date(run2Start.getTime() + 60_000);
     await sql`UPDATE runs SET started_at = ${run2Start.toISOString()} WHERE id = ${run2}`;
@@ -95,7 +100,7 @@ describe('agents service', () => {
     await finishRun(run2, 'error');
     await sql`UPDATE runs SET ended_at = ${run2End.toISOString()} WHERE id = ${run2}`;
 
-    const view = await getAgentsView({ selectedRunId: run1 });
+    const view = await getAgentsView(scope, { selectedRunId: run1 });
 
     const pipelineEntry = view.agentRegistry.find((entry) => entry.key === 'pipeline');
     const curatorEntry = view.agentRegistry.find((entry) => entry.key === 'curator');

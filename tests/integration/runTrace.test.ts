@@ -14,6 +14,7 @@ import {
   initTestSchema,
   cleanAllTables,
   closeTestDb,
+  getTestWorkspaceScope,
 } from '../helpers/testDb';
 import {
   createRun,
@@ -23,6 +24,11 @@ import {
 } from '@/server/observability/runTrace.store';
 
 describe('Run Tracing (Observability)', () => {
+  let scope: { workspaceId: string };
+  const startRun = (kind: 'distill' | 'curate' | 'webScout' | 'research' | 'pipeline') =>
+    createRun(scope, kind);
+  const readTrace = (runId: string) => getRunTrace(scope, runId);
+
   beforeAll(async () => {
     await initTestSchema();
   });
@@ -33,30 +39,31 @@ describe('Run Tracing (Observability)', () => {
 
   beforeEach(async () => {
     await cleanAllTables();
+    scope = await getTestWorkspaceScope();
   });
 
   describe('createRun', () => {
     it('should create a run with running status', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       expect(runId).toBeDefined();
       expect(typeof runId).toBe('string');
       expect(runId).toMatch(/^[0-9a-f-]{36}$/); // UUID format
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace).not.toBeNull();
       expect(trace!.status).toBe('running');
       expect(trace!.kind).toBe('distill');
     });
 
     it('should create runs of different kinds', async () => {
-      const distillId = await createRun('distill');
-      const curateId = await createRun('curate');
-      const webScoutId = await createRun('webScout');
+      const distillId = await startRun('distill');
+      const curateId = await startRun('curate');
+      const webScoutId = await startRun('webScout');
 
-      const distillTrace = await getRunTrace(distillId);
-      const curateTrace = await getRunTrace(curateId);
-      const webScoutTrace = await getRunTrace(webScoutId);
+      const distillTrace = await readTrace(distillId);
+      const curateTrace = await readTrace(curateId);
+      const webScoutTrace = await readTrace(webScoutId);
 
       expect(distillTrace!.kind).toBe('distill');
       expect(curateTrace!.kind).toBe('curate');
@@ -64,8 +71,8 @@ describe('Run Tracing (Observability)', () => {
     });
 
     it('should set startedAt timestamp', async () => {
-      const runId = await createRun('distill');
-      const trace = await getRunTrace(runId);
+      const runId = await startRun('distill');
+      const trace = await readTrace(runId);
 
       expect(trace!.startedAt).toBeDefined();
       // Should be a valid ISO date string
@@ -75,7 +82,7 @@ describe('Run Tracing (Observability)', () => {
 
   describe('appendStep', () => {
     it('should append a step to a run', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await appendStep(runId, {
         timestamp: new Date().toISOString(),
@@ -85,14 +92,14 @@ describe('Run Tracing (Observability)', () => {
         input: { day: '2025-01-15' },
       });
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.steps).toHaveLength(1);
       expect(trace!.steps[0].name).toBe('distill');
       expect(trace!.steps[0].status).toBe('running');
     });
 
     it('should append multiple steps in order', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await appendStep(runId, {
         timestamp: new Date().toISOString(),
@@ -115,13 +122,13 @@ describe('Run Tracing (Observability)', () => {
         status: 'ok',
       });
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.steps).toHaveLength(3);
       expect(trace!.steps.map(s => s.name)).toEqual(['step1', 'step2', 'step3']);
     });
 
     it('should store input and output as JSONB', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       const inputData = { day: '2025-01-15', documentIds: ['doc1', 'doc2'] };
       const outputData = { count: 5, items: [{ id: 'item1' }] };
@@ -135,13 +142,13 @@ describe('Run Tracing (Observability)', () => {
         output: outputData,
       });
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.steps[0].input).toEqual(inputData);
       expect(trace!.steps[0].output).toEqual(outputData);
     });
 
     it('should sanitize null bytes in step payloads before JSONB insert', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await appendStep(runId, {
         timestamp: new Date().toISOString(),
@@ -159,7 +166,7 @@ describe('Run Tracing (Observability)', () => {
         error: { message: 'bad\u0000news' },
       });
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.steps[0].name).toBe('step_name');
       expect(trace!.steps[0].input).toEqual({
         text: 'helloworld',
@@ -171,7 +178,7 @@ describe('Run Tracing (Observability)', () => {
     });
 
     it('should store error information', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await appendStep(runId, {
         timestamp: new Date().toISOString(),
@@ -181,7 +188,7 @@ describe('Run Tracing (Observability)', () => {
         error: { message: 'Something went wrong', code: 'ERR_FAILED' },
       });
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.steps[0].status).toBe('error');
       expect(trace!.steps[0].error).toEqual({ message: 'Something went wrong', code: 'ERR_FAILED' });
     });
@@ -198,7 +205,7 @@ describe('Run Tracing (Observability)', () => {
     });
 
     it('should store token estimates', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await appendStep(runId, {
         timestamp: new Date().toISOString(),
@@ -208,37 +215,37 @@ describe('Run Tracing (Observability)', () => {
         tokenEstimate: 1500,
       });
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.steps[0].tokenEstimate).toBe(1500);
     });
   });
 
   describe('finishRun', () => {
     it('should transition status to ok', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await finishRun(runId, 'ok');
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.status).toBe('ok');
       expect(trace!.completedAt).toBeDefined();
     });
 
     it('should transition status to error', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await finishRun(runId, 'error');
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.status).toBe('error');
     });
 
     it('should transition status to partial', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await finishRun(runId, 'partial');
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
       expect(trace!.status).toBe('partial');
     });
 
@@ -249,14 +256,14 @@ describe('Run Tracing (Observability)', () => {
     });
 
     it('should set ended_at timestamp', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
-      const beforeFinish = await getRunTrace(runId);
+      const beforeFinish = await readTrace(runId);
       expect(beforeFinish!.completedAt).toBeUndefined();
 
       await finishRun(runId, 'ok');
 
-      const afterFinish = await getRunTrace(runId);
+      const afterFinish = await readTrace(runId);
       expect(afterFinish!.completedAt).toBeDefined();
     });
   });
@@ -264,13 +271,13 @@ describe('Run Tracing (Observability)', () => {
   describe('getRunTrace', () => {
     it('should return null for non-existent run', async () => {
       const fakeRunId = '00000000-0000-0000-0000-000000000000';
-      const trace = await getRunTrace(fakeRunId);
+      const trace = await readTrace(fakeRunId);
 
       expect(trace).toBeNull();
     });
 
     it('should return complete trace with all steps', async () => {
-      const runId = await createRun('webScout');
+      const runId = await startRun('webScout');
 
       await appendStep(runId, {
         timestamp: new Date().toISOString(),
@@ -298,7 +305,7 @@ describe('Run Tracing (Observability)', () => {
 
       await finishRun(runId, 'ok');
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
 
       expect(trace).not.toBeNull();
       expect(trace!.id).toBe(runId);
@@ -310,14 +317,14 @@ describe('Run Tracing (Observability)', () => {
     });
 
     it('should order steps by started_at', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       // Add steps with slight time differences (using fake timers, they'll have same time)
       await appendStep(runId, { timestamp: new Date().toISOString(), type: 'flow', name: 'first', status: 'running' });
       await appendStep(runId, { timestamp: new Date().toISOString(), type: 'flow', name: 'second', status: 'ok' });
       await appendStep(runId, { timestamp: new Date().toISOString(), type: 'flow', name: 'third', status: 'ok' });
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
 
       // Steps should be ordered by started_at ASC
       expect(trace!.steps[0].name).toBe('first');
@@ -328,7 +335,7 @@ describe('Run Tracing (Observability)', () => {
 
   describe('complete flow simulation', () => {
     it('should track a successful distill flow', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       // Flow start
       await appendStep(runId, {
@@ -377,7 +384,7 @@ describe('Run Tracing (Observability)', () => {
 
       await finishRun(runId, 'ok');
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
 
       expect(trace!.status).toBe('ok');
       expect(trace!.steps).toHaveLength(5);
@@ -388,7 +395,7 @@ describe('Run Tracing (Observability)', () => {
     });
 
     it('should track a failed flow with error step', async () => {
-      const runId = await createRun('webScout');
+      const runId = await startRun('webScout');
 
       await appendStep(runId, {
         timestamp: new Date().toISOString(),
@@ -415,14 +422,14 @@ describe('Run Tracing (Observability)', () => {
 
       await finishRun(runId, 'error');
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
 
       expect(trace!.status).toBe('error');
       expect(trace!.steps.filter(s => s.status === 'error')).toHaveLength(2);
     });
 
     it('should track a partial success flow', async () => {
-      const runId = await createRun('distill');
+      const runId = await startRun('distill');
 
       await appendStep(runId, {
         timestamp: new Date().toISOString(),
@@ -458,7 +465,7 @@ describe('Run Tracing (Observability)', () => {
 
       await finishRun(runId, 'partial');
 
-      const trace = await getRunTrace(runId);
+      const trace = await readTrace(runId);
 
       expect(trace!.status).toBe('partial');
       expect(trace!.steps.filter(s => s.status === 'ok')).toHaveLength(2);

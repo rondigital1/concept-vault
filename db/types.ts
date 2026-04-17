@@ -10,6 +10,7 @@ import type { RunKind, RunStatus, RunTrace } from '@/server/observability/runTra
  */
 export interface Run {
   id: string;
+  workspace_id: string;
   kind: RunKind;
   status: RunStatus;
 
@@ -31,6 +32,7 @@ export interface Run {
  */
 export interface Document {
   id: string;
+  workspace_id: string;
   source: string;
   title: string;
   content: string;
@@ -45,6 +47,7 @@ export interface Document {
  */
 export interface Collection {
   id: string;
+  workspace_id: string;
   name: string;
   description: string | null;
   created_at: Date;
@@ -121,6 +124,28 @@ export interface RunStep {
 
   token_estimate: number | null;
   retry_count: number;
+}
+
+export type PipelineJobStatus = 'queued' | 'running' | 'retrying' | 'succeeded' | 'failed';
+
+export interface PipelineJob {
+  id: string;
+  workspace_id: string;
+  run_id: string;
+  route: string;
+  status: PipelineJobStatus;
+  payload: Record<string, unknown>;
+  idempotency_key: string | null;
+  attempts: number;
+  max_attempts: number;
+  available_at: Date;
+  leased_at: Date | null;
+  lease_expires_at: Date | null;
+  worker_id: string | null;
+  last_error: Record<string, unknown> | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 /**
@@ -215,6 +240,7 @@ export interface LlmCall {
  */
 export interface SavedTopic {
   id: string;
+  workspace_id: string;
   name: string;
   goal: string;
   focus_tags: string[];
@@ -232,6 +258,7 @@ export type SourceWatchKind = 'website' | 'blog' | 'newsletter' | 'source';
 
 export interface SourceWatchItem {
   id: string;
+  workspace_id: string;
   url: string;
   domain: string;
   label: string;

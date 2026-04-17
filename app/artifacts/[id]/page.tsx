@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getArtifactById, type ArtifactRow } from '@/server/repos/artifacts.repo';
 
 export const dynamic = 'force-dynamic';
@@ -331,8 +332,9 @@ export default async function ArtifactDetailPage({
   const artifactActionError = firstQueryParam(resolvedSearchParams.artifactActionError);
   const artifactActionInfo = firstQueryParam(resolvedSearchParams.artifactActionInfo);
   const { id } = await params;
+  const scope = await requireSessionWorkspace();
 
-  const artifact = await getArtifactById(id);
+  const artifact = await getArtifactById(scope, id);
   if (!artifact) {
     notFound();
   }

@@ -1,5 +1,20 @@
 import { NextResponse } from 'next/server';
-import { pipelineFlow, PipelineInput, PipelineRunMode } from '@/server/flows/pipeline.flow';
+import { resolveDefaultWorkspaceScope } from '@/server/auth/workspaceContext';
+import { PipelineInput, PipelineRunMode } from '@/server/flows/pipeline.flow';
+import { cronPipelineRequestSchema } from '@/server/http/requestSchemas';
+import {
+  parseJsonRequest,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
+import {
+  enqueuePipelineJob,
+  executePipelineInline,
+  isPipelineInlineExecutionEnabled,
+  schedulePipelineJobDrain,
+} from '@/server/jobs/pipelineJobs';
+import { getOrCreateRequestId, setResponseRequestId } from '@/server/observability/context';
+import { logger } from '@/server/observability/logger';
 import { listDueTrackedTopics, getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
 import { decideScheduledRunMode, setupTopicContext } from '@/server/services/topicWorkflow.service';
 import { isCronRequestAuthorized } from '@/server/security/cronAuth';
@@ -30,20 +45,42 @@ function parseOptionalBoolean(value: unknown): boolean | undefined {
 }
 
 async function runSinglePipeline(input: PipelineInput): Promise<Response> {
-  const result = await pipelineFlow(input);
+  const scope = { workspaceId: input.workspaceId! };
+
+  if (isPipelineInlineExecutionEnabled()) {
+    const result = await executePipelineInline(input);
+    return NextResponse.json({
+      ok: true,
+      runId: result.runId,
+      status: result.status,
+      mode: result.mode,
+      counts: result.counts,
+      reportId: result.reportId,
+      errors: result.errors,
+    });
+  }
+
+  const queued = await enqueuePipelineJob({
+    scope,
+    route: '/api/cron/pipeline',
+    input,
+  });
+
+  schedulePipelineJobDrain();
+
   return NextResponse.json({
     ok: true,
-    runId: result.runId,
-    status: result.status,
-    mode: result.mode,
-    counts: result.counts,
-    reportId: result.reportId,
-    errors: result.errors,
-  });
+    runId: queued.runId,
+    jobId: queued.jobId,
+    status: queued.status,
+    reused: queued.reused,
+    queueDepth: queued.queueDepth,
+  }, { status: queued.reused && queued.status === 'succeeded' ? 200 : 202 });
 }
 
 async function runTrackedTopicsScheduler(day: string, maxTopics: number): Promise<Response> {
-  const dueTopics = await listDueTrackedTopics(new Date());
+  const scope = await resolveDefaultWorkspaceScope();
+  const dueTopics = await listDueTrackedTopics(scope, new Date());
   const selectedTopics = dueTopics.slice(0, maxTopics);
 
   const runs: Array<{
@@ -52,25 +89,45 @@ async function runTrackedTopicsScheduler(day: string, maxTopics: number): Promis
     chosenMode: PipelineRunMode;
     decisionReason: string;
     runId: string;
+    jobId: string | null;
     status: string;
-    reportId: string | null;
-    errors: Array<{ stage: string; message: string; documentId?: string }>;
   }> = [];
 
   for (const topic of selectedTopics) {
-    await setupTopicContext(topic.id);
-    const refreshed = await getSavedTopicsByIds([topic.id]);
+    await setupTopicContext(scope, topic.id);
+    const refreshed = await getSavedTopicsByIds(scope, [topic.id]);
     const activeTopic = refreshed[0] ?? topic;
 
-    const decision = await decideScheduledRunMode(activeTopic);
+    const decision = await decideScheduledRunMode(scope, activeTopic);
 
-    const result = await pipelineFlow({
+    const input: PipelineInput = {
+      workspaceId: scope.workspaceId,
       day,
       topicId: topic.id,
       runMode: decision.mode,
       trigger: 'scheduler',
       idempotencyKey: `scheduler:${day}:${topic.id}:${decision.mode}`,
       enableCategorization: true,
+    };
+
+    if (isPipelineInlineExecutionEnabled()) {
+      const result = await executePipelineInline(input);
+      runs.push({
+        topicId: topic.id,
+        topicName: topic.name,
+        chosenMode: decision.mode,
+        decisionReason: decision.reason,
+        runId: result.runId,
+        jobId: null,
+        status: result.status,
+      });
+      continue;
+    }
+
+    const queued = await enqueuePipelineJob({
+      scope,
+      route: '/api/cron/pipeline',
+      input,
     });
 
     runs.push({
@@ -78,11 +135,14 @@ async function runTrackedTopicsScheduler(day: string, maxTopics: number): Promis
       topicName: topic.name,
       chosenMode: decision.mode,
       decisionReason: decision.reason,
-      runId: result.runId,
-      status: result.status,
-      reportId: result.reportId,
-      errors: result.errors,
+      runId: queued.runId,
+      jobId: queued.jobId,
+      status: queued.status,
     });
+  }
+
+  if (!isPipelineInlineExecutionEnabled() && runs.length > 0) {
+    schedulePipelineJobDrain(runs.length);
   }
 
   return NextResponse.json({
@@ -101,18 +161,19 @@ async function runCronPipeline(request: Request): Promise<Response> {
 
   let body: CronPipelineBody = {};
   if (request.method === 'POST') {
-    try {
-      body = (await request.json()) as CronPipelineBody;
-    } catch {
-      body = {};
-    }
+    body = await parseJsonRequest(request, cronPipelineRequestSchema, {
+      route: '/api/cron/pipeline',
+      allowEmptyObject: true,
+    });
   }
 
   const day = typeof body.day === 'string' && body.day.trim() ? body.day.trim() : undefined;
 
   // If a specific topic or explicit run mode is supplied, run the requested single pipeline.
   if ((typeof body.topicId === 'string' && body.topicId.trim()) || body.runMode || body.goal) {
+    const scope = await resolveDefaultWorkspaceScope();
     const input: PipelineInput = {
+      workspaceId: scope.workspaceId,
       trigger: 'cron',
     };
 
@@ -148,25 +209,47 @@ async function runCronPipeline(request: Request): Promise<Response> {
 }
 
 export async function GET(request: Request) {
-  try {
-    return await runCronPipeline(request);
-  } catch (error) {
-    console.error('Error running pipeline cron:', error);
-    return NextResponse.json(
-      { error: publicErrorMessage(error, 'Failed to run pipeline cron') },
-      { status: 500 },
-    );
-  }
+  const requestId = getOrCreateRequestId(request);
+  return logger.withContext({ requestId, route: '/api/cron/pipeline' }, async () => {
+    try {
+      return setResponseRequestId(await runCronPipeline(request), requestId);
+    } catch (error) {
+      if (error instanceof RequestValidationError) {
+        return setResponseRequestId(validationErrorResponse(error), requestId);
+      }
+      logger.error('pipeline.cron.failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return setResponseRequestId(
+        NextResponse.json(
+          { error: publicErrorMessage(error, 'Failed to run pipeline cron') },
+          { status: 500 },
+        ),
+        requestId,
+      );
+    }
+  });
 }
 
 export async function POST(request: Request) {
-  try {
-    return await runCronPipeline(request);
-  } catch (error) {
-    console.error('Error running pipeline cron:', error);
-    return NextResponse.json(
-      { error: publicErrorMessage(error, 'Failed to run pipeline cron') },
-      { status: 500 },
-    );
-  }
+  const requestId = getOrCreateRequestId(request);
+  return logger.withContext({ requestId, route: '/api/cron/pipeline' }, async () => {
+    try {
+      return setResponseRequestId(await runCronPipeline(request), requestId);
+    } catch (error) {
+      if (error instanceof RequestValidationError) {
+        return setResponseRequestId(validationErrorResponse(error), requestId);
+      }
+      logger.error('pipeline.cron.failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return setResponseRequestId(
+        NextResponse.json(
+          { error: publicErrorMessage(error, 'Failed to run pipeline cron') },
+          { status: 500 },
+        ),
+        requestId,
+      );
+    }
+  });
 }

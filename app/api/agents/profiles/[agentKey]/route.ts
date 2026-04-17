@@ -1,36 +1,46 @@
 import { NextResponse } from 'next/server';
 import {
-  AGENT_KEYS,
   type AgentKey,
   type AgentProfileSettingsMap,
 } from '@/server/agents/configuration';
+import {
+  agentProfileKeySchema,
+  agentProfilePatchRequestSchema,
+} from '@/server/http/requestSchemas';
+import {
+  parseJsonRequest,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
 import { updateAgentProfile } from '@/server/repos/agentProfiles.repo';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
-
-function isAgentKey(value: string): value is AgentKey {
-  return (AGENT_KEYS as readonly string[]).includes(value);
-}
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ agentKey: string }> },
 ) {
   try {
-    const { agentKey } = await params;
-
-    if (!isAgentKey(agentKey)) {
+    const parsedKey = agentProfileKeySchema.safeParse((await params).agentKey);
+    if (!parsedKey.success) {
       return NextResponse.json({ error: 'Unknown agent profile' }, { status: 404 });
     }
 
-    const body = (await request.json()) as Record<string, unknown>;
+    const agentKey = parsedKey.data as AgentKey;
+    const body = await parseJsonRequest(request, agentProfilePatchRequestSchema, {
+      route: '/api/agents/profiles/[agentKey]',
+      allowEmptyObject: true,
+    });
     const profile = await updateAgentProfile(
       agentKey,
       body as Partial<AgentProfileSettingsMap[AgentKey]>,
     );
     return NextResponse.json({ profile });
   } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return validationErrorResponse(error);
+    }
     return NextResponse.json(
       { error: publicErrorMessage(error, 'Failed to update agent profile') },
       { status: 400 },

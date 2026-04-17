@@ -57,6 +57,21 @@ async function getPreferredMembership(
   return rows[0] ?? null;
 }
 
+async function getReusableWorkspaceId(executor: SqlExecutor): Promise<string | null> {
+  const rows = await executor<Array<{ id: string }>>`
+    SELECT w.id
+    FROM workspaces w
+    LEFT JOIN memberships m ON m.workspace_id = w.id
+    WHERE w.owner_user_id IS NULL
+    GROUP BY w.id, w.created_at
+    HAVING COUNT(m.user_id) = 0
+    ORDER BY w.created_at ASC
+    LIMIT 1
+  `;
+
+  return rows[0]?.id ?? null;
+}
+
 export async function upsertUserIdentity(input: {
   email: string;
   displayName?: string | null;
@@ -151,23 +166,39 @@ export async function ensureMembershipContextForUser(input: {
       return refreshed;
     }
 
-    const workspaceRows = await txSql<Array<{ id: string }>>`
-      INSERT INTO workspaces (slug, name, owner_user_id, updated_at)
-      VALUES (
-        ${input.workspaceSlug},
-        ${input.workspaceName},
-        ${input.role === 'owner' ? input.userId : null},
-        now()
-      )
-      ON CONFLICT (slug)
-      DO UPDATE
-        SET name = COALESCE(workspaces.name, EXCLUDED.name),
-            owner_user_id = COALESCE(workspaces.owner_user_id, EXCLUDED.owner_user_id),
-            updated_at = now()
-      RETURNING id
-    `;
+    const reusableWorkspaceId = await getReusableWorkspaceId(txSql);
+    let workspaceId = reusableWorkspaceId;
 
-    const workspaceId = workspaceRows[0]?.id;
+    if (workspaceId) {
+      await txSql`
+        UPDATE workspaces
+        SET
+          slug = ${input.workspaceSlug},
+          name = ${input.workspaceName},
+          owner_user_id = ${input.role === 'owner' ? input.userId : null},
+          updated_at = now()
+        WHERE id = ${workspaceId}
+      `;
+    } else {
+      const workspaceRows = await txSql<Array<{ id: string }>>`
+        INSERT INTO workspaces (slug, name, owner_user_id, updated_at)
+        VALUES (
+          ${input.workspaceSlug},
+          ${input.workspaceName},
+          ${input.role === 'owner' ? input.userId : null},
+          now()
+        )
+        ON CONFLICT (slug)
+        DO UPDATE
+          SET name = COALESCE(workspaces.name, EXCLUDED.name),
+              owner_user_id = COALESCE(workspaces.owner_user_id, EXCLUDED.owner_user_id),
+              updated_at = now()
+        RETURNING id
+      `;
+
+      workspaceId = workspaceRows[0]?.id ?? null;
+    }
+
     if (!workspaceId) {
       throw new Error('Failed to create or reuse workspace for authenticated session');
     }

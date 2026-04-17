@@ -1,4 +1,5 @@
 import { sql } from "@/db";
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import { z } from 'zod';
 import { openAIExecutionService } from '@/server/ai/openai-execution-service';
 import { buildPrompt } from '@/server/ai/prompt-builder';
@@ -79,6 +80,7 @@ export type EvidenceReviewView = {
 };
 
 export async function getTopTags(
+  scope: WorkspaceScope,
   limit = 10
 ): Promise<Array<{ tag: string; count: number }>> {
   try {
@@ -96,7 +98,9 @@ export async function getTopTags(
       FROM (
         SELECT unnest(tags) AS tag
         FROM documents
-        WHERE tags IS NOT NULL AND array_length(tags, 1) > 0
+        WHERE workspace_id = ${scope.workspaceId}
+          AND tags IS NOT NULL
+          AND array_length(tags, 1) > 0
       ) t
       WHERE t.tag IS NOT NULL AND btrim(t.tag) <> ''
       GROUP BY t.tag
@@ -331,8 +335,8 @@ const STUB_RESOURCES_BY_TAG: Record<
   ],
 };
 
-export async function buildStubLearningBrief(): Promise<LearningBrief> {
-  const topTags = await getTopTags(2);
+export async function buildStubLearningBrief(scope: WorkspaceScope): Promise<LearningBrief> {
+  const topTags = await getTopTags(scope, 2);
   const topicTagsUsed = topTags.map((t) => t.tag);
 
   // Gather candidates from the stub catalog
@@ -391,13 +395,13 @@ export async function buildStubLearningBrief(): Promise<LearningBrief> {
   };
 }
 
-export async function buildWebLearningBrief(): Promise<LearningBrief> {
-  const topTags = await getTopTags(2);
+export async function buildWebLearningBrief(scope: WorkspaceScope): Promise<LearningBrief> {
+  const topTags = await getTopTags(scope, 2);
   const topicTagsUsed = topTags.map((t) => t.tag);
 
   // If no API key or no tags yet, fall back immediately.
   if (!process.env.TAVILY_API_KEY || topicTagsUsed.length === 0) {
-    return buildStubLearningBrief();
+    return buildStubLearningBrief(scope);
   }
 
   // Strategy: 3 focused searches per day (1 credit each on basic):
@@ -476,7 +480,7 @@ export async function buildWebLearningBrief(): Promise<LearningBrief> {
 
   // Ensure we always return exactly 3 when possible; if not, fall back to stub.
   if (resources.length < 3) {
-    return buildStubLearningBrief();
+    return buildStubLearningBrief(scope);
   }
 
   return {
@@ -488,15 +492,18 @@ export async function buildWebLearningBrief(): Promise<LearningBrief> {
 /**
  * Main entrypoint for MVP: prefer web (Tavily) when configured, otherwise stub.
  */
-export async function buildLearningBrief(): Promise<LearningBrief> {
-  return process.env.TAVILY_API_KEY ? buildWebLearningBrief() : buildStubLearningBrief();
+export async function buildLearningBrief(scope: WorkspaceScope): Promise<LearningBrief> {
+  return process.env.TAVILY_API_KEY ? buildWebLearningBrief(scope) : buildStubLearningBrief(scope);
 }
 
 /**
  * Helper: Select 1-2 documents to ground daily content.
  * Prefer documents that match top tags.
  */
-async function getSourceDocsForToday(topTags: Array<{ tag: string; count: number }>) {
+async function getSourceDocsForToday(
+  scope: WorkspaceScope,
+  topTags: Array<{ tag: string; count: number }>,
+) {
 
   if (topTags.length === 0) return [];
 
@@ -512,7 +519,8 @@ async function getSourceDocsForToday(topTags: Array<{ tag: string; count: number
   }>>`
     SELECT id, title, content, tags
     FROM documents
-    WHERE tags && ${sql.array(primaryTags)}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND tags && ${sql.array(primaryTags)}
     ORDER BY imported_at DESC
     LIMIT 2
   `;
@@ -738,7 +746,7 @@ function toArtifactStatus(
  * Lightweight view for /today.
  * This intentionally avoids web search and LLM calls so the page loads quickly.
  */
-export async function getResearchView(): Promise<ResearchView> {
+export async function getResearchView(scope: WorkspaceScope): Promise<ResearchView> {
   const date = todayISODate();
 
   const [inboxRows, activeRows, runRows] = await Promise.all([
@@ -758,7 +766,8 @@ export async function getResearchView(): Promise<ResearchView> {
     >`
       SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
       FROM artifacts
-      WHERE status = 'proposed'
+      WHERE workspace_id = ${scope.workspaceId}
+        AND status = 'proposed'
       ORDER BY created_at DESC
     `,
     sql<
@@ -777,7 +786,8 @@ export async function getResearchView(): Promise<ResearchView> {
     >`
       SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
       FROM artifacts
-      WHERE status = 'approved'
+      WHERE workspace_id = ${scope.workspaceId}
+        AND status = 'approved'
       ORDER BY COALESCE(reviewed_at, created_at) DESC
     `,
     sql<
@@ -792,6 +802,7 @@ export async function getResearchView(): Promise<ResearchView> {
     >`
       SELECT id, kind, status, started_at, ended_at, metadata
       FROM runs
+      WHERE workspace_id = ${scope.workspaceId}
       ORDER BY started_at DESC
       LIMIT 12
     `,
@@ -849,7 +860,8 @@ export async function getResearchView(): Promise<ResearchView> {
     ? await sql<Array<{ id: string; source: string }>>`
         SELECT id, source
         FROM documents
-        WHERE id = ANY(${Array.from(documentIds)})
+        WHERE workspace_id = ${scope.workspaceId}
+          AND id = ANY(${Array.from(documentIds)})
       `
     : [];
 
@@ -923,7 +935,7 @@ export async function getResearchView(): Promise<ResearchView> {
   };
 }
 
-export async function getEvidenceReviewView(): Promise<EvidenceReviewView> {
+export async function getEvidenceReviewView(scope: WorkspaceScope): Promise<EvidenceReviewView> {
   const date = todayISODate();
 
   const [inboxRows, activeRows, runRows] = await Promise.all([
@@ -943,7 +955,8 @@ export async function getEvidenceReviewView(): Promise<EvidenceReviewView> {
     >`
       SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
       FROM artifacts
-      WHERE status = 'proposed'
+      WHERE workspace_id = ${scope.workspaceId}
+        AND status = 'proposed'
       ORDER BY created_at DESC
     `,
     sql<
@@ -962,7 +975,8 @@ export async function getEvidenceReviewView(): Promise<EvidenceReviewView> {
     >`
       SELECT id, run_id, agent, kind, day, title, content, source_refs, status, created_at
       FROM artifacts
-      WHERE status = 'approved'
+      WHERE workspace_id = ${scope.workspaceId}
+        AND status = 'approved'
       ORDER BY COALESCE(reviewed_at, created_at) DESC
     `,
     sql<
@@ -977,6 +991,7 @@ export async function getEvidenceReviewView(): Promise<EvidenceReviewView> {
     >`
       SELECT id, kind, status, started_at, ended_at, metadata
       FROM runs
+      WHERE workspace_id = ${scope.workspaceId}
       ORDER BY started_at DESC
       LIMIT 12
     `,
@@ -994,7 +1009,8 @@ export async function getEvidenceReviewView(): Promise<EvidenceReviewView> {
     ? await sql<Array<{ id: string; source: string }>>`
         SELECT id, source
         FROM documents
-        WHERE id = ANY(${Array.from(documentIds)})
+        WHERE workspace_id = ${scope.workspaceId}
+          AND id = ANY(${Array.from(documentIds)})
       `
     : [];
 
@@ -1073,13 +1089,13 @@ export type AgentControlRun = ResearchRun;
 export type AgentControlArtifact = ResearchArtifact;
 export type AgentControlCenterView = ResearchView;
 
-export async function getTodayView(): Promise<TodayView> {
+export async function getTodayView(scope: WorkspaceScope): Promise<TodayView> {
   const date = todayISODate();
-  const topTags = await getTopTags(10);
-  const learningBrief = await buildLearningBrief();
+  const topTags = await getTopTags(scope, 10);
+  const learningBrief = await buildLearningBrief(scope);
 
   // Generate additional content from user's documents
-  const sourceDocs = await getSourceDocsForToday(topTags);
+  const sourceDocs = await getSourceDocsForToday(scope, topTags);
   const additionalContent = await generateTodayContent(sourceDocs);
 
   return {

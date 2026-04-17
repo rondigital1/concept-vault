@@ -1,5 +1,6 @@
 import { listDocuments } from '@/server/repos/documents.repo';
 import { listCollections } from '@/server/repos/collections.repo';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { Inter } from 'next/font/google';
 import { LibraryShell } from './components/LibraryShell';
 
@@ -16,9 +17,10 @@ export default async function LibraryLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const scope = await requireSessionWorkspace();
   const [documents, collections] = await Promise.all([
-    listDocuments(),
-    listCollections(),
+    listDocuments(scope),
+    listCollections(scope),
   ]);
 
   return (

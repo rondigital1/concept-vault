@@ -5,21 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ThemeToggle } from './ThemeToggle';
 import { TopNavLinks } from './TopNavLinks';
-
-const IMMERSIVE_ROUTES = new Set(['/reports']);
-const IMMERSIVE_ROUTE_PREFIXES = ['/agents', '/ingest', '/library', '/today'];
-
-function isImmersiveRoute(pathname: string): boolean {
-  if (IMMERSIVE_ROUTES.has(pathname)) {
-    return true;
-  }
-
-  return IMMERSIVE_ROUTE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-}
+import { isImmersiveAppRoute } from './topNav';
 
 export function AppChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const immersive = isImmersiveRoute(pathname);
+  const immersive = isImmersiveAppRoute(pathname);
 
   useEffect(() => {
     document.body.dataset.appChrome = immersive ? 'immersive' : 'default';

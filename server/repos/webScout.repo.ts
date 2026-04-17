@@ -6,6 +6,7 @@
  */
 
 import { sql } from '@/db';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 
 // Type accepted by sql.json(); used to assert Record<string, unknown> for JSONB.
 type JsonParam = Parameters<typeof sql.json>[0];
@@ -20,6 +21,7 @@ export interface DocumentRow {
 }
 
 export interface ArtifactInput {
+  workspaceId: string;
   runId: string | null;
   agent: string;
   kind: string;
@@ -34,10 +36,14 @@ export interface ArtifactInput {
 /**
  * Fetch recent documents for deriving search queries
  */
-export async function getRecentDocumentsForQuery(limit: number): Promise<DocumentRow[]> {
+export async function getRecentDocumentsForQuery(
+  scope: WorkspaceScope,
+  limit: number,
+): Promise<DocumentRow[]> {
   const rows = await sql<DocumentRow[]>`
     SELECT id, title, content, tags
     FROM documents
+    WHERE workspace_id = ${scope.workspaceId}
     ORDER BY imported_at DESC
     LIMIT ${limit}
   `;
@@ -48,13 +54,15 @@ export async function getRecentDocumentsForQuery(limit: number): Promise<Documen
  * Fetch documents filtered by tags
  */
 export async function getDocumentsByTags(
+  scope: WorkspaceScope,
   tags: string[],
   limit: number
 ): Promise<DocumentRow[]> {
   const rows = await sql<DocumentRow[]>`
     SELECT id, title, content, tags
     FROM documents
-    WHERE tags && ${tags}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND tags && ${tags}
     ORDER BY imported_at DESC
     LIMIT ${limit}
   `;
@@ -66,10 +74,10 @@ export async function getDocumentsByTags(
 /**
  * Check if a URL already exists in documents (for deduplication)
  */
-export async function checkUrlExists(url: string): Promise<boolean> {
+export async function checkUrlExists(scope: WorkspaceScope, url: string): Promise<boolean> {
   const rows = await sql<Array<{ exists: boolean }>>`
     SELECT EXISTS(
-      SELECT 1 FROM documents WHERE source = ${url}
+      SELECT 1 FROM documents WHERE workspace_id = ${scope.workspaceId} AND source = ${url}
     ) as exists
   `;
   return rows[0]?.exists ?? false;
@@ -78,11 +86,17 @@ export async function checkUrlExists(url: string): Promise<boolean> {
 /**
  * Check multiple URLs for existence (batch dedup)
  */
-export async function filterExistingUrls(urls: string[]): Promise<string[]> {
+export async function filterExistingUrls(
+  scope: WorkspaceScope,
+  urls: string[],
+): Promise<string[]> {
   if (urls.length === 0) return [];
 
   const rows = await sql<Array<{ source: string }>>`
-    SELECT source FROM documents WHERE source = ANY(${urls})
+    SELECT source
+    FROM documents
+    WHERE workspace_id = ${scope.workspaceId}
+      AND source = ANY(${urls})
   `;
 
   const existingUrls = new Set(rows.map((r) => r.source));
@@ -93,7 +107,10 @@ export async function filterExistingUrls(urls: string[]): Promise<string[]> {
  * Filter out URLs that were previously proposed or rejected as web-proposal artifacts.
  * Returns only URLs that have NOT been previously proposed/rejected.
  */
-export async function filterPreviouslyProposedUrls(urls: string[]): Promise<{
+export async function filterPreviouslyProposedUrls(
+  scope: WorkspaceScope,
+  urls: string[],
+): Promise<{
   newUrls: string[];
   previouslyProposed: string[];
 }> {
@@ -102,7 +119,8 @@ export async function filterPreviouslyProposedUrls(urls: string[]): Promise<{
   const rows = await sql<Array<{ url: string }>>`
     SELECT DISTINCT content->>'url' AS url
     FROM artifacts
-    WHERE kind = 'web-proposal'
+    WHERE workspace_id = ${scope.workspaceId}
+      AND kind = 'web-proposal'
       AND content->>'url' = ANY(${urls})
       AND status IN ('proposed', 'rejected')
   `;
@@ -121,8 +139,9 @@ export async function filterPreviouslyProposedUrls(urls: string[]): Promise<{
  */
 export async function insertWebProposalArtifact(input: ArtifactInput): Promise<string> {
   const rows = await sql<Array<{ id: string }>>`
-    INSERT INTO artifacts (run_id, agent, kind, day, title, content, source_refs, status)
+    INSERT INTO artifacts (workspace_id, run_id, agent, kind, day, title, content, source_refs, status)
     VALUES (
+      ${input.workspaceId},
       ${input.runId},
       ${input.agent},
       ${input.kind},

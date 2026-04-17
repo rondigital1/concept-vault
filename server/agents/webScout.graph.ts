@@ -103,6 +103,7 @@ export async function webScoutGraph(
 
   const result = await graph.invoke(
     {
+      workspaceId: input.workspaceId,
       goal,
       mode: input.mode,
       day: input.day,

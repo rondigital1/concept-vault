@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getReportById } from '@/server/repos/report.repo';
 import ReportDetailClient from './ReportDetailClient';
 
@@ -8,8 +9,9 @@ export default async function ReportDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const scope = await requireSessionWorkspace();
 
-  const report = await getReportById(id);
+  const report = await getReportById(scope, id);
   if (!report) {
     notFound();
   }

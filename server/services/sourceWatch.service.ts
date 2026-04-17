@@ -1,4 +1,5 @@
 import type { SourceWatchKind } from '@/db/types';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import {
   createSourceWatchItem,
   deleteSourceWatchItem,
@@ -27,7 +28,7 @@ export interface SourceWatchItemDto {
 export interface CreateSourceWatchInput {
   url: string;
   label?: string;
-  kind?: SourceWatchKind;
+  kind?: string;
   isActive?: boolean;
   checkIntervalHours?: number;
 }
@@ -35,7 +36,7 @@ export interface CreateSourceWatchInput {
 export interface UpdateSourceWatchInput {
   url?: string;
   label?: string;
-  kind?: SourceWatchKind;
+  kind?: string;
   isActive?: boolean;
   checkIntervalHours?: number;
 }
@@ -112,18 +113,22 @@ function normalizeIntervalHours(input: unknown, fallback: number): number {
   return Math.max(1, Math.min(168, Math.round(input)));
 }
 
-export async function listSourceWatch(): Promise<SourceWatchItemDto[]> {
-  const rows = await listSourceWatchItems();
+export async function listSourceWatch(scope: WorkspaceScope): Promise<SourceWatchItemDto[]> {
+  const rows = await listSourceWatchItems(scope);
   return rows.map(toDto);
 }
 
-export async function createSourceWatch(input: CreateSourceWatchInput): Promise<SourceWatchItemDto> {
+export async function createSourceWatch(
+  scope: WorkspaceScope,
+  input: CreateSourceWatchInput,
+): Promise<SourceWatchItemDto> {
   const { url, domain } = normalizeUrl(input.url);
   const checkIntervalHours = normalizeIntervalHours(input.checkIntervalHours, 24);
   const kind = normalizeKind(input.kind);
   const label = normalizeLabel(input.label, domain);
 
   const row = await createSourceWatchItem({
+    workspaceId: scope.workspaceId,
     url,
     domain,
     label,
@@ -136,6 +141,7 @@ export async function createSourceWatch(input: CreateSourceWatchInput): Promise<
 }
 
 export async function updateSourceWatch(
+  scope: WorkspaceScope,
   id: string,
   input: UpdateSourceWatchInput
 ): Promise<SourceWatchItemDto | null> {
@@ -155,7 +161,7 @@ export async function updateSourceWatch(
       ? normalizeLabel(input.label, labelFromUrl ?? '').trim()
       : undefined;
 
-  const row = await updateSourceWatchItem(id, {
+  const row = await updateSourceWatchItem(scope, id, {
     url: normalizedUrl,
     domain: normalizedDomain,
     label: normalizedLabel || undefined,
@@ -170,16 +176,19 @@ export async function updateSourceWatch(
   return row ? toDto(row) : null;
 }
 
-export async function deleteSourceWatch(id: string): Promise<boolean> {
-  return deleteSourceWatchItem(id);
+export async function deleteSourceWatch(scope: WorkspaceScope, id: string): Promise<boolean> {
+  return deleteSourceWatchItem(scope, id);
 }
 
-export async function checkoutDueSources(limit = 8): Promise<SourceWatchItemDto[]> {
-  const rows = await getDueSourceWatchItems(limit);
+export async function checkoutDueSources(
+  scope: WorkspaceScope,
+  limit = 8,
+): Promise<SourceWatchItemDto[]> {
+  const rows = await getDueSourceWatchItems(scope, limit);
   if (rows.length === 0) {
     return [];
   }
 
-  await markSourceWatchItemsChecked(rows.map((row) => row.id));
+  await markSourceWatchItemsChecked(scope, rows.map((row) => row.id));
   return rows.map(toDto);
 }

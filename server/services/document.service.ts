@@ -1,4 +1,6 @@
 import { sql } from '@/db';
+import { AI_BUDGETS } from '@/server/ai/budget-policy';
+import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import { openAIExecutionService } from '@/server/ai/openai-execution-service';
 import { buildPrompt } from '@/server/ai/prompt-builder';
 import { AI_TASKS } from '@/server/ai/tasks';
@@ -10,6 +12,7 @@ import { CategorizationSchema, TagExtractionSchema } from '@/server/langchain/sc
  */
 export type DocumentRow = {
   id: string;
+  workspace_id?: string;
   source: string;
   title: string;
   content: string;
@@ -85,11 +88,15 @@ function finalizeTags(candidates: string[], maxFinal: number): string[] {
   return out;
 }
 
-export async function getDocument(documentId: string): Promise<DocumentRow | null> {
+export async function getDocument(
+  scope: WorkspaceScope,
+  documentId: string,
+): Promise<DocumentRow | null> {
   const rows = await sql<Array<DocumentRow>>`
     SELECT id, source, title, content, tags, content_hash, is_favorite, imported_at
     FROM documents
-    WHERE id = ${documentId}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${documentId}
     LIMIT 1
   `;
 
@@ -99,10 +106,11 @@ export async function getDocument(documentId: string): Promise<DocumentRow | nul
 /**
  * Get all documents, ordered by most recently imported first
  */
-export async function getAllDocuments(): Promise<DocumentRow[]> {
+export async function getAllDocuments(scope: WorkspaceScope): Promise<DocumentRow[]> {
   const rows = await sql<Array<DocumentRow>>`
     SELECT id, source, title, content, tags, content_hash, is_favorite, imported_at
     FROM documents
+    WHERE workspace_id = ${scope.workspaceId}
     ORDER BY imported_at DESC
   `;
 
@@ -114,7 +122,9 @@ export async function getAllDocuments(): Promise<DocumentRow[]> {
  * A document is WebScout-discovered when an approved WebScout proposal
  * matches its source URL or explicitly links back to the document ID.
  */
-export async function getAllDocumentsForLibrary(): Promise<LibraryDocumentRow[]> {
+export async function getAllDocumentsForLibrary(
+  scope: WorkspaceScope,
+): Promise<LibraryDocumentRow[]> {
   const rows = await sql<Array<LibraryDocumentRow>>`
     SELECT
       d.id,
@@ -129,6 +139,7 @@ export async function getAllDocumentsForLibrary(): Promise<LibraryDocumentRow[]>
         SELECT 1
         FROM artifacts a
         WHERE a.kind = 'web-proposal'
+          AND a.workspace_id = ${scope.workspaceId}
           AND a.status = 'approved'
           AND (
             COALESCE(a.content->>'url', '') = d.source
@@ -136,6 +147,7 @@ export async function getAllDocumentsForLibrary(): Promise<LibraryDocumentRow[]>
           )
       ) AS is_webscout_discovered
     FROM documents d
+    WHERE d.workspace_id = ${scope.workspaceId}
     ORDER BY d.imported_at DESC
   `;
 
@@ -146,11 +158,12 @@ export async function getAllDocumentsForLibrary(): Promise<LibraryDocumentRow[]>
  * Picks a document for curation from most recent imports.
  * Prioritizes untagged documents, then falls back to the latest document.
  */
-export async function getDocumentIdForCuration(): Promise<string | null> {
+export async function getDocumentIdForCuration(scope: WorkspaceScope): Promise<string | null> {
   const untagged = await sql<Array<{ id: string }>>`
     SELECT id
     FROM documents
-    WHERE cardinality(tags) = 0
+    WHERE workspace_id = ${scope.workspaceId}
+      AND cardinality(tags) = 0
     ORDER BY imported_at DESC
     LIMIT 1
   `;
@@ -162,6 +175,7 @@ export async function getDocumentIdForCuration(): Promise<string | null> {
   const latest = await sql<Array<{ id: string }>>`
     SELECT id
     FROM documents
+    WHERE workspace_id = ${scope.workspaceId}
     ORDER BY imported_at DESC
     LIMIT 1
   `;
@@ -218,6 +232,7 @@ export async function extractTags(content: string): Promise<string[]> {
       prompt,
       schema: TagExtractionSchema,
       schemaName: 'document_tag_extraction',
+      budget: AI_BUDGETS.tagDocument,
     });
     return finalizeTags(response.output.tags, 8);
   } catch {
@@ -255,6 +270,7 @@ export async function categorize(tags: string[]): Promise<string> {
       prompt,
       schema: CategorizationSchema,
       schemaName: 'document_category_selection',
+      budget: AI_BUDGETS.categorizeDocument,
     });
     return response.output.category;
   } catch {
@@ -266,9 +282,16 @@ export async function categorize(tags: string[]): Promise<string> {
  * Deterministic related-doc lookup (no LLM):
  * - Find docs whose `tags` overlap with this document.
  */
-export async function findRelatedDocs(documentId: string): Promise<string[]> {
+export async function findRelatedDocs(
+  scope: WorkspaceScope,
+  documentId: string,
+): Promise<string[]> {
   const base = await sql<Array<{ tags: string[] }>>`
-    SELECT tags FROM documents WHERE id = ${documentId} LIMIT 1
+    SELECT tags
+    FROM documents
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${documentId}
+    LIMIT 1
   `;
   const tags = base[0]?.tags ?? [];
   if (!tags.length) return [];
@@ -276,7 +299,8 @@ export async function findRelatedDocs(documentId: string): Promise<string[]> {
   const rows = await sql<Array<{ id: string }>>`
     SELECT id
     FROM documents
-    WHERE id <> ${documentId}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id <> ${documentId}
       AND tags && ${sql.array(tags)}
     ORDER BY imported_at DESC
     LIMIT 10
@@ -286,27 +310,35 @@ export async function findRelatedDocs(documentId: string): Promise<string[]> {
 }
 
 export async function setDocumentTags(
+  scope: WorkspaceScope,
   documentId: string,
   tags: string[]
 ): Promise<void> {
   await sql`
     UPDATE documents
     SET tags = ${sql.array(tags)}
-    WHERE id = ${documentId}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${documentId}
   `;
 }
 
 export async function updateDocumentTitle(
+  scope: WorkspaceScope,
   documentId: string,
   title: string
 ): Promise<void> {
   await sql`
     UPDATE documents
     SET title = ${title}
-    WHERE id = ${documentId}
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${documentId}
   `;
 }
 
-export async function deleteDocument(documentId: string): Promise<void> {
-  await sql`DELETE FROM documents WHERE id = ${documentId}`;
+export async function deleteDocument(scope: WorkspaceScope, documentId: string): Promise<void> {
+  await sql`
+    DELETE FROM documents
+    WHERE workspace_id = ${scope.workspaceId}
+      AND id = ${documentId}
+  `;
 }

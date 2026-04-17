@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { WebScoutRunClient } from './WebScoutRunClient';
 import { getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
 import {
@@ -41,11 +42,12 @@ export default async function WebScoutPage({
 }: {
   searchParams?: Promise<PageSearchParams> | PageSearchParams;
 }) {
+  const scope = await requireSessionWorkspace();
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
   const runMode = firstQueryParam(resolvedSearchParams.runMode) ?? 'full_report';
-  const scope = firstQueryParam(resolvedSearchParams.scope);
+  const requestedScope = firstQueryParam(resolvedSearchParams.scope);
   const topicId = firstQueryParam(resolvedSearchParams.topicId);
-  const isBatchFindSources = runMode === 'scout_only' && scope === 'all_topics';
+  const isBatchFindSources = runMode === 'scout_only' && requestedScope === 'all_topics';
   const requiresTopicSelection = runMode === 'full_report' && !topicId;
   const pageTitle = requiresTopicSelection ? 'Generate Report' : getRunModeTitle(runMode);
   const pageDescriptionMap: Record<string, string> = {
@@ -80,7 +82,7 @@ export default async function WebScoutPage({
 
   if (requiresTopicSelection) {
     try {
-      const readyTopics = await listReportReadyTopics(MIN_LINKED_DOCUMENTS_FOR_REPORT);
+      const readyTopics = await listReportReadyTopics(scope, MIN_LINKED_DOCUMENTS_FOR_REPORT);
       reportTopicOptions = readyTopics.map((entry) => ({
         id: entry.topic.id,
         name: entry.topic.name,
@@ -98,6 +100,7 @@ export default async function WebScoutPage({
   if (isBatchFindSources) {
     try {
       const topicsNeedingSources = await listTopicsNeedingSources(
+        scope,
         MIN_LINKED_DOCUMENTS_FOR_REPORT,
       );
       batchTopicOptions = topicsNeedingSources.map((entry) => ({
@@ -115,7 +118,7 @@ export default async function WebScoutPage({
 
   if (topicId) {
     try {
-      const topics = await getSavedTopicsByIds([topicId]);
+      const topics = await getSavedTopicsByIds(scope, [topicId]);
       selectedTopicName = topics[0]?.name ?? null;
     } catch {
       selectedTopicName = null;

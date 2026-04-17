@@ -5,6 +5,7 @@
  */
 
 import { openAIExecutionService } from '@/server/ai/openai-execution-service';
+import { AI_BUDGETS } from '@/server/ai/budget-policy';
 import { buildPrompt } from '@/server/ai/prompt-builder';
 import { AI_TASKS } from '@/server/ai/tasks';
 import { AnalyzeFindingsOutput } from '@/server/services/analyzeFindings.service';
@@ -92,8 +93,9 @@ export async function synthesizeReport(
       task: AI_TASKS.generateFinalReport,
       prompt,
       temperature: 0.4,
+      budget: AI_BUDGETS.reportSynthesis,
       attribution: {
-        jobId,
+        runId: jobId,
       },
     });
     const markdown = response.output;

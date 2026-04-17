@@ -8,11 +8,13 @@ import {
   removeDocumentFromCollection,
 } from '@/server/repos/collections.repo';
 import { revalidatePath } from 'next/cache';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export async function createCollectionAction(name: string, description?: string) {
   try {
-    const id = await createCollection(name, description);
+    const scope = await requireSessionWorkspace();
+    const id = await createCollection(scope, name, description);
     revalidatePath('/library');
     return { success: true, id };
   } catch (error) {
@@ -26,7 +28,8 @@ export async function createCollectionAction(name: string, description?: string)
 
 export async function renameCollectionAction(collectionId: string, name: string) {
   try {
-    await updateCollection(collectionId, { name });
+    const scope = await requireSessionWorkspace();
+    await updateCollection(scope, collectionId, { name });
     revalidatePath('/library');
     return { success: true };
   } catch (error) {
@@ -40,7 +43,8 @@ export async function renameCollectionAction(collectionId: string, name: string)
 
 export async function deleteCollectionAction(collectionId: string) {
   try {
-    await deleteCollection(collectionId);
+    const scope = await requireSessionWorkspace();
+    await deleteCollection(scope, collectionId);
     revalidatePath('/library');
     return { success: true };
   } catch (error) {
@@ -57,7 +61,8 @@ export async function addToCollectionAction(
   documentId: string,
 ) {
   try {
-    await addDocumentToCollection(collectionId, documentId);
+    const scope = await requireSessionWorkspace();
+    await addDocumentToCollection(scope, collectionId, documentId);
     revalidatePath('/library');
     return { success: true };
   } catch (error) {
@@ -74,7 +79,8 @@ export async function removeFromCollectionAction(
   documentId: string,
 ) {
   try {
-    await removeDocumentFromCollection(collectionId, documentId);
+    const scope = await requireSessionWorkspace();
+    await removeDocumentFromCollection(scope, collectionId, documentId);
     revalidatePath('/library');
     return { success: true };
   } catch (error) {

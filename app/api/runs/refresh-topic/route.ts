@@ -1,24 +1,31 @@
 import { NextResponse } from 'next/server';
-import { pipelineFlow, PipelineInput, PipelineRunMode } from '@/server/flows/pipeline.flow';
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
+import { PipelineInput } from '@/server/flows/pipeline.flow';
+import { refreshTopicRequestSchema } from '@/server/http/requestSchemas';
+import {
+  parseJsonRequest,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
+import {
+  enqueuePipelineJob,
+  executePipelineInline,
+  isPipelineInlineExecutionEnabled,
+  schedulePipelineJobDrain,
+} from '@/server/jobs/pipelineJobs';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
 
-type Body = {
-  day?: string;
-  topicId?: string;
-  mode?: Extract<PipelineRunMode, 'full_report' | 'incremental_update' | 'concept_only' | 'scout_only'>;
-};
-
 export async function POST(request: Request) {
   try {
-    const body = (await request.json().catch(() => ({}))) as Body;
-
-    if (typeof body.topicId !== 'string' || !body.topicId.trim()) {
-      return NextResponse.json({ error: 'topicId is required' }, { status: 400 });
-    }
+    const scope = await requireSessionWorkspace();
+    const body = await parseJsonRequest(request, refreshTopicRequestSchema, {
+      route: '/api/runs/refresh-topic',
+    });
 
     const input: PipelineInput = {
+      workspaceId: scope.workspaceId,
       trigger: 'manual',
       runMode: body.mode ?? 'incremental_update',
       topicId: body.topicId.trim(),
@@ -27,9 +34,27 @@ export async function POST(request: Request) {
 
     if (typeof body.day === 'string' && body.day.trim()) input.day = body.day.trim();
 
-    const result = await pipelineFlow(input);
-    return NextResponse.json(result);
+    if (isPipelineInlineExecutionEnabled()) {
+      const result = await executePipelineInline(input);
+      return NextResponse.json(result);
+    }
+
+    const queued = await enqueuePipelineJob({
+      scope,
+      route: '/api/runs/refresh-topic',
+      input,
+    });
+
+    schedulePipelineJobDrain();
+
+    return NextResponse.json(queued, { status: queued.reused && queued.status === 'succeeded' ? 200 : 202 });
   } catch (error) {
+    if (error instanceof RequestValidationError) {
+      return validationErrorResponse(error);
+    }
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json(
       { error: publicErrorMessage(error, 'Failed to refresh topic') },
       { status: 500 },

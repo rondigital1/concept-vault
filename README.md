@@ -137,7 +137,7 @@ Approved source candidates can be saved into Library and reused in future topic 
 Tracked topics (daily or weekly cadence) are processed by cron through:
 
 - `GET/POST /api/cron/pipeline`
-- alias: `GET/POST /api/cron/tracked-topics`
+- compatibility alias: `GET/POST /api/cron/tracked-topics`
 
 Scheduler chooses per-topic run mode:
 
@@ -166,6 +166,7 @@ To enable Notion publishing, set:
 2. Configure Google OAuth and set `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET`, and `OWNER_EMAIL`.
 3. Set `CRON_SECRET` in your deployment environment.
 4. Keep cron schedules enabled for `/api/cron/pipeline`.
+5. Use [docs/beta-launch-runbook.md](/Users/ron/AgenticProjects/concept-vault/docs/beta-launch-runbook.md) as the launch checklist and rollback reference.
 
 ## Release Smoke Checks
 

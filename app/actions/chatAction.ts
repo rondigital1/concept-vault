@@ -1,6 +1,7 @@
 'use server';
 
 import type { EasyInputMessage } from 'openai/resources/responses/responses';
+import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { openAIExecutionService } from '@/server/ai/openai-execution-service';
 import { buildPrompt } from '@/server/ai/prompt-builder';
 import { AI_TASKS } from '@/server/ai/tasks';
@@ -21,12 +22,13 @@ export interface ChatResponse {
 
 export async function chatAction(input: ChatActionInput): Promise<ChatResponse> {
   try {
+    const scope = await requireSessionWorkspace();
 
     // Get or create session
-    const session = await chatHistoryService.getOrCreateSession(input.sessionId);
+    const session = await chatHistoryService.getOrCreateSession(scope, input.sessionId);
     const isNewSession = !input.sessionId;
 
-    const sessionData = await chatHistoryService.getSessionWithMessages(session.id);
+    const sessionData = await chatHistoryService.getSessionWithMessages(scope, session.id);
     const history = sessionData?.messages ?? [];
     const lastMessage = history[history.length - 1];
     const canReuseLastUserMessage =
@@ -35,7 +37,7 @@ export async function chatAction(input: ChatActionInput): Promise<ChatResponse> 
       lastMessage.content === input.message;
 
     if (!canReuseLastUserMessage) {
-      await chatHistoryService.persistMessage(session.id, 'user', input.message);
+      await chatHistoryService.persistMessage(scope, session.id, 'user', input.message);
       history.push({ role: 'user', content: input.message });
     }
 
@@ -77,6 +79,7 @@ Do not mention the suggestions in your main response text.`;
       temperature: 0.7,
       attribution: {
         jobId: session.id,
+        workspaceId: scope.workspaceId,
       },
     });
     let content = response.output;
@@ -94,11 +97,11 @@ Do not mention the suggestions in your main response text.`;
     }
 
     // Persist assistant response
-    await chatHistoryService.persistMessage(session.id, 'assistant', content);
+    await chatHistoryService.persistMessage(scope, session.id, 'assistant', content);
 
     // Auto-title new sessions based on first user message
     if (isNewSession) {
-      await chatHistoryService.autoTitleSession(session.id);
+      await chatHistoryService.autoTitleSession(scope, session.id);
     }
 
     return { content, suggestedReplies, sessionId: session.id };

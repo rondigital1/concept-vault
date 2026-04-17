@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { ingestDocument } from "@/server/services/ingest.service";
+import { schedulePipelineJobDrain } from '@/server/jobs/pipelineJobs';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = "nodejs";
@@ -227,6 +229,7 @@ async function extractTextFromFile(
 
 export async function POST(request: Request) {
   try {
+    const scope = await requireSessionWorkspace();
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -286,19 +289,35 @@ export async function POST(request: Request) {
 
     const source = `file:${file.name}`;
 
-    const result = await ingestDocument({ title, source, content });
+    const result = await ingestDocument({
+      workspaceId: scope.workspaceId,
+      title,
+      source,
+      content,
+    });
+
+    if (result.enrichmentQueued) {
+      schedulePipelineJobDrain();
+    }
 
     return NextResponse.json(
       {
         ok: true,
         documentId: result.documentId,
         created: result.created,
+        enrichmentJobId: result.enrichmentJobId,
         enrichmentRunId: result.enrichmentRunId,
         extractedLength: content.length,
       },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error: unknown) {
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json(
+        { ok: false, error: "UNAUTHORIZED", message: error.message },
+        { status: error.status }
+      );
+    }
     console.error("File upload error:", error);
     const message = publicErrorMessage(error, 'File upload failed');
     return NextResponse.json(

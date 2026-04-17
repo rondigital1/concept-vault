@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import OpenAI from 'openai';
 import { zodResponsesFunction, zodTextFormat } from 'openai/helpers/zod';
 import type {
@@ -27,6 +28,8 @@ import type {
   AITaskType,
 } from '@/server/ai/tasks';
 import { logger } from '@/server/observability/logger';
+import { reportTelemetryError } from '@/server/observability/telemetry';
+import { createLlmCall } from '@/server/repos/llmCalls.repo';
 
 type StructuredSchema = z.ZodType<unknown>;
 
@@ -141,6 +144,10 @@ interface AttemptTelemetry {
   usage?: ResponseUsage;
 }
 
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 function toUsageSummary(usage: ResponseUsage | undefined): AIUsageSummary {
   return {
     cachedInputTokens: usage?.input_tokens_details.cached_tokens ?? 0,
@@ -205,6 +212,12 @@ function buildMetadata(
   if (attribution?.jobId) {
     metadata.job_id = attribution.jobId;
   }
+  if (attribution?.runId) {
+    metadata.run_id = attribution.runId;
+  }
+  if (attribution?.stepId) {
+    metadata.step_id = attribution.stepId;
+  }
   if (attribution?.userId) {
     metadata.user_id = attribution.userId;
   }
@@ -216,6 +229,17 @@ function buildMetadata(
   }
 
   return metadata;
+}
+
+function resolveRunId(attribution: AIExecutionAttribution | undefined): string | undefined {
+  return attribution?.runId ?? attribution?.jobId ?? undefined;
+}
+
+function buildAuditInputHash(params: {
+  inputValue: string | EasyInputMessage[] | AIFunctionToolOutputInput[];
+  prompt: BuiltPrompt;
+}): string {
+  return sha256(`${params.prompt.instructions}\n\n${stringifyInput(params.inputValue)}`);
 }
 
 const aiExecutionCounters = new Map<string, number>();
@@ -264,6 +288,7 @@ export class OpenAIExecutionService {
 
   async executeText(request: ExecuteRequestBase): Promise<AIExecutionResult<string>> {
     const result = await this.runExecution<string>({
+      auditSchemaName: 'text',
       inputValue: request.prompt.input,
       request,
       performAttempt: async (state, requestOptions) => {
@@ -304,6 +329,7 @@ export class OpenAIExecutionService {
     request: ExecuteStructuredRequest<TSchema>,
   ): Promise<AIExecutionResult<z.infer<TSchema>>> {
     const result = await this.runExecution<z.infer<TSchema>>({
+      auditSchemaName: request.schemaName,
       inputValue: request.prompt.input,
       request,
       performAttempt: async (state, requestOptions) => {
@@ -347,6 +373,7 @@ export class OpenAIExecutionService {
 
   async executeToolRound(request: ExecuteToolRoundRequest): Promise<AIToolRoundResult> {
     const result = await this.runExecution<AIToolRoundResult>({
+      auditSchemaName: 'tool_round',
       inputValue: request.input,
       request,
       performAttempt: async (state, requestOptions) => {
@@ -479,14 +506,33 @@ export class OpenAIExecutionService {
       state.accumulatedCostUsd,
     );
     const maxJobUsd = resolveJobBudget(request.budget?.maxJobUsd);
+    const budgetMeta = {
+      attribution: request.attribution,
+      model: state.model,
+      task: request.task,
+      retryCount: state.retryCount,
+      estimatedRequestUsd: requestEstimate.estimatedTotalUsd,
+      projectedJobSpendUsd,
+      maxRequestUsd,
+      maxJobUsd,
+      spentJobUsd: request.budget?.spentJobUsd ?? 0,
+    };
 
     if (request.budget?.allowOverBudget !== true && requestEstimate.estimatedTotalUsd > maxRequestUsd) {
+      logger.warn('ai.budget.exceeded', {
+        ...budgetMeta,
+        budgetScope: 'request',
+      });
       throw new AIBudgetExceededError(
         `Projected request spend $${requestEstimate.estimatedTotalUsd} exceeds max request budget $${maxRequestUsd}.`,
       );
     }
 
     if (request.budget?.allowOverBudget !== true && projectedJobSpendUsd > maxJobUsd) {
+      logger.warn('ai.budget.exceeded', {
+        ...budgetMeta,
+        budgetScope: 'job',
+      });
       throw new AIBudgetExceededError(
         `Projected job spend $${projectedJobSpendUsd} exceeds max job budget $${maxJobUsd}.`,
       );
@@ -497,6 +543,13 @@ export class OpenAIExecutionService {
       if (dailyBudgetState) {
         const projectedDailySpend = dailyBudgetState.spentUsd + requestEstimate.estimatedTotalUsd;
         if (projectedDailySpend > dailyBudgetState.maxUsd) {
+          logger.warn('ai.budget.exceeded', {
+            ...budgetMeta,
+            budgetScope: 'daily',
+            dailyBudgetUsd: dailyBudgetState.maxUsd,
+            projectedDailySpendUsd: projectedDailySpend,
+            spentDailyUsd: dailyBudgetState.spentUsd,
+          });
           throw new AIBudgetExceededError(
             `Projected daily spend $${projectedDailySpend.toFixed(6)} exceeds daily budget $${dailyBudgetState.maxUsd}.`,
           );
@@ -528,6 +581,7 @@ export class OpenAIExecutionService {
   }
 
   private async runExecution<TOutput>(params: {
+    auditSchemaName: string;
     inputValue: string | EasyInputMessage[] | AIFunctionToolOutputInput[];
     performAttempt: (
       state: AttemptState,
@@ -541,114 +595,212 @@ export class OpenAIExecutionService {
     request: ExecuteRequestBase;
   }): Promise<AIExecutionResult<TOutput> | AIToolRoundResult> {
     const policy = getTaskPolicy(params.request.task);
-    let state: AttemptState = {
-      accumulatedCostUsd: 0,
-      model: policy.defaultModel,
-      retryCount: 0,
-      wasEscalated: false,
-    };
+    return logger.withContext(
+      {
+        jobId: params.request.attribution?.jobId,
+        requestId: params.request.attribution?.requestId,
+        runId: resolveRunId(params.request.attribution),
+        stepId: params.request.attribution?.stepId,
+        userId: params.request.attribution?.userId,
+        workspaceId: params.request.attribution?.workspaceId,
+      },
+      async () => {
+        let state: AttemptState = {
+          accumulatedCostUsd: 0,
+          model: policy.defaultModel,
+          retryCount: 0,
+          wasEscalated: false,
+        };
 
-    while (true) {
-      const executionMode: ExecutionMode = state.wasEscalated ? 'escalated' : 'default';
-      const estimatedCostUsd = await this.ensureBudgetAllowed(
-        params.request,
-        state,
-        params.inputValue,
-      );
-      const startedAt = Date.now();
+        while (true) {
+          const executionMode: ExecutionMode = state.wasEscalated ? 'escalated' : 'default';
+          const estimatedCostUsd = await this.ensureBudgetAllowed(
+            params.request,
+            state,
+            params.inputValue,
+          );
+          const startedAt = Date.now();
 
-      try {
-        const attempt = await params.performAttempt(state, { timeout: policy.timeoutMs });
-        const latencyMs = Date.now() - startedAt;
-        const usage = attempt.response.usage;
-        state.accumulatedCostUsd += attempt.actualCostUsd;
+          try {
+            const attempt = await params.performAttempt(state, { timeout: policy.timeoutMs });
+            const latencyMs = Date.now() - startedAt;
+            const usage = attempt.response.usage;
+            state.accumulatedCostUsd += attempt.actualCostUsd;
 
-        this.logAttempt({
-          task: params.request.task,
-          model: state.model,
-          executionMode,
-          escalationReason: state.escalationReason,
-          retryCount: state.retryCount,
-          latencyMs,
-          usage,
-          estimatedCostUsd: attempt.estimatedCostUsd,
-          actualCostUsd: attempt.actualCostUsd,
-          responseId: attempt.response.id,
-          attribution: params.request.attribution,
-        });
+            await this.persistAuditRecord({
+              request: params.request,
+              inputValue: params.inputValue,
+              schemaName: params.auditSchemaName,
+              state,
+              status: 'ok',
+              telemetry: {
+                actualCostUsd: attempt.actualCostUsd,
+                estimatedCostUsd: attempt.estimatedCostUsd,
+                latencyMs,
+                responseId: attempt.response.id,
+                usage,
+              },
+              outputText: attempt.response.output_text,
+            });
 
-        incrementCounter(params.request.task, state.model, executionMode);
+            this.logAttempt({
+              task: params.request.task,
+              model: state.model,
+              executionMode,
+              escalationReason: state.escalationReason,
+              retryCount: state.retryCount,
+              latencyMs,
+              usage,
+              estimatedCostUsd: attempt.estimatedCostUsd,
+              actualCostUsd: attempt.actualCostUsd,
+              responseId: attempt.response.id,
+              attribution: params.request.attribution,
+            });
 
-        if (
-          typeof attempt.output === 'object' &&
-          attempt.output !== null &&
-          'responseId' in attempt.output
-        ) {
-          return attempt.output as unknown as AIToolRoundResult;
-        }
+            incrementCounter(params.request.task, state.model, executionMode);
 
-        return {
-          actualCostUsd: attempt.actualCostUsd,
-          estimatedCostUsd,
-          model: state.model,
-          output: attempt.output,
-          responseId: attempt.response.id,
-          retryCount: state.retryCount,
-          tier: getModelTier(state.model),
-          usage: toUsageSummary(usage),
-          wasEscalated: state.wasEscalated,
-        } as AIExecutionResult<TOutput>;
-      } catch (error) {
-        const latencyMs = Date.now() - startedAt;
-        const validationFailure = error instanceof AIValidationError ? error.failure : undefined;
-        const retryableFailure =
-          validationFailure?.retryable === true || isTransientApiError(error);
-        const canRetry = retryableFailure && state.retryCount < policy.retryCount;
+            if (
+              typeof attempt.output === 'object' &&
+              attempt.output !== null &&
+              'responseId' in attempt.output
+            ) {
+              return attempt.output as unknown as AIToolRoundResult;
+            }
 
-        this.logFailure({
-          task: params.request.task,
-          model: state.model,
-          executionMode,
-          escalationReason: state.escalationReason,
-          retryCount: state.retryCount,
-          latencyMs,
-          estimatedCostUsd,
-          error,
-          attribution: params.request.attribution,
-        });
+            return {
+              actualCostUsd: attempt.actualCostUsd,
+              estimatedCostUsd,
+              model: state.model,
+              output: attempt.output,
+              responseId: attempt.response.id,
+              retryCount: state.retryCount,
+              tier: getModelTier(state.model),
+              usage: toUsageSummary(usage),
+              wasEscalated: state.wasEscalated,
+            } as AIExecutionResult<TOutput>;
+          } catch (error) {
+            const latencyMs = Date.now() - startedAt;
+            const validationFailure = error instanceof AIValidationError ? error.failure : undefined;
+            const retryableFailure =
+              validationFailure?.retryable === true || isTransientApiError(error);
+            const canRetry = retryableFailure && state.retryCount < policy.retryCount;
 
-        if (canRetry) {
-          state = {
-            ...state,
-            retryCount: state.retryCount + 1,
-          };
-          continue;
-        }
+            await this.persistAuditRecord({
+              request: params.request,
+              inputValue: params.inputValue,
+              schemaName: params.auditSchemaName,
+              state,
+              status: 'error',
+              telemetry: {
+                actualCostUsd: 0,
+                estimatedCostUsd,
+                latencyMs,
+              },
+              error,
+            });
 
-        if (
-          validationFailure &&
-          canEscalateTask(
-            params.request.task,
-            params.request.allowEscalationOnValidationFailure === true,
-          )
-        ) {
-          const escalationModel = getTaskPolicy(params.request.task).allowedEscalationModel;
-          if (!escalationModel) {
+            this.logFailure({
+              task: params.request.task,
+              model: state.model,
+              executionMode,
+              escalationReason: state.escalationReason,
+              retryCount: state.retryCount,
+              latencyMs,
+              estimatedCostUsd,
+              error,
+              attribution: params.request.attribution,
+            });
+
+            if (canRetry) {
+              state = {
+                ...state,
+                retryCount: state.retryCount + 1,
+              };
+              continue;
+            }
+
+            if (
+              validationFailure &&
+              canEscalateTask(
+                params.request.task,
+                params.request.allowEscalationOnValidationFailure === true,
+              )
+            ) {
+              const escalationModel = getTaskPolicy(params.request.task).allowedEscalationModel;
+              if (!escalationModel) {
+                throw error;
+              }
+
+              state = {
+                accumulatedCostUsd: state.accumulatedCostUsd,
+                model: escalationModel,
+                retryCount: 0,
+                wasEscalated: true,
+                escalationReason: validationFailure.message,
+              };
+              continue;
+            }
+
             throw error;
           }
-
-          state = {
-            accumulatedCostUsd: state.accumulatedCostUsd,
-            model: escalationModel,
-            retryCount: 0,
-            wasEscalated: true,
-            escalationReason: validationFailure.message,
-          };
-          continue;
         }
+      },
+    );
+  }
 
-        throw error;
-      }
+  private async persistAuditRecord(params: {
+    error?: unknown;
+    inputValue: string | EasyInputMessage[] | AIFunctionToolOutputInput[];
+    outputText?: string;
+    request: ExecuteRequestBase;
+    schemaName: string;
+    state: AttemptState;
+    status: 'ok' | 'error';
+    telemetry: AttemptTelemetry;
+  }): Promise<void> {
+    const usage = params.telemetry.usage;
+
+    try {
+      await createLlmCall({
+        runId: resolveRunId(params.request.attribution),
+        stepId: params.request.attribution?.stepId ?? null,
+        provider: 'openai',
+        purpose: params.request.task,
+        schemaName: params.schemaName,
+        privacyMode: 'redact_basic',
+        inputHash: buildAuditInputHash({
+          prompt: params.request.prompt,
+          inputValue: params.inputValue,
+        }),
+        outputHash: params.outputText ? sha256(params.outputText) : null,
+        inputTokens: usage?.input_tokens ?? null,
+        outputTokens: usage?.output_tokens ?? null,
+        costUsd: params.telemetry.actualCostUsd ?? null,
+        status: params.status,
+        error: params.error
+          ? {
+              message: errorMessage(params.error),
+              name: params.error instanceof Error ? params.error.name : 'UnknownError',
+              retryCount: params.state.retryCount,
+            }
+          : null,
+      });
+    } catch (error) {
+      logger.error('ai.audit.write_failed', {
+        taskType: params.request.task,
+        schemaName: params.schemaName,
+        errorMessage: errorMessage(error),
+        runId: resolveRunId(params.request.attribution),
+      });
+      await reportTelemetryError({
+        timestamp: new Date().toISOString(),
+        source: 'openai-execution-service',
+        event: 'ai.audit.write_failed',
+        taskType: params.request.task,
+        schemaName: params.schemaName,
+        errorMessage: errorMessage(error),
+        runId: resolveRunId(params.request.attribution),
+      });
     }
   }
 
@@ -682,6 +834,8 @@ export class OpenAIExecutionService {
       responseId: params.responseId,
       requestId: params.attribution?.requestId,
       jobId: params.attribution?.jobId,
+      runId: resolveRunId(params.attribution),
+      stepId: params.attribution?.stepId,
       userId: params.attribution?.userId,
       workspaceId: params.attribution?.workspaceId,
     });
@@ -711,6 +865,8 @@ export class OpenAIExecutionService {
       errorName: params.error instanceof Error ? params.error.name : 'UnknownError',
       requestId: params.attribution?.requestId,
       jobId: params.attribution?.jobId,
+      runId: resolveRunId(params.attribution),
+      stepId: params.attribution?.stepId,
       userId: params.attribution?.userId,
       workspaceId: params.attribution?.workspaceId,
     });

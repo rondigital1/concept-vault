@@ -14,6 +14,7 @@ import {
 export type FindSourcesScope = 'topic' | 'all_topics';
 
 export interface FindSourcesInput {
+  workspaceId: string;
   day?: string;
   topicId?: string;
   goal?: string;
@@ -69,6 +70,7 @@ function buildPipelineInput(
   overrides?: Partial<PipelineInput>,
 ): PipelineInput {
   const pipelineInput: PipelineInput = {
+    workspaceId: input.workspaceId,
     trigger: 'manual',
     runMode: 'scout_only',
     enableCategorization: true,
@@ -114,9 +116,11 @@ function defaultPipelineCounts(): PipelineCounts {
   };
 }
 
-export async function findSources(input: FindSourcesInput = {}): Promise<FindSourcesResult> {
+export async function findSources(input: FindSourcesInput): Promise<FindSourcesResult> {
+  const scope = { workspaceId: input.workspaceId };
+
   if (typeof input.topicId === 'string' && input.topicId.trim()) {
-    await setupTopicContext(input.topicId.trim());
+    await setupTopicContext(scope, input.topicId.trim());
     return pipelineFlow(buildPipelineInput(input));
   }
 
@@ -127,7 +131,7 @@ export async function findSources(input: FindSourcesInput = {}): Promise<FindSou
   const day =
     typeof input.day === 'string' && input.day.trim() ? input.day.trim() : todayISODate();
   const maxTopics = clampMaxTopics(input.maxTopics);
-  const eligibleTopics = await listTopicsNeedingSources(MIN_LINKED_DOCUMENTS_FOR_REPORT);
+  const eligibleTopics = await listTopicsNeedingSources(scope, MIN_LINKED_DOCUMENTS_FOR_REPORT);
   const selectedTopics = eligibleTopics.slice(0, maxTopics);
 
   const runs: FindSourcesBatchRunResult[] = [];
@@ -139,7 +143,7 @@ export async function findSources(input: FindSourcesInput = {}): Promise<FindSou
     let setupError: PipelineError | null = null;
 
     try {
-      await setupTopicContext(entry.topic.id);
+      await setupTopicContext(scope, entry.topic.id);
     } catch (error) {
       setupError = {
         stage: 'topic_setup',

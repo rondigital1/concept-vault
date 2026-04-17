@@ -1,6 +1,7 @@
 import { tavilyExtract } from '@/server/tools/tavily.tool';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { assertTrustedSource } from '@/server/security/sourceTrust';
 
 const MIN_EXTRACTED_CONTENT_LENGTH = 50;
 const FETCH_USER_AGENT =
@@ -216,6 +217,12 @@ export async function extractDocumentFromUrl(url: string): Promise<UrlExtraction
   const fetchExtraction = await tryExtractWithFetch(url);
   if (fetchExtraction && isHighConfidenceArticle(fetchExtraction.content)) {
     const resolvedTitle = await resolveArticleTitle(url, fetchExtraction.title, fetchExtraction.content);
+    assertTrustedSource({
+      context: 'url_extract',
+      url,
+      title: resolvedTitle,
+      content: fetchExtraction.content,
+    });
     return {
       ...fetchExtraction,
       title: resolvedTitle,
@@ -226,6 +233,12 @@ export async function extractDocumentFromUrl(url: string): Promise<UrlExtraction
   const tavilyExtraction = await tryExtractWithTavily(url);
   if (tavilyExtraction && isHighConfidenceArticle(tavilyExtraction.content)) {
     const resolvedTitle = await resolveArticleTitle(url, tavilyExtraction.title, tavilyExtraction.content);
+    assertTrustedSource({
+      context: 'url_extract',
+      url,
+      title: resolvedTitle,
+      content: tavilyExtraction.content,
+    });
     return {
       ...tavilyExtraction,
       title: resolvedTitle,
