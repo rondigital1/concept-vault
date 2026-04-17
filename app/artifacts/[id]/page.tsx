@@ -1,5 +1,18 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { readArtifactOverview } from '@/app/reports/artifactOverview';
+import {
+  ResultsActionLink,
+  ResultsContainer,
+  ResultsMetadataRow,
+  ResultsPill,
+  ResultsRouteShell,
+  ResultsSidePanel,
+  ResultsStickyToolbar,
+  ResultsTopicChip,
+  resultsActionClassName,
+} from '@/app/reports/resultsUi';
+import { trimIdentifier } from '@/app/reports/reportsViewModel';
 import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getArtifactById, type ArtifactRow } from '@/server/repos/artifacts.repo';
 
@@ -18,49 +31,6 @@ function firstQueryParam(value: string | string[] | undefined): string | undefin
   return undefined;
 }
 
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
-function readString(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function readNumber(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return null;
-  }
-
-  return value;
-}
-
-function readStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
-    .map((entry) => entry.trim());
-}
-
-function readSourceDocumentId(sourceRefs: unknown): string | null {
-  const record = asObject(sourceRefs);
-  if (!record) {
-    return null;
-  }
-
-  return readString(record.documentId) ?? readString(record.document_id);
-}
-
 function safeJson(value: unknown): string {
   try {
     return JSON.stringify(value ?? {}, null, 2);
@@ -70,9 +40,15 @@ function safeJson(value: unknown): string {
 }
 
 function formatDateTime(dateStr?: string | null): string {
-  if (!dateStr) return '—';
+  if (!dateStr) {
+    return '—';
+  }
+
   const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return '—';
+  if (Number.isNaN(d.getTime())) {
+    return '—';
+  }
+
   return d.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -97,227 +73,114 @@ function formatKindLabel(kind: string): string {
   return labels[kind] ?? kind.replace(/[_-]+/g, ' ');
 }
 
-function statusTheme(status: ArtifactRow['status']): string {
-  const themes: Record<ArtifactRow['status'], string> = {
-    proposed: 'border-amber-800 bg-amber-950 text-amber-200',
-    approved: 'border-emerald-800 bg-emerald-950 text-emerald-200',
-    rejected: 'border-zinc-700 bg-zinc-900 text-zinc-300',
-    superseded: 'border-zinc-700 bg-zinc-900 text-zinc-300',
-  };
-
-  return themes[status];
-}
-
-function kindTheme(kind: string): string {
-  const themes: Record<string, string> = {
-    'web-proposal': 'border-sky-800 bg-sky-950 text-sky-200',
-    concept: 'border-emerald-800 bg-emerald-950 text-emerald-200',
-    flashcard: 'border-amber-800 bg-amber-950 text-amber-200',
-    'research-report': 'border-rose-800 bg-rose-950 text-rose-200',
-  };
-
-  return themes[kind] ?? 'border-zinc-700 bg-zinc-900 text-zinc-300';
-}
-
-function buildSummaryPreview(markdown: string | null): string | null {
-  if (!markdown) {
-    return null;
+function statusTone(status: ArtifactRow['status']): 'success' | 'warning' | 'muted' {
+  if (status === 'approved') {
+    return 'success';
   }
-
-  const preview = markdown.replace(/\s+/g, ' ').trim().slice(0, 360);
-  return preview || null;
+  if (status === 'proposed') {
+    return 'warning';
+  }
+  return 'muted';
 }
 
-function renderArtifactSummary(args: {
+function kindTone(kind: string): 'info' | 'success' | 'warning' | 'muted' {
+  if (kind === 'research-report') {
+    return 'info';
+  }
+  if (kind === 'web-proposal') {
+    return 'warning';
+  }
+  if (kind === 'concept') {
+    return 'success';
+  }
+  return 'muted';
+}
+
+function renderArtifactRail(args: {
   artifact: ArtifactRow;
-  content: Record<string, unknown>;
-  sourceDocumentId: string | null;
+  overview: ReturnType<typeof readArtifactOverview>;
 }) {
-  const { artifact, content, sourceDocumentId } = args;
-  const summary = readString(content.summary);
-  const topics = readStringArray(content.topics).slice(0, 8);
-  const reasoning = readStringArray(content.reasoning).slice(0, 5);
-  const evidence = readStringArray(content.evidence).slice(0, 4);
-  const sourceUrl = readString(content.url);
+  const { artifact, overview } = args;
 
   if (artifact.kind === 'research-report') {
-    const executiveSummary = readString(content.executiveSummary);
-    const markdownPreview = buildSummaryPreview(readString(content.markdown));
-    const topicsCovered = readStringArray(content.topicsCovered).slice(0, 8);
-    const sourcesCount = readNumber(content.sourcesCount);
-
     return (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
-        <p className="mt-3 text-sm text-zinc-300">
-          Use the report view for reading and sharing. This page keeps the report context and technical payload together in one place.
-        </p>
-        {(executiveSummary || markdownPreview) && (
-          <p className="mt-4 text-sm leading-7 text-zinc-100">
-            {executiveSummary ?? markdownPreview}
-          </p>
+      <ResultsSidePanel title="Verified citations">
+        {overview.citations.length > 0 ? (
+          <ul className="mt-6 space-y-6">
+            {overview.citations.map((citation) => (
+              <li key={`${citation.url}-${citation.title}`}>
+                <a href={citation.url} target="_blank" rel="noreferrer" className="block transition hover:opacity-80">
+                  <div className="text-[0.58rem] font-semibold uppercase tracking-[0.26em] text-[#8d8787]">{citation.source}</div>
+                  <div className="mt-2 text-[1rem] leading-7 text-white">{citation.title}</div>
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="mt-6 rounded-[22px] border border-white/8 bg-[#171717] px-5 py-5">
+            <p className="text-[0.7rem] font-bold uppercase tracking-[0.24em] text-[#d9d1d1]">No parsed citations</p>
+            <p className="mt-3 text-[0.96rem] leading-7 text-[#beb5b5]">
+              This report artifact does not expose a structured citation preview here. Open the full report or review the raw payload below to inspect the saved source section.
+            </p>
+          </div>
         )}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Sources Used</p>
-            <p className="mt-2 text-lg font-semibold text-white">
-              {typeof sourcesCount === 'number' ? sourcesCount : '—'}
-            </p>
-          </div>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Topics Covered</p>
-            <p className="mt-2 text-sm text-zinc-100">
-              {topicsCovered.length > 0 ? topicsCovered.join(', ') : 'No topics listed'}
-            </p>
-          </div>
-        </div>
-      </section>
+      </ResultsSidePanel>
     );
   }
 
   if (artifact.kind === 'web-proposal') {
-    const relevanceScore = readNumber(content.relevanceScore);
-    const contentType = readString(content.contentType);
-
     return (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
-        <p className="mt-3 text-sm leading-7 text-zinc-100">
-          {summary ?? 'No summary was saved for this source candidate.'}
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Source</p>
-            {sourceUrl ? (
-              <a
-                href={sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-flex text-sm text-blue-300 underline decoration-blue-400 underline-offset-2 break-all hover:text-blue-200"
-              >
-                {sourceUrl}
+      <ResultsSidePanel title="Source context">
+        <div className="mt-6 space-y-5">
+          <div>
+            <p className="text-[0.64rem] font-semibold uppercase tracking-[0.2em] text-[#7d7878]">Source URL</p>
+            {overview.sourceUrl ? (
+              <a href={overview.sourceUrl} target="_blank" rel="noreferrer" className="mt-3 block break-all text-[1rem] leading-7 text-white underline decoration-white/20 underline-offset-4 hover:decoration-white/60">
+                {overview.sourceUrl}
               </a>
             ) : (
-              <p className="mt-2 text-sm text-zinc-300">No source URL saved</p>
+              <p className="mt-3 text-[0.96rem] leading-7 text-[#beb5b5]">No source URL was saved with this proposal.</p>
             )}
           </div>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Why It Matters</p>
-            <p className="mt-2 text-sm text-zinc-100">
-              {typeof relevanceScore === 'number'
-                ? `Relevance score ${relevanceScore.toFixed(2)}${contentType ? ` · ${contentType}` : ''}`
-                : contentType ?? 'No relevance details saved'}
-            </p>
-          </div>
-        </div>
-        {topics.length > 0 && (
-          <div className="mt-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Topics</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {topics.map((topic) => (
-                <span
-                  key={topic}
-                  className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-200"
-                >
-                  {topic}
-                </span>
-              ))}
+
+          {overview.topics.length > 0 ? (
+            <div>
+              <p className="text-[0.64rem] font-semibold uppercase tracking-[0.2em] text-[#7d7878]">Topics</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {overview.topics.map((topic) => (
+                  <ResultsTopicChip key={topic} topic={topic} />
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-        {reasoning.length > 0 && (
-          <div className="mt-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Why It Was Proposed</p>
-            <ul className="mt-2 space-y-2 text-sm text-zinc-300">
-              {reasoning.map((entry) => (
-                <li key={entry}>{entry}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {artifact.status === 'approved' && sourceDocumentId && (
-          <p className="mt-4 text-sm text-emerald-200">
-            This source has already been added to Library.
-          </p>
-        )}
-      </section>
-    );
-  }
+          ) : null}
 
-  if (artifact.kind === 'concept') {
-    const type = readString(content.type);
-    const documentTitle = readString(content.documentTitle);
-
-    return (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
-        <p className="mt-3 text-sm leading-7 text-zinc-100">
-          {summary ?? 'No concept summary was saved for this item.'}
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Type</p>
-            <p className="mt-2 text-sm text-zinc-100">{type ?? 'Concept'}</p>
-          </div>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">From Document</p>
-            <p className="mt-2 text-sm text-zinc-100">{documentTitle ?? 'Unknown document'}</p>
-          </div>
+          {overview.statusNotice ? (
+            <div className="rounded-[22px] border border-white/8 bg-[#171717] px-5 py-5">
+              <p className="text-[0.96rem] leading-7 text-[#d9ead8]">{overview.statusNotice}</p>
+            </div>
+          ) : null}
         </div>
-        {evidence.length > 0 && (
-          <div className="mt-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Supporting Evidence</p>
-            <ul className="mt-2 space-y-2 text-sm text-zinc-300">
-              {evidence.map((entry) => (
-                <li key={entry} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                  {entry}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  if (artifact.kind === 'flashcard') {
-    const format = readString(content.format);
-    const front = readString(content.front);
-    const back = readString(content.back);
-    const documentTitle = readString(content.documentTitle);
-
-    return (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Prompt</p>
-            <p className="mt-3 text-sm leading-7 text-zinc-100">
-              {front ?? artifact.title}
-            </p>
-          </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Answer</p>
-            <p className="mt-3 text-sm leading-7 text-zinc-100">
-              {back ?? 'No answer was saved for this flashcard.'}
-            </p>
-          </div>
-        </div>
-        <p className="mt-4 text-sm text-zinc-300">
-          {format ?? 'Flashcard'}
-          {documentTitle ? ` · From ${documentTitle}` : ''}
-        </p>
-      </section>
+      </ResultsSidePanel>
     );
   }
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Summary</h2>
-      <p className="mt-3 text-sm text-zinc-300">
-        This item does not have a specialized summary view yet. Technical details remain available below.
-      </p>
-    </section>
+    <ResultsSidePanel title="Review context">
+      {overview.topics.length > 0 ? (
+        <div>
+          <p className="mt-6 text-[0.64rem] font-semibold uppercase tracking-[0.2em] text-[#7d7878]">Topics</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {overview.topics.map((topic) => (
+              <ResultsTopicChip key={topic} topic={topic} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="mt-6 text-[0.96rem] leading-7 text-[#beb5b5]">
+          This artifact does not expose additional topic or citation context beyond the summary and technical payload.
+        </p>
+      )}
+    </ResultsSidePanel>
   );
 }
 
@@ -339,182 +202,227 @@ export default async function ArtifactDetailPage({
     notFound();
   }
 
-  const content = asObject(artifact.content) ?? {};
-  const sourceRefs = asObject(artifact.source_refs) ?? {};
-  const sourceDocumentId = readSourceDocumentId(sourceRefs);
-  const sourceUrl = readString(content.url);
+  const overview = readArtifactOverview(artifact);
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black">
-      <div className="mx-auto max-w-5xl px-6 py-10 space-y-6">
-        <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Item Summary</p>
-            <h1 className="mt-2 text-3xl font-bold text-white break-words">{artifact.title}</h1>
-            <p className="mt-3 max-w-3xl text-sm text-zinc-300">
-              This page keeps the item readable for review. Technical payloads and raw JSON are still available in the Technical Details section below.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className={`rounded-full border px-3 py-1 text-xs font-medium ${statusTheme(artifact.status)}`}>
-                {formatStatusLabel(artifact.status)}
-              </span>
-              <span className={`rounded-full border px-3 py-1 text-xs font-medium ${kindTheme(artifact.kind)}`}>
-                {formatKindLabel(artifact.kind)}
-              </span>
-              <span className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
-                Created {formatDateTime(artifact.created_at)}
-              </span>
+    <ResultsRouteShell>
+      <ResultsContainer>
+        <ResultsStickyToolbar>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#8f8888]">
+              <Link href="/reports" className="text-white transition hover:opacity-75">
+                Results system
+              </Link>
+              <span>/</span>
+              <span>{formatKindLabel(artifact.kind)}</span>
+              <ResultsPill tone={statusTone(artifact.status)}>{formatStatusLabel(artifact.status)}</ResultsPill>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {overview.primaryLink ? (
+                <ResultsActionLink
+                  href={overview.primaryLink.href}
+                  label={overview.primaryLink.label}
+                  icon={overview.primaryLink.external ? 'external' : artifact.kind === 'research-report' ? 'report' : 'arrow-up-right'}
+                  tone="primary"
+                  external={overview.primaryLink.external}
+                />
+              ) : null}
+              {overview.secondaryLink ? (
+                <ResultsActionLink
+                  href={overview.secondaryLink.href}
+                  label={overview.secondaryLink.label}
+                  icon={overview.secondaryLink.href === '/reports' ? 'report' : 'research'}
+                />
+              ) : null}
             </div>
           </div>
+        </ResultsStickyToolbar>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {artifact.kind === 'research-report' && (
-              <Link
-                href={`/reports/${artifact.id}`}
-                className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
-              >
-                Open Report
-              </Link>
-            )}
-            {sourceDocumentId && artifact.kind === 'web-proposal' && (
-              <Link
-                href={`/library/${sourceDocumentId}`}
-                className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
-              >
-                Open in Library
-              </Link>
-            )}
-            {!sourceDocumentId && sourceUrl && (
-              <a
-                href={sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
-              >
-                Open Source
-              </a>
-            )}
-            <Link
-              href="/today"
-              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
-            >
-              Back to Research
-            </Link>
+        <header className="max-w-5xl">
+          <div className="mb-4 flex flex-wrap items-center gap-3 text-[0.65rem] font-bold uppercase tracking-[0.26em] text-[#8c8787]">
+            <span className="rounded-sm bg-[#2a2a2a] px-3 py-1.5 text-[#ddd8d8]">ARTIFACT_DETAIL: {artifact.agent.toUpperCase()}</span>
+            <span>CREATED: {formatDateTime(artifact.created_at)}</span>
           </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <ResultsPill tone={statusTone(artifact.status)}>{formatStatusLabel(artifact.status)}</ResultsPill>
+            <ResultsPill tone={kindTone(artifact.kind)}>{formatKindLabel(artifact.kind)}</ResultsPill>
+          </div>
+
+          <h1 className="max-w-5xl break-words text-[clamp(2.7rem,7vw,5.2rem)] font-black leading-[0.96] tracking-[-0.085em] text-white">
+            {artifact.title}
+          </h1>
+          <p className="mt-6 max-w-4xl text-[1.08rem] leading-8 text-[#cfc6c6]">{overview.description}</p>
         </header>
 
-        {artifactActionError && (
-          <div className="rounded-xl border border-rose-700 bg-rose-950 px-4 py-3 text-sm text-rose-100">
+        {artifactActionError ? (
+          <div className="mt-8 rounded-[24px] border border-[#5a2e2e] bg-[#2a1818] px-5 py-4 text-[0.98rem] text-[#f3cece]">
             {artifactActionError}
           </div>
-        )}
-        {!artifactActionError && artifactActionInfo && (
-          <div className="rounded-xl border border-emerald-700 bg-emerald-950 px-4 py-3 text-sm text-emerald-100">
+        ) : null}
+        {!artifactActionError && artifactActionInfo ? (
+          <div className="mt-8 rounded-[24px] border border-white/8 bg-[#171717] px-5 py-4 text-[0.98rem] text-[#d9ead8]">
             {artifactActionInfo}
           </div>
-        )}
+        ) : null}
 
-        {artifact.status === 'proposed' && (
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Review Actions</h2>
-            <p className="mt-3 text-sm text-zinc-300">
-              Review this item here, or return to Research to continue the broader queue.
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <form action={`/api/artifacts/${artifact.id}/approve`} method="POST">
-                <button
-                  type="submit"
-                  className="rounded-lg border border-green-800 bg-green-950 px-4 py-2 text-sm font-medium text-green-300 hover:bg-green-900 transition-colors"
-                >
-                  {artifact.kind === 'web-proposal' ? 'Save Source' : 'Approve'}
-                </button>
-              </form>
-              <form action={`/api/artifacts/${artifact.id}/reject`} method="POST">
-                <button
-                  type="submit"
-                  className="rounded-lg border border-red-800 bg-red-950 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-900 transition-colors"
-                >
-                  {artifact.kind === 'web-proposal' ? 'Dismiss' : 'Reject'}
-                </button>
-              </form>
-            </div>
+        <div className="mt-12 grid gap-8 xl:grid-cols-[minmax(0,1.65fr)_360px]">
+          <section className="space-y-8">
+            {artifact.status === 'proposed' ? (
+              <section className="rounded-[28px] bg-[#1d1d1d] px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] sm:px-10 sm:py-10">
+                <div className="mb-4 flex items-center gap-3">
+                  <ResultsPill tone="warning">Review required</ResultsPill>
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#8f8888]">Queue action available</p>
+                </div>
+                <p className="max-w-3xl text-[1rem] leading-8 text-[#beb5b5]">
+                  Review this item here, or return to Research to continue triaging the broader queue. Approve and reject actions preserve the existing workflow behavior.
+                </p>
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                  <form action={`/api/artifacts/${artifact.id}/approve`} method="POST" className="sm:flex-1">
+                    <button type="submit" className={resultsActionClassName('success', true)}>
+                      {artifact.kind === 'web-proposal' ? 'Save source' : 'Approve'}
+                    </button>
+                  </form>
+                  <form action={`/api/artifacts/${artifact.id}/reject`} method="POST" className="sm:flex-1">
+                    <button type="submit" className={resultsActionClassName('danger', true)}>
+                      {artifact.kind === 'web-proposal' ? 'Dismiss' : 'Reject'}
+                    </button>
+                  </form>
+                </div>
+              </section>
+            ) : null}
+
+            <article className="relative overflow-hidden rounded-[30px] bg-[#1d1d1d] px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] sm:px-10 sm:py-10">
+              <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-white/[0.04] blur-3xl" />
+              <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-[0.72rem] font-bold uppercase tracking-[0.28em] text-white">{overview.summaryTitle}</p>
+                  <p className="mt-2 text-[0.78rem] uppercase tracking-[0.2em] text-[#8b8484]">{formatKindLabel(artifact.kind)} artifact · {artifact.agent}</p>
+                </div>
+                {overview.statusNotice ? <ResultsPill tone="success">Saved to library</ResultsPill> : null}
+              </div>
+
+              <p className="max-w-3xl text-[1.08rem] leading-9 text-[#ece8e5]">{overview.summaryCopy}</p>
+
+              {overview.stats.length > 0 ? (
+                <div className="mt-8 grid gap-4 md:grid-cols-2">
+                  {overview.stats.map((stat) => (
+                    <div key={stat.label} className="rounded-[22px] bg-[#111111] px-6 py-6">
+                      <span className="text-[0.65rem] font-bold uppercase tracking-[0.24em] text-[#7e7777]">{stat.label}</span>
+                      <div className="mt-3 text-[clamp(1.8rem,4vw,3.2rem)] font-black tracking-[-0.06em] text-white">{stat.value}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {overview.topics.length > 0 ? (
+                <div className="mt-8 flex flex-wrap gap-2">
+                  {overview.topics.map((topic) => (
+                    <ResultsTopicChip key={topic} topic={topic} />
+                  ))}
+                </div>
+              ) : null}
+
+              {overview.reasoning.length > 0 ? (
+                <div className="mt-8">
+                  <p className="text-[0.68rem] font-bold uppercase tracking-[0.28em] text-[#8f8888]">Why it was proposed</p>
+                  <ul className="mt-4 space-y-3">
+                    {overview.reasoning.map((entry) => (
+                      <li key={entry} className="rounded-[22px] bg-[#111111] px-5 py-4 text-[0.98rem] leading-7 text-[#d7d0d0]">
+                        {entry}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {overview.evidence.length > 0 ? (
+                <div className="mt-8">
+                  <p className="text-[0.68rem] font-bold uppercase tracking-[0.28em] text-[#8f8888]">Supporting evidence</p>
+                  <ul className="mt-4 space-y-3">
+                    {overview.evidence.map((entry) => (
+                      <li key={entry} className="rounded-[22px] bg-[#111111] px-5 py-4 text-[0.98rem] leading-7 text-[#d7d0d0]">
+                        {entry}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </article>
+
+            <section className="rounded-[28px] bg-[#111111] px-6 py-7 shadow-[0_20px_60px_rgba(0,0,0,0.22)] sm:px-8">
+              <h2 className="text-[0.7rem] font-bold uppercase tracking-[0.3em] text-[#d7d0d0]">Process metadata</h2>
+              <div className="mt-6 space-y-1">
+                <ResultsMetadataRow label="Day" value={artifact.day} />
+                <ResultsMetadataRow label="Agent" value={artifact.agent.toUpperCase()} />
+                <ResultsMetadataRow label="Reviewed" value={formatDateTime(artifact.reviewed_at)} />
+                <ResultsMetadataRow label="Run id" value={trimIdentifier(artifact.run_id) ?? 'NO RUN LINKED'} />
+              </div>
+            </section>
+
+            <details id="technical-details" className="rounded-[28px] bg-[#1d1d1d] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+              <summary className="cursor-pointer px-6 py-5 text-[0.72rem] font-bold uppercase tracking-[0.26em] text-[#d7d0d0] transition hover:text-white sm:px-8">
+                Technical details
+              </summary>
+              <div className="border-t border-white/8 px-6 py-6 sm:px-8">
+                <section>
+                  <h2 className="text-[0.68rem] font-bold uppercase tracking-[0.28em] text-[#8f8888]">Metadata</h2>
+                  <div className="mt-4 space-y-1">
+                    <ResultsMetadataRow label="Artifact id" value={trimIdentifier(artifact.id, 18) ?? artifact.id} />
+                    <ResultsMetadataRow label="Created" value={formatDateTime(artifact.created_at)} />
+                    <ResultsMetadataRow label="Read" value={formatDateTime(artifact.read_at)} />
+                    <ResultsMetadataRow label="Status" value={formatStatusLabel(artifact.status).toUpperCase()} />
+                  </div>
+                </section>
+
+                <section className="mt-8">
+                  <h2 className="text-[0.68rem] font-bold uppercase tracking-[0.28em] text-[#8f8888]">Content payload</h2>
+                  <pre className="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-[22px] bg-[#111111] p-4 text-xs text-[#d7d0d0]">
+                    {safeJson(artifact.content)}
+                  </pre>
+                </section>
+
+                <section className="mt-8">
+                  <h2 className="text-[0.68rem] font-bold uppercase tracking-[0.28em] text-[#8f8888]">Source refs</h2>
+                  <pre className="mt-4 max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-[22px] bg-[#111111] p-4 text-xs text-[#d7d0d0]">
+                    {safeJson(artifact.source_refs)}
+                  </pre>
+                </section>
+              </div>
+            </details>
           </section>
-        )}
 
-        {renderArtifactSummary({
-          artifact,
-          content,
-          sourceDocumentId,
-        })}
+          <aside className="space-y-6 xl:sticky xl:top-24 xl:self-start">
+            {renderArtifactRail({ artifact, overview })}
 
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Context</h2>
-          <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-              <dt className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Day</dt>
-              <dd className="mt-2 text-sm text-zinc-100">{artifact.day}</dd>
+            <ResultsSidePanel title="Record metadata" className="bg-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
+              <div className="mt-6 space-y-1">
+                <ResultsMetadataRow label="Created" value={formatDateTime(artifact.created_at)} />
+                <ResultsMetadataRow label="Status" value={formatStatusLabel(artifact.status).toUpperCase()} accent />
+                <ResultsMetadataRow label="Kind" value={formatKindLabel(artifact.kind).toUpperCase()} />
+                <ResultsMetadataRow label="Run id" value={trimIdentifier(artifact.run_id) ?? 'NO RUN LINKED'} />
+                <ResultsMetadataRow label="Artifact id" value={trimIdentifier(artifact.id) ?? artifact.id} />
+              </div>
+            </ResultsSidePanel>
+
+            <div className="space-y-3">
+              {overview.primaryLink ? (
+                <ResultsActionLink
+                  href={overview.primaryLink.href}
+                  label={overview.primaryLink.label}
+                  icon={overview.primaryLink.external ? 'external' : artifact.kind === 'research-report' ? 'report' : 'arrow-up-right'}
+                  tone="primary"
+                  fullWidth
+                  external={overview.primaryLink.external}
+                />
+              ) : null}
+              <ResultsActionLink href="/reports" label="Open archive" icon="report" fullWidth />
+              <ResultsActionLink href="/today" label="Back to Research" icon="research" fullWidth />
             </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-              <dt className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Agent</dt>
-              <dd className="mt-2 text-sm text-zinc-100">{artifact.agent}</dd>
-            </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-              <dt className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Reviewed</dt>
-              <dd className="mt-2 text-sm text-zinc-100">{formatDateTime(artifact.reviewed_at)}</dd>
-            </div>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-              <dt className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Run</dt>
-              <dd className="mt-2 text-sm text-zinc-100">{artifact.run_id ?? 'No run linked'}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <details
-          id="technical-details"
-          className="rounded-xl border border-zinc-800 bg-zinc-900"
-        >
-          <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-zinc-300 hover:text-white transition-colors">
-            Technical Details
-          </summary>
-          <div className="border-t border-zinc-800 p-5 space-y-5">
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Metadata</h2>
-              <dl className="mt-3 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
-                <div className="flex gap-2">
-                  <dt className="text-zinc-500">ID:</dt>
-                  <dd className="text-zinc-300 font-mono break-all">{artifact.id}</dd>
-                </div>
-                <div className="flex gap-2">
-                  <dt className="text-zinc-500">Run ID:</dt>
-                  <dd className="text-zinc-300 font-mono break-all">{artifact.run_id ?? '—'}</dd>
-                </div>
-                <div className="flex gap-2">
-                  <dt className="text-zinc-500">Created:</dt>
-                  <dd className="text-zinc-300">{formatDateTime(artifact.created_at)}</dd>
-                </div>
-                <div className="flex gap-2">
-                  <dt className="text-zinc-500">Read:</dt>
-                  <dd className="text-zinc-300">{formatDateTime(artifact.read_at)}</dd>
-                </div>
-              </dl>
-            </section>
-
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Content Payload</h2>
-              <pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-200">
-                {safeJson(artifact.content)}
-              </pre>
-            </section>
-
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Source Refs</h2>
-              <pre className="mt-3 max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-200">
-                {safeJson(artifact.source_refs)}
-              </pre>
-            </section>
-          </div>
-        </details>
-      </div>
-    </main>
+          </aside>
+        </div>
+      </ResultsContainer>
+    </ResultsRouteShell>
   );
 }
