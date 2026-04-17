@@ -6,6 +6,11 @@ import { useSearchParams } from 'next/navigation';
 import { StatusBadge } from '@/app/components/StatusBadge';
 import { formatClockTime, formatElapsedTime } from '@/app/components/workflowFormatting';
 import {
+  primaryButtonClass,
+  secondaryButtonClass,
+  sectionLabelClass,
+} from '@/app/today/WorkspaceHeaderPrimitives';
+import {
   formatObservedStepLabel,
   summarizeStageProgress,
   type StageProgress as SharedStageProgress,
@@ -38,6 +43,15 @@ type Metric = {
   label: string;
   value: number;
 };
+
+const surfacePanelClass = 'today-panel today-panel-low rounded-[28px]';
+const insetPanelClass = 'today-panel today-panel-lowest rounded-[24px]';
+const issuePanelClass =
+  'rounded-[24px] bg-[rgba(143,58,58,0.18)] p-4 outline outline-1 outline-[rgba(255,194,194,0.16)]';
+const subtlePillClass =
+  'inline-flex items-center rounded-full bg-[rgba(255,255,255,0.06)] px-3 py-1.5 text-xs font-medium text-[color:var(--today-text-soft)] outline outline-1 outline-[rgba(255,255,255,0.08)]';
+const accentPillClass =
+  'inline-flex items-center rounded-full bg-[rgba(255,255,255,0.12)] px-3 py-1.5 text-xs font-medium text-[color:var(--today-accent-strong)] outline outline-1 outline-[rgba(255,255,255,0.12)]';
 
 type GeneratedReport = {
   id: string;
@@ -317,10 +331,10 @@ function OutcomeCountCard({
   hint: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
-      <p className="mt-2 break-all text-2xl font-semibold text-white">{value}</p>
-      <p className="mt-1 text-xs text-zinc-400">{hint}</p>
+    <div className={`${insetPanelClass} p-4`}>
+      <p className={sectionLabelClass}>{label}</p>
+      <p className="mt-2 break-all text-2xl font-semibold text-[color:var(--today-text)]">{value}</p>
+      <p className="mt-1 text-xs text-[color:var(--today-muted)]">{hint}</p>
     </div>
   );
 }
@@ -599,6 +613,11 @@ export function WebScoutRunClient({
   }, [fetchResults, isBatchFindSources, runId, trace]);
 
   const requestedMaxTopics = parseNumberParam(searchParams.get('maxTopics')) ?? 10;
+  const selectedTopicId = searchParams.get('topicId');
+  const researchHref = selectedTopicId ? `/today?topicId=${selectedTopicId}` : '/today';
+  const reviewQueueHref = selectedTopicId
+    ? `/today?topicId=${selectedTopicId}&queue=pending`
+    : '/today?queue=pending';
   const isVaultWideFindSources =
     !isBatchFindSources &&
     (searchParams.get('runMode') ?? '') === 'scout_only' &&
@@ -728,48 +747,50 @@ export function WebScoutRunClient({
 
     return (
       <section className="space-y-6">
-        <div className="rounded-xl border border-sky-800 bg-sky-950 p-5">
+        <div className={`${surfacePanelClass} p-5`}>
           <div className="flex flex-col gap-3">
             <div>
-              <p className="mb-2 text-xs uppercase tracking-wider text-sky-300">Batch Scope</p>
-              <h2 className="text-xl font-semibold text-white">All active topics that still need more sources</h2>
-              <p className="mt-2 text-sm text-sky-200">
+              <p className={sectionLabelClass}>Batch scope</p>
+              <h2 className="mt-2 text-xl font-semibold text-[color:var(--today-text)]">
+                All active topics that still need more sources
+              </h2>
+              <p className="mt-2 text-sm text-[color:var(--today-muted)]">
                 This batch runs Find Sources inline for topics below the {minimumLinkedDocumentsForReport}-document readiness threshold.
               </p>
             </div>
 
             {batchTopicsError && (
-              <div className="rounded-lg border border-red-800 bg-red-950 p-4 text-sm text-red-300">
+              <div className={`${issuePanelClass} text-sm text-[#ffdada]`}>
                 {batchTopicsError}
               </div>
             )}
 
             {!batchTopicsError && batchTopicOptions.length === 0 && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-300">
+              <div className={`${insetPanelClass} p-4 text-sm text-[color:var(--today-text-soft)]`}>
                 No active topics currently need more sources. Topics reappear here when they fall below the readiness threshold.
               </div>
             )}
 
             {!batchTopicsError && batchTopicOptions.length > 0 && (
               <>
-                <p className="text-sm text-zinc-200">
+                <p className="text-sm text-[color:var(--today-text-soft)]">
                   Previewing {previewTopics.length} of {batchTopicOptions.length} eligible topic{batchTopicOptions.length === 1 ? '' : 's'}.
                 </p>
                 <div className="space-y-3">
                   {previewTopics.map((topic) => (
                     <div
                       key={topic.id}
-                      className="rounded-xl border border-zinc-800 bg-zinc-950 p-4"
+                      className={`${insetPanelClass} p-4`}
                     >
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-white">{topic.name}</p>
-                        <span className="inline-flex items-center rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">
+                        <p className="text-sm font-semibold text-[color:var(--today-text)]">{topic.name}</p>
+                        <span className={subtlePillClass}>
                           {topic.linkedDocumentCount} linked doc{topic.linkedDocumentCount === 1 ? '' : 's'}
                         </span>
                       </div>
-                      <p className="mt-2 text-sm text-zinc-300">{topic.goal}</p>
+                      <p className="mt-2 text-sm text-[color:var(--today-text-soft)]">{topic.goal}</p>
                       {topic.focusTags.length > 0 && (
-                        <p className="mt-2 text-xs text-zinc-400">
+                        <p className="mt-2 text-xs text-[color:var(--today-muted)]">
                           Focus tags: {topic.focusTags.slice(0, 6).join(', ')}
                         </p>
                       )}
@@ -782,7 +803,7 @@ export function WebScoutRunClient({
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href="/web-scout?runMode=scout_only"
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
+                className={secondaryButtonClass}
               >
                 Use Vault-Wide Scout Instead
               </Link>
@@ -790,35 +811,35 @@ export function WebScoutRunClient({
           </div>
         </div>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-          <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Run Summary</p>
+        <div className={`${surfacePanelClass} p-6`}>
+          <p className={sectionLabelClass}>Run summary</p>
           <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={currentStatus} />
-                <span className="inline-flex items-center rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 bg-zinc-800">
+                <span className={subtlePillClass}>
                   {runModeLabel}
                 </span>
-                <span className="inline-flex items-center rounded-full border border-sky-800 px-2 py-0.5 text-xs text-sky-200 bg-sky-950">
+                <span className={accentPillClass}>
                   Scope: All eligible topics
                 </span>
               </div>
-              <h2 className="mt-4 text-2xl font-semibold text-white">{batchHeadline}</h2>
-              <p className="mt-2 text-sm leading-7 text-zinc-300">{batchDescription}</p>
+              <h2 className="mt-4 text-2xl font-semibold text-[color:var(--today-text)]">{batchHeadline}</h2>
+              <p className="mt-2 text-sm leading-7 text-[color:var(--today-text-soft)]">{batchDescription}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 lg:justify-end">
               {!isStarting && webProposalCount > 0 && (
                 <Link
-                  href="/today#review-inbox"
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
+                  href={reviewQueueHref}
+                  className={primaryButtonClass}
                 >
                   Review Queue
                 </Link>
               )}
               <Link
-                href="/today"
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
+                href={researchHref}
+                className={secondaryButtonClass}
               >
                 Back to Research
               </Link>
@@ -828,7 +849,7 @@ export function WebScoutRunClient({
                   void startRun();
                 }}
                 disabled={isStarting}
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className={secondaryButtonClass}
               >
                 {isStarting ? 'Running...' : 'Run Again'}
               </button>
@@ -836,11 +857,11 @@ export function WebScoutRunClient({
           </div>
 
           {batchVisibleIssueMessages.length > 0 && (
-            <div className="mt-5 rounded-xl border border-red-800 bg-red-950 p-4">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-red-300">Run Issues</p>
-              <p className="mt-2 text-sm text-red-100">{batchVisibleIssueMessages[0]}</p>
+            <div className={`mt-5 ${issuePanelClass}`}>
+              <p className={sectionLabelClass}>Run issues</p>
+              <p className="mt-2 text-sm text-[#fff1f1]">{batchVisibleIssueMessages[0]}</p>
               {batchVisibleIssueMessages.length > 1 && (
-                <p className="mt-1 text-xs text-red-200">
+                <p className="mt-1 text-xs text-[#ffdada]">
                   {batchVisibleIssueMessages.length - 1} more issue{batchVisibleIssueMessages.length - 1 === 1 ? '' : 's'} in Technical Details.
                 </p>
               )}
@@ -848,10 +869,10 @@ export function WebScoutRunClient({
           )}
         </div>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900">
-          <div className="border-b border-zinc-800 px-5 py-4">
-            <h2 className="text-sm font-semibold text-zinc-200 uppercase tracking-[0.18em]">Batch Outcomes</h2>
-            <p className="mt-1 text-xs text-zinc-500">
+        <div className={surfacePanelClass}>
+          <div className="border-b border-[rgba(255,255,255,0.08)] px-5 py-4">
+            <h2 className={sectionLabelClass}>Batch outcomes</h2>
+            <p className="mt-1 text-xs text-[color:var(--today-muted)]">
               Topic coverage first, then per-topic run results.
             </p>
           </div>
@@ -881,31 +902,31 @@ export function WebScoutRunClient({
             </div>
 
             {!isStarting && batchResult && batchResult.runs.length === 0 && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-300">
+              <div className={`${insetPanelClass} p-4 text-sm text-[color:var(--today-text-soft)]`}>
                 No eligible topics were processed in this batch.
               </div>
             )}
 
             {batchResult && batchResult.runs.length > 0 && (
-              <article className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+              <article className={`${insetPanelClass} p-4`}>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-white uppercase tracking-[0.18em]">Per-Topic Runs</h3>
-                  <span className="text-xs text-zinc-400">{batchResult.runs.length}</span>
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--today-text)]">Per-topic runs</h3>
+                  <span className="text-xs text-[color:var(--today-muted)]">{batchResult.runs.length}</span>
                 </div>
                 <div className="mt-4 space-y-3">
                   {batchResult.runs.map((run) => (
-                    <div key={run.topicId} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                    <div key={run.topicId} className={`${insetPanelClass} p-3`}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="text-sm font-medium text-white">{run.topicName}</p>
-                          <p className="mt-1 text-xs text-zinc-500">
+                          <p className="text-sm font-medium text-[color:var(--today-text)]">{run.topicName}</p>
+                          <p className="mt-1 text-xs text-[color:var(--today-muted)]">
                             Run ID: {run.runId ?? '—'} · {run.counts.webProposals ?? 0} proposal{run.counts.webProposals === 1 ? '' : 's'}
                           </p>
                         </div>
                         <StatusBadge status={run.status} />
                       </div>
                       {run.errors.length > 0 && (
-                        <p className="mt-3 text-xs text-red-300">{run.errors[0]?.message}</p>
+                        <p className="mt-3 text-xs text-[#ffdada]">{run.errors[0]?.message}</p>
                       )}
                     </div>
                   ))}
@@ -915,12 +936,12 @@ export function WebScoutRunClient({
           </div>
         </div>
 
-        <details className="rounded-xl border border-zinc-800 bg-zinc-900">
-          <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-zinc-300 hover:text-white transition-colors">
+        <details className={surfacePanelClass}>
+          <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[color:var(--today-text-soft)] transition-colors hover:text-[color:var(--today-text)]">
             Technical Details
           </summary>
 
-          <div className="border-t border-zinc-800 p-5 space-y-5">
+          <div className="border-t border-[rgba(255,255,255,0.08)] p-5 space-y-5">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <OutcomeCountCard
                 label="Status"
@@ -945,9 +966,9 @@ export function WebScoutRunClient({
             </div>
 
             {batchVisibleIssueMessages.length > 0 && (
-              <section className="rounded-xl border border-red-800 bg-red-950 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-red-300">Issues</h3>
-                <ul className="mt-3 space-y-2 text-sm text-red-100">
+              <section className={issuePanelClass}>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[#ffdada]">Issues</h3>
+                <ul className="mt-3 space-y-2 text-sm text-[#fff1f1]">
                   {batchVisibleIssueMessages.map((entry, index) => (
                     <li key={`${entry}-${index}`}>{entry}</li>
                   ))}
@@ -957,18 +978,18 @@ export function WebScoutRunClient({
 
             {batchResult && batchResult.runs.length > 0 && (
               <section>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Run Payloads</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--today-text)]">Run payloads</h3>
                 <div className="mt-3 space-y-3">
                   {batchResult.runs.map((run) => (
                     <details
                       key={`${run.topicId}-payload`}
-                      className="rounded-lg border border-zinc-800 bg-zinc-950"
+                      className={insetPanelClass}
                     >
-                      <summary className="cursor-pointer px-4 py-3 text-sm text-zinc-300 hover:text-white">
+                      <summary className="cursor-pointer px-4 py-3 text-sm text-[color:var(--today-text-soft)] hover:text-[color:var(--today-text)]">
                         {run.topicName} · {run.status}
                       </summary>
-                      <div className="border-t border-zinc-800 p-4">
-                        <pre className="max-h-64 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300">
+                      <div className="border-t border-[rgba(255,255,255,0.08)] p-4">
+                        <pre className="max-h-64 overflow-auto rounded-[18px] bg-[rgba(0,0,0,0.24)] p-3 text-xs text-[color:var(--today-text-soft)]">
                           {safeStringify(run)}
                         </pre>
                       </div>
@@ -986,24 +1007,26 @@ export function WebScoutRunClient({
   return (
     <section className="space-y-6">
       {isAwaitingTopicSelection && (
-        <div className="rounded-xl border border-sky-800 bg-sky-950 p-5">
+        <div className={`${surfacePanelClass} p-5`}>
           <div className="flex flex-col gap-3">
             <div>
-              <p className="text-xs uppercase tracking-wider text-sky-300 mb-2">Choose Report Topic</p>
-              <h2 className="text-xl font-semibold text-white">Select an existing topic with enough source material</h2>
-              <p className="mt-2 text-sm text-sky-200">
+              <p className={sectionLabelClass}>Choose report topic</p>
+              <h2 className="mt-2 text-xl font-semibold text-[color:var(--today-text)]">
+                Select an existing topic with enough source material
+              </h2>
+              <p className="mt-2 text-sm text-[color:var(--today-muted)]">
                 Only topics with at least {minimumLinkedDocumentsForReport} linked documents are shown here so the report has enough context to be worth generating.
               </p>
             </div>
 
             {reportTopicsError && (
-              <div className="rounded-lg border border-red-800 bg-red-950 p-4 text-sm text-red-300">
+              <div className={`${issuePanelClass} text-sm text-[#ffdada]`}>
                 {reportTopicsError}
               </div>
             )}
 
             {!reportTopicsError && reportTopicOptions.length === 0 && (
-              <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-300">
+              <div className={`${insetPanelClass} p-4 text-sm text-[color:var(--today-text-soft)]`}>
                 No saved topics are ready to generate yet. Link more documents to a topic from Research, then try again.
               </div>
             )}
@@ -1015,28 +1038,28 @@ export function WebScoutRunClient({
                   {reportTopicOptions.map((topic) => (
                     <label
                       key={topic.id}
-                      className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950 p-4 transition-colors hover:border-zinc-700"
+                      className={`${insetPanelClass} flex cursor-pointer items-start gap-3 p-4 transition-colors hover:outline-[rgba(255,255,255,0.12)]`}
                     >
                       <input
                         type="radio"
                         name="topicId"
                         value={topic.id}
-                        className="mt-1 h-4 w-4 border-zinc-600 bg-zinc-900 text-sky-400 focus:ring-sky-800"
+                        className="mt-1 h-4 w-4 border-[rgba(255,255,255,0.2)] bg-[rgba(0,0,0,0.36)] text-white focus:ring-white/30"
                         defaultChecked={reportTopicOptions[0]?.id === topic.id}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-white">{topic.name}</p>
-                          <span className="inline-flex items-center rounded-full border border-emerald-800 bg-emerald-950 px-2 py-0.5 text-[11px] text-emerald-200">
+                          <p className="text-sm font-semibold text-[color:var(--today-text)]">{topic.name}</p>
+                          <span className={accentPillClass}>
                             {topic.linkedDocumentCount} linked docs
                           </span>
-                          <span className="inline-flex items-center rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">
+                          <span className={subtlePillClass}>
                             Last report: {formatShortDate(topic.lastReportAt)}
                           </span>
                         </div>
-                        <p className="mt-2 text-sm text-zinc-300">{topic.goal}</p>
+                        <p className="mt-2 text-sm text-[color:var(--today-text-soft)]">{topic.goal}</p>
                         {topic.focusTags.length > 0 && (
-                          <p className="mt-2 text-xs text-zinc-400">
+                          <p className="mt-2 text-xs text-[color:var(--today-muted)]">
                             Focus tags: {topic.focusTags.slice(0, 6).join(', ')}
                           </p>
                         )}
@@ -1047,7 +1070,7 @@ export function WebScoutRunClient({
 
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
+                  className={primaryButtonClass}
                 >
                   Generate Report
                 </button>
@@ -1058,18 +1081,18 @@ export function WebScoutRunClient({
       )}
 
       {isVaultWideFindSources && (
-        <div className="rounded-xl border border-sky-800 bg-sky-950 p-5">
+        <div className={`${surfacePanelClass} p-5`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="mb-2 text-xs uppercase tracking-wider text-sky-300">Batch Option</p>
-              <h2 className="text-xl font-semibold text-white">Run Find Sources across all eligible topics</h2>
-              <p className="mt-2 text-sm text-sky-200">
+              <p className={sectionLabelClass}>Batch option</p>
+              <h2 className="mt-2 text-xl font-semibold text-[color:var(--today-text)]">Run Find Sources across all eligible topics</h2>
+              <p className="mt-2 text-sm text-[color:var(--today-muted)]">
                 Use batch mode when you want one inline scout-only run per active topic that still needs more material before it is report-ready.
               </p>
             </div>
             <Link
               href="/web-scout?runMode=scout_only&scope=all_topics"
-              className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-zinc-200"
+              className={secondaryButtonClass}
             >
               All Eligible Topics
             </Link>
@@ -1077,24 +1100,24 @@ export function WebScoutRunClient({
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Run Summary</p>
+      <div className={`${surfacePanelClass} p-6`}>
+        <p className={sectionLabelClass}>Run summary</p>
         <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={currentStatus} />
-              <span className="inline-flex items-center rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 bg-zinc-800">
+              <span className={subtlePillClass}>
                 {runModeLabel}
               </span>
               {selectedTopicName && (
-                <span className="inline-flex items-center rounded-full border border-sky-800 px-2 py-0.5 text-xs text-sky-200 bg-sky-950">
+                <span className={accentPillClass}>
                   Topic: {selectedTopicName}
                 </span>
               )}
             </div>
-            <h2 className="mt-4 text-2xl font-semibold text-white">{outcomeHeadline}</h2>
-            <p className="mt-2 text-sm leading-7 text-zinc-300">{outcomeDescription}</p>
-            <p className="mt-3 text-xs text-zinc-500">
+            <h2 className="mt-4 text-2xl font-semibold text-[color:var(--today-text)]">{outcomeHeadline}</h2>
+            <p className="mt-2 text-sm leading-7 text-[color:var(--today-text-soft)]">{outcomeDescription}</p>
+            <p className="mt-3 text-xs text-[color:var(--today-muted)]">
               {trace?.startedAt
                 ? `Started ${formatClockTime(trace.startedAt, { includeSeconds: true })} · ${runDuration}`
                 : isAwaitingTopicSelection
@@ -1111,29 +1134,29 @@ export function WebScoutRunClient({
               {results?.report ? (
                 <Link
                   href={results.report.link}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
+                  className={primaryButtonClass}
                 >
                   Open Report
                 </Link>
               ) : !isRunning && pendingReviewCount > 0 ? (
                 <Link
-                  href="/today#review-inbox"
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
+                  href={reviewQueueHref}
+                  className={primaryButtonClass}
                 >
                   Review Queue
                 </Link>
               ) : null}
               {!isRunning && pendingReviewCount > 0 && results?.report && (
                 <Link
-                  href="/today#review-inbox"
-                  className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  href={reviewQueueHref}
+                  className={secondaryButtonClass}
                 >
                   Review Queue
                 </Link>
               )}
               <Link
-                href="/today"
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
+                href={researchHref}
+                className={secondaryButtonClass}
               >
                 Back to Research
               </Link>
@@ -1143,7 +1166,7 @@ export function WebScoutRunClient({
                   void startRun();
                 }}
                 disabled={isStarting}
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className={secondaryButtonClass}
               >
                 {isStarting ? 'Starting...' : 'Run Again'}
               </button>
@@ -1152,13 +1175,13 @@ export function WebScoutRunClient({
         </div>
 
         {visibleIssueMessages.length > 0 && (
-          <div className="mt-5 rounded-xl border border-red-800 bg-red-950 p-4">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-red-300">Run Issues</p>
-            <p className="mt-2 text-sm text-red-100">
+          <div className={`mt-5 ${issuePanelClass}`}>
+            <p className={sectionLabelClass}>Run issues</p>
+            <p className="mt-2 text-sm text-[#fff1f1]">
               {visibleIssueMessages[0]}
             </p>
             {visibleIssueMessages.length > 1 && (
-              <p className="mt-1 text-xs text-red-200">
+              <p className="mt-1 text-xs text-[#ffdada]">
                 {visibleIssueMessages.length - 1} more issue{visibleIssueMessages.length - 1 === 1 ? '' : 's'} in Technical Details.
               </p>
             )}
@@ -1166,35 +1189,35 @@ export function WebScoutRunClient({
         )}
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900">
-        <div className="border-b border-zinc-800 px-5 py-4">
-          <h2 className="text-sm font-semibold text-zinc-200 uppercase tracking-[0.18em]">What This Run Created</h2>
-          <p className="mt-1 text-xs text-zinc-500">
+      <div className={surfacePanelClass}>
+        <div className="border-b border-[rgba(255,255,255,0.08)] px-5 py-4">
+          <h2 className={sectionLabelClass}>What this run created</h2>
+          <p className="mt-1 text-xs text-[color:var(--today-muted)]">
             Results first: report, review items, and direct next places to go.
           </p>
         </div>
 
         <div className="p-5 space-y-5">
           {isAwaitingTopicSelection && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-300">
+            <div className={`${insetPanelClass} p-4 text-sm text-[color:var(--today-text-soft)]`}>
               Select a topic above to start a full report run. The finished report summary and next actions will appear here.
             </div>
           )}
 
           {isRunning && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-300">
+            <div className={`${insetPanelClass} p-4 text-sm text-[color:var(--today-text-soft)]`}>
               The run is still working. This area will update with finished outputs and next actions when processing completes.
             </div>
           )}
 
           {!isAwaitingTopicSelection && !isRunning && resultsError && (
-            <div className="rounded-lg border border-red-800 bg-red-950 p-4 text-sm text-red-300">
+            <div className={`${issuePanelClass} text-sm text-[#ffdada]`}>
               {resultsError}
             </div>
           )}
 
           {!isAwaitingTopicSelection && !isRunning && !resultsError && !results && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
+            <div className={`${insetPanelClass} p-4 text-sm text-[color:var(--today-muted)]`}>
               Loading finished outputs...
             </div>
           )}
@@ -1225,35 +1248,35 @@ export function WebScoutRunClient({
           )}
 
           {noOutputsCreated && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
+            <div className={`${insetPanelClass} p-4 text-sm text-[color:var(--today-muted)]`}>
               No new sources, concepts, flashcards, or report were created in this run.
             </div>
           )}
 
           {results?.report && (
-            <article className="rounded-xl border border-emerald-800 bg-emerald-950 p-4">
+            <article className={`${surfacePanelClass} p-4`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-300">Report Ready</p>
-                  <h3 className="mt-1 text-lg font-semibold text-white">{results.report.title}</h3>
-                  <p className="mt-1 text-xs text-emerald-200">
+                  <p className={sectionLabelClass}>Report ready</p>
+                  <h3 className="mt-1 text-lg font-semibold text-[color:var(--today-text)]">{results.report.title}</h3>
+                  <p className="mt-1 text-xs text-[color:var(--today-muted)]">
                     Day {results.report.day}
                     {typeof results.report.sourcesCount === 'number'
                       ? ` · ${results.report.sourcesCount} source${results.report.sourcesCount === 1 ? '' : 's'}`
                       : ''}
                   </p>
                   {results.report.topicsCovered.length > 0 && (
-                    <p className="mt-2 text-xs text-emerald-100">
+                    <p className="mt-2 text-xs text-[color:var(--today-text-soft)]">
                       Covers: {results.report.topicsCovered.slice(0, 5).join(', ')}
                     </p>
                   )}
                   {results.report.preview && (
-                    <p className="mt-2 text-sm text-zinc-100 line-clamp-4">{results.report.preview}</p>
+                    <p className="mt-2 text-sm text-[color:var(--today-text-soft)] line-clamp-4">{results.report.preview}</p>
                   )}
                 </div>
                 <Link
                   href={results.report.link}
-                  className="inline-flex items-center justify-center rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
+                  className={primaryButtonClass}
                 >
                   Open Report
                 </Link>
@@ -1262,42 +1285,42 @@ export function WebScoutRunClient({
           )}
 
           {resultsReady && results && sourceCount > 0 && (
-            <article className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+            <article className={`${surfacePanelClass} p-4`}>
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white uppercase tracking-[0.18em]">Source Candidates</h3>
-                <span className="text-xs text-zinc-400">{sourceCount}</span>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--today-text)]">Source candidates</h3>
+                <span className="text-xs text-[color:var(--today-muted)]">{sourceCount}</span>
               </div>
-              <p className="mt-2 text-sm text-zinc-400">
+              <p className="mt-2 text-sm text-[color:var(--today-muted)]">
                 These sources were proposed by this run and are waiting in the review queue.
               </p>
               <div className="mt-4 space-y-3 max-h-96 overflow-y-auto pr-1">
                 {results.sources.map((source) => (
-                  <div key={source.id} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+                  <div key={source.id} className={`${insetPanelClass} p-3`}>
                     {source.url ? (
                       <a
                         href={source.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-sm font-medium text-blue-300 hover:text-blue-200 hover:underline break-words"
+                        className="break-words text-sm font-medium text-[color:var(--today-accent-strong)] hover:underline"
                       >
                         {source.title}
                       </a>
                     ) : (
-                      <p className="text-sm font-medium text-white">{source.title}</p>
+                      <p className="text-sm font-medium text-[color:var(--today-text)]">{source.title}</p>
                     )}
-                    <p className="mt-1 text-xs text-zinc-500">
+                    <p className="mt-1 text-xs text-[color:var(--today-muted)]">
                       {source.contentType ?? 'resource'}
                       {typeof source.relevanceScore === 'number'
                         ? ` · relevance ${source.relevanceScore.toFixed(2)}`
                         : ''}
                     </p>
                     {source.summary && (
-                      <p className="mt-2 text-xs text-zinc-300 line-clamp-3">{source.summary}</p>
+                      <p className="mt-2 text-xs text-[color:var(--today-text-soft)] line-clamp-3">{source.summary}</p>
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <Link
                         href={`/artifacts/${source.id}`}
-                        className="inline-flex text-xs text-zinc-200 hover:text-white transition-colors"
+                        className="inline-flex text-xs text-[color:var(--today-muted-strong)] transition-colors hover:text-[color:var(--today-text)]"
                       >
                         View technical details
                       </Link>
@@ -1309,29 +1332,29 @@ export function WebScoutRunClient({
           )}
 
           {resultsReady && results && conceptCount > 0 && (
-            <article className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+            <article className={`${surfacePanelClass} p-4`}>
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white uppercase tracking-[0.18em]">Concepts</h3>
-                <span className="text-xs text-zinc-400">{conceptCount}</span>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--today-text)]">Concepts</h3>
+                <span className="text-xs text-[color:var(--today-muted)]">{conceptCount}</span>
               </div>
-              <p className="mt-2 text-sm text-zinc-400">
+              <p className="mt-2 text-sm text-[color:var(--today-muted)]">
                 These concepts were extracted by this run and are ready for review.
               </p>
               <div className="mt-4 space-y-3 max-h-96 overflow-y-auto pr-1">
                 {results.concepts.map((concept) => (
-                  <div key={concept.id} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-                    <p className="text-sm font-medium text-white">{concept.title}</p>
-                    <p className="mt-1 text-xs text-zinc-500">
+                  <div key={concept.id} className={`${insetPanelClass} p-3`}>
+                    <p className="text-sm font-medium text-[color:var(--today-text)]">{concept.title}</p>
+                    <p className="mt-1 text-xs text-[color:var(--today-muted)]">
                       {concept.type ?? 'concept'}
                       {concept.documentTitle ? ` · ${concept.documentTitle}` : ''}
                     </p>
                     {concept.summary && (
-                      <p className="mt-2 text-xs text-zinc-300 line-clamp-3">{concept.summary}</p>
+                      <p className="mt-2 text-xs text-[color:var(--today-text-soft)] line-clamp-3">{concept.summary}</p>
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <Link
                         href={`/artifacts/${concept.id}`}
-                        className="inline-flex text-xs text-zinc-200 hover:text-white transition-colors"
+                        className="inline-flex text-xs text-[color:var(--today-muted-strong)] transition-colors hover:text-[color:var(--today-text)]"
                       >
                         View technical details
                       </Link>
@@ -1343,22 +1366,22 @@ export function WebScoutRunClient({
           )}
 
           {resultsReady && results && flashcardCount > 0 && (
-            <details className="rounded-xl border border-zinc-800 bg-zinc-900">
-              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-zinc-300 hover:text-white">
+            <details className={surfacePanelClass}>
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[color:var(--today-text-soft)] hover:text-[color:var(--today-text)]">
                 Flashcards ({flashcardCount})
               </summary>
-              <div className="border-t border-zinc-800 px-4 py-3 space-y-3 max-h-80 overflow-y-auto">
+              <div className="border-t border-[rgba(255,255,255,0.08)] px-4 py-3 space-y-3 max-h-80 overflow-y-auto">
                 {results.flashcards.map((flashcard) => (
-                  <div key={flashcard.id} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-                    <p className="text-xs text-zinc-500">{flashcard.format ?? 'card'}</p>
-                    <p className="mt-1 text-sm text-white">{flashcard.front ?? flashcard.title}</p>
+                  <div key={flashcard.id} className={`${insetPanelClass} p-3`}>
+                    <p className="text-xs text-[color:var(--today-muted)]">{flashcard.format ?? 'card'}</p>
+                    <p className="mt-1 text-sm text-[color:var(--today-text)]">{flashcard.front ?? flashcard.title}</p>
                     {flashcard.back && (
-                      <p className="mt-2 text-xs text-zinc-300 line-clamp-3">{flashcard.back}</p>
+                      <p className="mt-2 text-xs text-[color:var(--today-text-soft)] line-clamp-3">{flashcard.back}</p>
                     )}
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <Link
                         href={`/artifacts/${flashcard.id}`}
-                        className="inline-flex text-xs text-zinc-200 hover:text-white transition-colors"
+                        className="inline-flex text-xs text-[color:var(--today-muted-strong)] transition-colors hover:text-[color:var(--today-text)]"
                       >
                         View technical details
                       </Link>
@@ -1371,12 +1394,12 @@ export function WebScoutRunClient({
         </div>
       </div>
 
-      <details className="rounded-xl border border-zinc-800 bg-zinc-900">
-        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-zinc-300 hover:text-white transition-colors">
+      <details className={surfacePanelClass}>
+        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[color:var(--today-text-soft)] transition-colors hover:text-[color:var(--today-text)]">
           Technical Details
         </summary>
 
-        <div className="border-t border-zinc-800 p-5 space-y-5">
+        <div className="border-t border-[rgba(255,255,255,0.08)] p-5 space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <OutcomeCountCard
               label="Run ID"
@@ -1402,7 +1425,7 @@ export function WebScoutRunClient({
 
           {stageProgress.length > 0 && (
             <section>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Stage Progress</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--today-text)]">Stage progress</h3>
               <div className="mt-3 flex flex-wrap gap-2">
                 {stageProgress.map((stage) => (
                   <StageBadge key={stage.id} stage={stage} />
@@ -1413,12 +1436,12 @@ export function WebScoutRunClient({
 
           {metrics.length > 0 && (
             <section>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Pipeline Metrics</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--today-text)]">Pipeline metrics</h3>
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {metrics.map((metric) => (
-                  <div key={metric.label} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                    <p className="text-[11px] text-zinc-500 uppercase tracking-wide">{metric.label}</p>
-                    <p className="text-lg font-semibold text-white">{metric.value}</p>
+                  <div key={metric.label} className={`${insetPanelClass} p-3`}>
+                    <p className="text-[11px] uppercase tracking-wide text-[color:var(--today-muted)]">{metric.label}</p>
+                    <p className="text-lg font-semibold text-[color:var(--today-text)]">{metric.value}</p>
                   </div>
                 ))}
               </div>
@@ -1426,9 +1449,9 @@ export function WebScoutRunClient({
           )}
 
           {visibleIssueMessages.length > 0 && (
-            <section className="rounded-xl border border-red-800 bg-red-950 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-red-300">Issues</h3>
-              <ul className="mt-3 space-y-2 text-sm text-red-100">
+            <section className={issuePanelClass}>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[#ffdada]">Issues</h3>
+              <ul className="mt-3 space-y-2 text-sm text-[#fff1f1]">
                 {visibleIssueMessages.map((entry, index) => (
                   <li key={`${entry}-${index}`}>{entry}</li>
                 ))}
@@ -1437,13 +1460,13 @@ export function WebScoutRunClient({
           )}
 
           <section>
-            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">Step Timeline</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--today-text)]">Step timeline</h3>
             {!trace || trace.steps.length === 0 ? (
-              <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">
+              <div className={`mt-3 ${insetPanelClass} p-4 text-sm text-[color:var(--today-muted)]`}>
                 Waiting for process steps...
               </div>
             ) : (
-              <div className="mt-3 divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-950">
+              <div className={`mt-3 divide-y divide-[rgba(255,255,255,0.08)] ${insetPanelClass}`}>
                 {trace.steps.map((step, index) => {
                   const stageLabel = formatObservedStepLabel(step.name);
 
@@ -1452,35 +1475,35 @@ export function WebScoutRunClient({
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-2 min-w-0">
                           <StatusBadge status={step.status} />
-                          <span className="inline-flex items-center rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 bg-zinc-800">
+                          <span className={subtlePillClass}>
                             {stageLabel}
                           </span>
-                          <p className="text-sm text-white truncate">{step.name}</p>
+                          <p className="truncate text-sm text-[color:var(--today-text)]">{step.name}</p>
                         </div>
-                        <div className="text-xs text-zinc-500 font-mono">
+                        <div className="font-mono text-xs text-[color:var(--today-muted)]">
                           {formatClockTime(step.startedAt, { includeSeconds: true })} · {formatElapsedTime(step.startedAt, step.endedAt)}
                         </div>
                       </div>
 
                       {Boolean(step.error) && (
-                        <p className="mt-2 text-xs text-red-300 font-mono truncate">
+                        <p className="mt-2 truncate font-mono text-xs text-[#ffdada]">
                           {safeStringify(step.error)}
                         </p>
                       )}
 
                       {(Boolean(step.input) || Boolean(step.output)) && (
                         <details className="mt-2">
-                          <summary className="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300 transition-colors">
+                          <summary className="cursor-pointer text-xs text-[color:var(--today-muted)] transition-colors hover:text-[color:var(--today-text-soft)]">
                             View payload
                           </summary>
                           <div className="mt-2 grid gap-2 lg:grid-cols-2">
                             {Boolean(step.input) && (
-                              <pre className="text-xs text-zinc-300 bg-zinc-950 border border-zinc-800 rounded-lg p-3 overflow-auto max-h-56">
+                              <pre className="max-h-56 overflow-auto rounded-[18px] bg-[rgba(0,0,0,0.24)] p-3 text-xs text-[color:var(--today-text-soft)]">
                                 {safeStringify(step.input)}
                               </pre>
                             )}
                             {Boolean(step.output) && (
-                              <pre className="text-xs text-zinc-300 bg-zinc-950 border border-zinc-800 rounded-lg p-3 overflow-auto max-h-56">
+                              <pre className="max-h-56 overflow-auto rounded-[18px] bg-[rgba(0,0,0,0.24)] p-3 text-xs text-[color:var(--today-text-soft)]">
                                 {safeStringify(step.output)}
                               </pre>
                             )}

@@ -127,24 +127,44 @@ export default async function WebScoutPage({
 
   return (
     <>
-      <main className="min-h-screen pb-16 relative">
-        <div className="pointer-events-none absolute left-1/2 top-0 h-[220px] w-[480px] -translate-x-1/2 rounded-full bg-zinc-900 blur-[90px]" />
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 relative z-10">
-          <header className="flex items-start justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-white tracking-tight">{pageTitle}</h1>
-              <p className="text-zinc-400 mt-1">{pageDescription}</p>
+      <main className="today-screen relative min-h-screen pb-16 text-[color:var(--today-text)]">
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[260px] w-[640px] -translate-x-1/2 rounded-full bg-[rgba(255,255,255,0.06)] blur-[120px]" />
+        <div className="relative z-10 mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-10">
+          <header className="today-panel today-panel-low mb-6 overflow-hidden rounded-[32px] p-6 sm:p-8">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="today-label">Research workflow</p>
+                <h1 className="mt-4 text-[clamp(2.4rem,5vw,4.8rem)] font-black tracking-[-0.08em] text-[color:var(--today-accent-strong)]">
+                  {pageTitle}
+                </h1>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-[color:var(--today-muted)]">
+                  {pageDescription}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center rounded-full bg-[rgba(255,255,255,0.06)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--today-muted-strong)] outline outline-1 outline-[rgba(255,255,255,0.08)]">
+                    Web Scout
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-[rgba(255,255,255,0.12)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--today-accent-strong)] outline outline-1 outline-[rgba(255,255,255,0.12)]">
+                    {getRunModeTitle(runMode)}
+                  </span>
+                  {selectedTopicName ? (
+                    <span className="inline-flex items-center rounded-full bg-[rgba(255,255,255,0.06)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--today-muted-strong)] outline outline-1 outline-[rgba(255,255,255,0.08)]">
+                      Topic: {selectedTopicName}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <Link
+                href={topicId ? `/today?topicId=${topicId}` : '/today'}
+                className="today-button-secondary"
+              >
+                Back to Research
+              </Link>
             </div>
-            <Link
-              href="/today"
-              className="text-sm text-zinc-300 bg-zinc-800 px-3 py-1.5 rounded-lg hover:bg-zinc-700 transition-colors"
-            >
-              Back to Research
-            </Link>
           </header>
           <Suspense
             fallback={
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 text-sm text-zinc-400">
+              <div className="today-panel today-panel-low rounded-[28px] p-5 text-sm text-[color:var(--today-muted)]">
                 Preparing workflow run...
               </div>
             }
