@@ -3,10 +3,31 @@ export type DocumentTitleIssue = {
   reason: string;
 };
 
+export type DocumentFormatBucket = 'pdf' | 'text' | 'web';
+
+export const DOCUMENT_FORMAT_LABELS: Record<DocumentFormatBucket, string> = {
+  pdf: 'PDF Document',
+  text: 'Text Note',
+  web: 'Web Archive',
+};
+
+type FormatCandidate = {
+  source: string;
+  title: string;
+};
+
+type SearchCandidate = FormatCandidate & {
+  tags: string[];
+};
+
 const HTML_METADATA_PATTERN =
   /<meta|<\/?[a-z][^>]*>|name=["'][^"']+["']|content=["'][^"']*["']|http-equiv=["'][^"']+["']/i;
 
 const URL_LIKE_PATTERN = /(https?:\/\/|www\.)/i;
+
+function normalizeSearchValue(value: string): string {
+  return value.trim().toLowerCase();
+}
 
 export function getSourceDisplay(source: string): string {
   try {
@@ -63,6 +84,55 @@ export function formatLibraryFullDate(dateString: string): string {
 
 export function getDocumentOriginLabel(isWebScoutDiscovered: boolean): string {
   return isWebScoutDiscovered ? 'Saved from research' : 'Added directly';
+}
+
+export function inferDocumentFormatBucket(document: FormatCandidate): DocumentFormatBucket {
+  const source = document.source.toLowerCase();
+  const title = document.title.toLowerCase();
+
+  if (source.endsWith('.pdf') || title.endsWith('.pdf')) {
+    return 'pdf';
+  }
+
+  if (source.startsWith('http://') || source.startsWith('https://')) {
+    return 'web';
+  }
+
+  return 'text';
+}
+
+export function buildDocumentPreview(content: string): string {
+  const normalized = content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
+    .replace(/[#>*_~|-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) {
+    return 'Open this record to inspect the full source, review its tags, and continue working from the saved material.';
+  }
+
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+}
+
+export function matchesLibrarySearch(document: SearchCandidate, query: string): boolean {
+  const normalizedQuery = normalizeSearchValue(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const haystack = [
+    document.title,
+    document.source,
+    ...document.tags,
+  ]
+    .map(normalizeSearchValue)
+    .join(' ');
+
+  return normalizedQuery.split(/\s+/).every((term) => haystack.includes(term));
 }
 
 export function getDocumentTitleIssue(title: string): DocumentTitleIssue | null {

@@ -1,12 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { Drawer } from '@/app/components/OverlaySurface';
+import { PRIMARY_TOP_NAV_KEYS, getTopNavItemsWithState } from '@/app/components/topNav';
 import type { CollectionRow } from '@/server/repos/collections.repo';
 import type { DocumentListItem } from '@/server/repos/documents.repo';
-import { PRIMARY_TOP_NAV_KEYS, getTopNavItemsWithState } from '@/app/components/topNav';
-import { getDocumentTitleIssue } from '../documentPresentation';
+import { getDocumentTitleIssue, matchesLibrarySearch } from '../documentPresentation';
 import { LibraryIcon } from './LibraryIcon';
 import { LibrarySidebar } from './LibrarySidebar';
 
@@ -19,26 +20,18 @@ type Props = {
 export function LibraryShell({ documents, collections, children }: Props) {
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const navItems = getTopNavItemsWithState(pathname, PRIMARY_TOP_NAV_KEYS).map((item) => ({
     ...item,
     label: item.key === 'library' ? 'Documents' : item.key === 'reports' ? 'Results' : item.label,
   }));
 
   const selectedId = pathname.match(/^\/library\/([0-9a-f-]+)$/)?.[1] ?? null;
-  const filteredDocs = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return documents;
-    }
-
-    const query = searchQuery.toLowerCase();
-    return documents.filter(
-      (document) =>
-        document.title.toLowerCase().includes(query) ||
-        document.tags.some((tag) => tag.toLowerCase().includes(query)),
-    );
-  }, [documents, searchQuery]);
-
+  const filteredDocs = useMemo(
+    () => documents.filter((document) => matchesLibrarySearch(document, searchQuery)),
+    [documents, searchQuery],
+  );
   const favorites = useMemo(
     () => filteredDocs.filter((document) => document.is_favorite),
     [filteredDocs],
@@ -48,8 +41,12 @@ export function LibraryShell({ documents, collections, children }: Props) {
     [documents],
   );
 
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [pathname]);
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#131313] text-[#ece9e8]">
+    <div className="relative min-h-screen overflow-x-clip bg-[#131313] text-[#ece9e8]">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[-12%] top-[-8%] h-[28rem] w-[28rem] rounded-full bg-white/[0.04] blur-[120px]" />
         <div className="absolute right-[-10%] top-[12%] h-[24rem] w-[24rem] rounded-full bg-white/[0.025] blur-[120px]" />
@@ -61,11 +58,13 @@ export function LibraryShell({ documents, collections, children }: Props) {
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => setSidebarOpen((current) => !current)}
+              onClick={() => setMobileSidebarOpen(true)}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-[#d8d2d2] transition hover:bg-white/10 hover:text-white lg:hidden"
-              aria-label={sidebarOpen ? 'Close library navigation' : 'Open library navigation'}
+              aria-label="Open library navigation"
+              aria-expanded={mobileSidebarOpen}
+              aria-controls="library-sidebar-mobile"
             >
-              <LibraryIcon name={sidebarOpen ? 'panel-close' : 'panel-open'} className="h-4 w-4" />
+              <LibraryIcon name="panel-open" className="h-4 w-4" />
             </button>
 
             <Link href="/library" className="leading-none transition-opacity hover:opacity-85">
@@ -113,15 +112,10 @@ export function LibraryShell({ documents, collections, children }: Props) {
         </div>
       </header>
 
-      {sidebarOpen ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 top-16 z-30 bg-black/45 backdrop-blur-[2px] lg:hidden"
-            aria-label="Close library navigation"
-          />
+      {desktopSidebarOpen ? (
+        <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-[18rem] lg:flex">
           <LibrarySidebar
+            mode="desktop"
             documents={filteredDocs}
             favorites={favorites}
             collections={collections}
@@ -129,15 +123,38 @@ export function LibraryShell({ documents, collections, children }: Props) {
             searchQuery={searchQuery}
             cleanupCount={cleanupCount}
             onSearchChange={setSearchQuery}
-            onToggleSidebar={() => setSidebarOpen(false)}
+            onCollapse={() => setDesktopSidebarOpen(false)}
           />
-        </>
+        </aside>
       ) : null}
 
-      {!sidebarOpen ? (
+      <Drawer
+        open={mobileSidebarOpen}
+        onClose={() => setMobileSidebarOpen(false)}
+        title="Document index"
+        description="Search, collections, and quick access to saved material."
+        panelClassName="max-w-[22rem]"
+        contentClassName="p-0"
+      >
+        <div id="library-sidebar-mobile" className="h-full">
+          <LibrarySidebar
+            mode="mobile"
+            documents={filteredDocs}
+            favorites={favorites}
+            collections={collections}
+            selectedId={selectedId}
+            searchQuery={searchQuery}
+            cleanupCount={cleanupCount}
+            onSearchChange={setSearchQuery}
+            onNavigate={() => setMobileSidebarOpen(false)}
+          />
+        </div>
+      </Drawer>
+
+      {!desktopSidebarOpen ? (
         <button
           type="button"
-          onClick={() => setSidebarOpen(true)}
+          onClick={() => setDesktopSidebarOpen(true)}
           className="fixed left-4 top-20 z-40 hidden h-11 w-11 items-center justify-center rounded-full bg-[rgba(35,35,35,0.92)] text-[#d8d2d2] shadow-[0_20px_44px_rgba(0,0,0,0.34)] transition hover:bg-[rgba(47,47,47,0.96)] hover:text-white lg:flex"
           aria-label="Open library navigation"
         >
@@ -145,10 +162,8 @@ export function LibraryShell({ documents, collections, children }: Props) {
         </button>
       ) : null}
 
-      <div className={`relative pt-16 transition-[padding] duration-300 ${sidebarOpen ? 'lg:pl-[18rem]' : ''}`}>
-        <div className="h-[calc(100vh-4rem)] overflow-y-auto">
-          {children}
-        </div>
+      <div className={`relative pt-16 transition-[padding] duration-300 ${desktopSidebarOpen ? 'lg:pl-[18rem]' : ''}`}>
+        <div className="min-h-[calc(100vh-4rem)]">{children}</div>
       </div>
     </div>
   );

@@ -3,52 +3,16 @@ import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getAllDocumentsForLibrary, type LibraryDocumentRow } from '@/server/services/document.service';
 import { LibraryIcon } from './components/LibraryIcon';
 import {
+  buildDocumentPreview,
+  DOCUMENT_FORMAT_LABELS,
+  type DocumentFormatBucket,
   formatLibraryFullDate,
   formatLibraryRelativeDate,
   getDocumentOriginLabel,
   getDocumentTitleIssue,
   getSourceDisplay,
+  inferDocumentFormatBucket,
 } from './documentPresentation';
-
-type FormatBucket = 'pdf' | 'text' | 'web';
-
-const FORMAT_LABELS: Record<FormatBucket, string> = {
-  pdf: 'PDF Document',
-  text: 'Text Note',
-  web: 'Web Archive',
-};
-
-function inferFormatBucket(document: LibraryDocumentRow): FormatBucket {
-  const source = document.source.toLowerCase();
-  const title = document.title.toLowerCase();
-
-  if (source.endsWith('.pdf') || title.endsWith('.pdf')) {
-    return 'pdf';
-  }
-
-  if (source.startsWith('http://') || source.startsWith('https://')) {
-    return 'web';
-  }
-
-  return 'text';
-}
-
-function buildPreview(content: string): string {
-  const normalized = content
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`[^`]*`/g, ' ')
-    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
-    .replace(/[#>*_~|-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!normalized) {
-    return 'Open this record to inspect the full source, review its tags, and continue working from the saved material.';
-  }
-
-  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
-}
 
 function getTopClusters(documents: LibraryDocumentRow[]) {
   const counts = new Map<string, number>();
@@ -78,7 +42,7 @@ function getTopClusters(documents: LibraryDocumentRow[]) {
   ].filter((cluster) => cluster.count > 0);
 }
 
-function getFormatIcon(format: FormatBucket) {
+function getFormatIcon(format: DocumentFormatBucket) {
   switch (format) {
     case 'pdf':
       return 'pdf';
@@ -106,7 +70,7 @@ function StatCard({
 }
 
 function DocumentTile({ document }: { document: LibraryDocumentRow }) {
-  const format = inferFormatBucket(document);
+  const format = inferDocumentFormatBucket(document);
   const titleIssue = getDocumentTitleIssue(document.title);
 
   return (
@@ -143,7 +107,7 @@ function DocumentTile({ document }: { document: LibraryDocumentRow }) {
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-3 text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-[#797373]">
-        <span>{FORMAT_LABELS[format]}</span>
+        <span>{DOCUMENT_FORMAT_LABELS[format]}</span>
         <LibraryIcon name="arrow-up-right" className="h-4 w-4 opacity-0 transition group-hover:opacity-100" />
       </div>
     </Link>
@@ -151,9 +115,9 @@ function DocumentTile({ document }: { document: LibraryDocumentRow }) {
 }
 
 function FeaturedDocumentTile({ document }: { document: LibraryDocumentRow }) {
-  const format = inferFormatBucket(document);
+  const format = inferDocumentFormatBucket(document);
   const titleIssue = getDocumentTitleIssue(document.title);
-  const preview = buildPreview(document.content);
+  const preview = buildDocumentPreview(document.content);
 
   return (
     <article className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,rgba(60,60,60,0.95),rgba(38,38,38,0.95)_56%,rgba(23,23,23,0.98))] px-6 py-6 shadow-[0_24px_80px_rgba(0,0,0,0.34)] sm:px-8 sm:py-7 md:col-span-2 xl:col-span-2">
@@ -168,7 +132,7 @@ function FeaturedDocumentTile({ document }: { document: LibraryDocumentRow }) {
             Primary Asset
           </span>
           <span className="rounded-full bg-[#111111]/60 px-3 py-1.5 text-[0.58rem] font-bold uppercase tracking-[0.22em] text-[#bcb4b4]">
-            {FORMAT_LABELS[format]}
+            {DOCUMENT_FORMAT_LABELS[format]}
           </span>
           {titleIssue ? (
             <span className="rounded-full bg-[rgba(255,180,171,0.1)] px-3 py-1.5 text-[0.58rem] font-bold uppercase tracking-[0.22em] text-[#f0c0b5]">
@@ -241,7 +205,7 @@ function SignalLane({
       {documents.length > 0 ? (
         <div className="mt-6 space-y-3">
           {documents.map((document) => {
-            const format = inferFormatBucket(document);
+            const format = inferDocumentFormatBucket(document);
 
             return (
               <Link
@@ -314,9 +278,9 @@ export default async function LibraryPage() {
   const repositoryDocuments = documents
     .filter((document) => document.id !== featuredDocument?.id)
     .slice(0, 6);
-  const formatCounts = documents.reduce<Record<FormatBucket, number>>(
+  const formatCounts = documents.reduce<Record<DocumentFormatBucket, number>>(
     (accumulator, document) => {
-      accumulator[inferFormatBucket(document)] += 1;
+      accumulator[inferDocumentFormatBucket(document)] += 1;
       return accumulator;
     },
     { pdf: 0, text: 0, web: 0 },
@@ -364,7 +328,7 @@ export default async function LibraryPage() {
                   Format distribution
                 </p>
                 <div className="mt-6 space-y-5">
-                  {(Object.entries(FORMAT_LABELS) as Array<[FormatBucket, string]>).map(([bucket, label]) => {
+                  {(Object.entries(DOCUMENT_FORMAT_LABELS) as Array<[DocumentFormatBucket, string]>).map(([bucket, label]) => {
                     const count = formatCounts[bucket];
                     const percent = documents.length > 0 ? Math.max((count / documents.length) * 100, count > 0 ? 8 : 0) : 0;
 
