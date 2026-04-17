@@ -53,7 +53,7 @@ Observability tables:
 
 - `runs`: top-level execution records
 - `run_steps`: append-only timeline per run
-- `llm_calls`: exists, not fully populated yet
+- `llm_calls`: durable audit records for OpenAI request/response usage, status, and cost
 
 Spaced repetition tables:
 
@@ -182,7 +182,9 @@ Other:
 
 Deprecated compatibility routes:
 
-- Legacy single-agent entrypoints such as `POST /api/distill`, `POST /api/web-scout`, `POST /api/runs/distill`, `POST /api/runs/curate`, and related historical aliases remain as `410` stubs.
+- Retained compatibility stubs such as `POST /api/distill`, `POST /api/web-scout`, `POST /api/runs/distill`, `POST /api/runs/curate`, `GET|POST /api/cron/topic-report`, and `GET|POST /api/cron/web-scout` return `410`.
+- These routes emit `http.deprecated_route.hit` logs with `requestId`, `pathname`, `method`, and `replacement`.
+- Historical aliases `/api/research`, `/api/web-scout/start`, `/api/runs/distill-curate`, and `/api/runs/topic-report` are no longer shipped.
 
 ## Code Conventions
 
@@ -230,8 +232,10 @@ npm run lint
 
 - `server/services/today.service.ts`: log to `llm_calls`
 - `server/tools/localKb.tool.ts`: pgvector search
-- `server/tools/webSearch.tool.ts`: web search integration
-- `server/tools/ingest.tool.ts`: chunking
+
+## Launch Ops
+
+- Supported beta launch procedures live in [docs/beta-launch-runbook.md](/Users/ron/AgenticProjects/concept-vault/docs/beta-launch-runbook.md).
 
 ## Key Files
 

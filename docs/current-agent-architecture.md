@@ -7,7 +7,7 @@ The behavioral source of truth is `server/flows/pipeline.flow.ts`.
 
 - Canonical trigger path: `POST /api/runs/pipeline`
 - Wrapper routes and cron routes are thin entrypoints into the same `pipelineFlow(...)`
-- Legacy single-agent trigger routes remain as compatibility stubs and return `410`
+- A small set of compatibility trigger routes remain and return `410` with route-hit telemetry
 - Curator updates documents and tags, WebScout proposes sources, Distiller proposes concepts and flashcards
 - Research reports are stored as approved `research-report` artifacts
 
@@ -31,7 +31,7 @@ flowchart LR
   Trace["GET /api/runs/:runId"] --> Read["run trace"]
   Results["GET /api/runs/:runId/results"] --> Read
 
-  Legacy["Deprecated routes<br/>/api/distill<br/>/api/web-scout<br/>/api/runs/distill<br/>/api/runs/curate<br/>..."] --> Gone["410 Gone"]
+  Legacy["Compatibility stubs<br/>/api/distill<br/>/api/web-scout<br/>/api/runs/distill<br/>/api/runs/curate<br/>deprecated cron aliases"] --> Gone["410 Gone + telemetry"]
 ```
 
 Current-state notes:
@@ -40,7 +40,7 @@ Current-state notes:
 - The wrapper routes only prefill `PipelineInput` and `runMode`; they do not implement separate agent-specific orchestration.
 - `POST /api/topics` triggers a `topic_setup` pipeline run after topic creation.
 - Ingestion and approved web proposals can trigger `lightweight_enrichment`.
-- Legacy routes such as `/api/distill`, `/api/web-scout`, `/api/runs/distill`, and `/api/runs/curate` are deprecated and return `410`.
+- Compatibility routes such as `/api/distill`, `/api/web-scout`, `/api/runs/distill`, `/api/runs/curate`, and deprecated cron aliases return `410` and emit `http.deprecated_route.hit`.
 
 ## Pipeline end-to-end workflow
 
