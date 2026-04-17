@@ -3,51 +3,70 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { PRIMARY_TOP_NAV_KEYS, getTopNavItemsWithState } from '@/app/components/topNav';
+import { StatusBadge } from '@/app/components/StatusBadge';
+import { APP_BRAND, getTopNavGroupsWithState } from '@/app/components/topNav';
+import { formatTopicScopeLabel } from './presentation';
+import {
+  workspaceEyebrowClassName,
+  workspaceLabelClassName,
+  workspaceMutedCopyClassName,
+  workspacePillClassName,
+  workspacePrimaryButtonClassName,
+  workspacePrimaryNavClassName,
+  workspaceSectionLinkClassName,
+  workspaceShellPanelClassName,
+  workspaceUtilityNavClassName,
+} from './workspaceTheme';
 
 type Props = {
   activeAgentCount: number;
   selectedTopicName: string | null;
+  topicCount: number;
+  recentRunCount: number;
   children: ReactNode;
 };
 
+const WORKSPACE_SECTIONS = [
+  { href: '#agents-overview', label: 'Overview', icon: 'overview' },
+  { href: '#agents-registry', label: 'Registry', icon: 'registry' },
+  { href: '#agents-controls', label: 'Run Controls', icon: 'controls' },
+  { href: '#agents-runs', label: 'Recent Runs', icon: 'runs' },
+] as const;
+
 function Icon({
   name,
-  className = 'h-5 w-5',
+  className = 'h-4 w-4',
 }: {
-  name: 'settings' | 'bell' | 'panel' | 'registry' | 'topic' | 'runs';
+  name: 'overview' | 'registry' | 'controls' | 'runs';
   className?: string;
 }) {
-  if (name === 'settings') {
+  if (name === 'overview') {
     return (
-      <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden="true">
-        <circle cx="12" cy="12" r="3.2" />
-        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V22a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9.01 4a1.7 1.7 0 0 0 1.04-1.56V2.35a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.09 4a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 8.9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
-      </svg>
-    );
-  }
-
-  if (name === 'bell') {
-    return (
-      <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden="true">
-        <path d="M15 18H6.5a1.5 1.5 0 0 1-1.32-2.22L6 14.25V10a6 6 0 1 1 12 0v4.25l.82 1.53A1.5 1.5 0 0 1 17.5 18H15Z" />
-        <path d="M9.75 20a2.25 2.25 0 0 0 4.5 0" />
-      </svg>
-    );
-  }
-
-  if (name === 'panel') {
-    return (
-      <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden="true">
-        <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5z" />
-        <path d="M10 4h8.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H10" />
+      <svg
+        viewBox="0 0 24 24"
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.7}
+        aria-hidden="true"
+      >
+        <path d="M4 6.5A1.5 1.5 0 0 1 5.5 5H18.5A1.5 1.5 0 0 1 20 6.5v11A1.5 1.5 0 0 1 18.5 19H5.5A1.5 1.5 0 0 1 4 17.5z" />
+        <path d="M8 10.5h8" />
+        <path d="M8 14.5h5" />
       </svg>
     );
   }
 
   if (name === 'registry') {
     return (
-      <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.7}
+        aria-hidden="true"
+      >
         <path d="M6 6h12" />
         <path d="M6 12h12" />
         <path d="M6 18h12" />
@@ -58,160 +77,212 @@ function Icon({
     );
   }
 
-  if (name === 'topic') {
+  if (name === 'controls') {
     return (
-      <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden="true">
-        <path d="M12 20a8 8 0 1 0-8-8c0 4.42 3.58 8 8 8Z" />
-        <path d="M12 12 8.5 8.5" />
-        <path d="M12 4v8h8" />
+      <svg
+        viewBox="0 0 24 24"
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.7}
+        aria-hidden="true"
+      >
+        <path d="M6 7h12" />
+        <path d="M6 12h12" />
+        <path d="M6 17h12" />
+        <circle cx="9" cy="7" r="2" fill="currentColor" stroke="none" />
+        <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none" />
+        <circle cx="11" cy="17" r="2" fill="currentColor" stroke="none" />
       </svg>
     );
   }
 
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={1.7} aria-hidden="true">
-      <path d="M8 6h12" />
-      <path d="M8 12h12" />
-      <path d="M8 18h12" />
-      <path d="M4 6h.01" />
-      <path d="M4 12h.01" />
-      <path d="M4 18h.01" />
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      aria-hidden="true"
+    >
+      <path d="M7 6h10" />
+      <path d="M7 12h10" />
+      <path d="M7 18h10" />
+      <path d="M5 6h.01" />
+      <path d="M5 12h.01" />
+      <path d="M5 18h.01" />
     </svg>
   );
 }
 
-function NavLink({
-  href,
-  label,
-  active = false,
-}: {
-  href: string;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`pb-1 text-sm font-semibold tracking-[-0.02em] transition-colors ${
-        active
-          ? 'border-b-2 border-[color:var(--agents-accent)] text-[color:var(--agents-accent)]'
-          : 'text-[color:var(--agents-muted)] hover:text-[color:var(--agents-accent)]'
-      }`}
-    >
-      {label}
-    </Link>
-  );
-}
-
-function RailLink({
-  href,
-  label,
-  icon,
-  active = false,
-}: {
-  href: string;
-  label: string;
-  icon: 'panel' | 'registry' | 'topic' | 'runs';
-  active?: boolean;
-}) {
-  return (
-    <a
-      href={href}
-      className={`flex items-center gap-3 rounded-full px-4 py-3 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors ${
-        active
-          ? 'bg-[color:var(--agents-accent)] text-[color:var(--agents-accent-ink)]'
-          : 'text-[color:var(--agents-muted)] hover:bg-[rgba(255,255,255,0.06)] hover:text-[color:var(--agents-text)]'
-      }`}
-    >
-      <Icon name={icon} className="h-[18px] w-[18px]" />
-      <span>{label}</span>
-    </a>
-  );
-}
-
-export function AgentsChrome({ activeAgentCount, selectedTopicName, children }: Props) {
+export function AgentsChrome({
+  activeAgentCount,
+  selectedTopicName,
+  topicCount,
+  recentRunCount,
+  children,
+}: Props) {
   const pathname = usePathname();
-  const navItems = getTopNavItemsWithState(pathname, PRIMARY_TOP_NAV_KEYS);
+  const { primary, utility } = getTopNavGroupsWithState(pathname);
+  const selectedTopicLabel = formatTopicScopeLabel(selectedTopicName);
 
   return (
-    <div className="agents-screen">
-      <header className="agents-glass fixed inset-x-0 top-0 z-40">
-        <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="text-[1.75rem] font-black tracking-[-0.08em] text-[color:var(--agents-accent)]">
-            CONCEPT_VAULT
-          </div>
+    <div className="relative min-h-screen text-[color:var(--shell-immersive-text)]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-x-0 top-0 h-px bg-white/[0.08]" />
+        <div className="absolute left-[8%] top-0 h-64 w-64 rounded-full bg-[rgba(132,174,186,0.08)] blur-[120px]" />
+        <div className="absolute right-[6%] top-[14rem] h-72 w-72 rounded-full bg-white/[0.04] blur-[140px]" />
+      </div>
 
-          <nav className="hidden items-center gap-8 md:flex">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.href}
-                href={item.href}
-                label={item.label}
-                active={item.active}
+      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[rgba(11,13,15,0.84)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 xl:flex-row xl:items-center xl:justify-between">
+          <Link href="/today" className="flex items-center gap-4 transition-opacity hover:opacity-85">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.05] text-sm font-semibold text-[color:var(--shell-immersive-text)] shadow-[0_14px_32px_rgba(0,0,0,0.24)]">
+              {APP_BRAND.monogram}
+            </div>
+            <div className="leading-tight">
+              <span className="font-editorial block text-xl tracking-[-0.04em] text-white">
+                {APP_BRAND.name}
+              </span>
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--surface-text-muted)]">
+                Agents Workspace
+              </span>
+            </div>
+          </Link>
+
+          <div className="flex flex-col gap-3 xl:items-end">
+            <div
+              aria-label="Primary destinations"
+              role="group"
+              className="flex flex-wrap items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+            >
+              {primary.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={item.active ? 'page' : undefined}
+                  className={workspacePrimaryNavClassName(item.active)}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {utility.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={item.active ? 'page' : undefined}
+                  className={workspaceUtilityNavClassName(item.active)}
+                >
+                  {item.label}
+                </Link>
+              ))}
+              <StatusBadge
+                status={activeAgentCount > 0 ? 'running' : 'pending'}
+                label={`${activeAgentCount} active agent${activeAgentCount === 1 ? '' : 's'}`}
               />
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/reports"
-              aria-label="Reports"
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[color:var(--agents-text)] outline outline-1 outline-[color:var(--agents-outline)]"
-            >
-              <Icon name="settings" className="h-[18px] w-[18px]" />
-            </Link>
-            <Link
-              href="/chat"
-              aria-label="Ask Vault"
-              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(255,255,255,0.05)] text-[color:var(--agents-text)] outline outline-1 outline-[color:var(--agents-outline)]"
-            >
-              <Icon name="bell" className="h-[18px] w-[18px]" />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-white" />
-            </Link>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(255,255,255,0.08)] text-sm font-semibold text-[color:var(--agents-text)]">
-              CV
+              <span className={workspacePillClassName}>{selectedTopicLabel}</span>
             </div>
           </div>
         </div>
       </header>
 
-      <aside className="agents-glass fixed left-0 top-16 hidden h-[calc(100vh-4rem)] w-64 flex-col px-4 py-6 lg:flex">
-        <div className="mb-10">
-          <div className="flex items-center gap-3">
-            <span className="h-2 w-2 rounded-full bg-[color:var(--agents-accent)] animate-pulse" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--agents-text-soft)]">
-              Neural Core
-            </span>
+      <aside
+        className="fixed top-[6.5rem] hidden h-[calc(100vh-7.75rem)] w-60 flex-col gap-5 xl:flex"
+        style={{ left: 'max(1rem, calc((100vw - 1600px) / 2 + 1rem))' }}
+      >
+        <section className={`${workspaceShellPanelClassName} px-5 py-5`}>
+          <p className={workspaceEyebrowClassName}>Workspace Status</p>
+          <div className="mt-4 space-y-3">
+            <div>
+              <div className="text-2xl font-semibold tracking-[-0.04em] text-white">
+                {activeAgentCount}
+              </div>
+              <p className="text-sm text-[color:var(--surface-text-muted)]">Live profiles now</p>
+            </div>
+            <div className="grid gap-3 text-sm text-[color:var(--surface-text-muted)] sm:grid-cols-2 xl:grid-cols-1">
+              <div>
+                <div className={workspaceLabelClassName}>Topics</div>
+                <div className="mt-1 text-base font-medium text-white">{topicCount}</div>
+              </div>
+              <div>
+                <div className={workspaceLabelClassName}>Recent Runs</div>
+                <div className="mt-1 text-base font-medium text-white">{recentRunCount}</div>
+              </div>
+            </div>
           </div>
-          <div className="pl-5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--agents-muted)]">
-            {activeAgentCount} live agent{activeAgentCount === 1 ? '' : 's'}
-          </div>
-        </div>
+        </section>
 
-        <nav className="space-y-1">
-          <RailLink href="#agents-hero" label="Overview" icon="panel" active />
-          <RailLink href="#agents-registry" label="Registry" icon="registry" />
-          <RailLink href="#agents-inspector" label="Inspector" icon="topic" />
-          <RailLink href="#agents-runs" label="Runs" icon="runs" />
+        <nav
+          aria-label="Agents workspace sections"
+          className={`${workspaceShellPanelClassName} flex-1 px-3 py-3`}
+        >
+          <div className={workspaceEyebrowClassName}>Jump To</div>
+          <div className="mt-4 space-y-1">
+            {WORKSPACE_SECTIONS.map((section) => (
+              <a key={section.href} href={section.href} className={workspaceSectionLinkClassName()}>
+                <Icon name={section.icon} />
+                <span>{section.label}</span>
+              </a>
+            ))}
+          </div>
         </nav>
 
-        <div className="mt-auto space-y-4 pt-6">
-          <Link href="/ingest" className="agents-button-primary w-full">
+        <div className="space-y-3">
+          <Link href="/ingest" className={`${workspacePrimaryButtonClassName} w-full`}>
             Add Content
           </Link>
-          <div className="agents-panel agents-panel-lowest rounded-[24px] p-4">
-            <p className="agents-label">Selected topic</p>
-            <p className="mt-3 text-sm font-semibold text-[color:var(--agents-text)]">
-              {selectedTopicName ?? 'Global scope'}
+          <section className={`${workspaceShellPanelClassName} px-5 py-5`}>
+            <p className={workspaceEyebrowClassName}>Selected Scope</p>
+            <p className="mt-3 text-base font-medium text-white">{selectedTopicLabel}</p>
+            <p className={`mt-2 ${workspaceMutedCopyClassName}`}>
+              Global defaults remain separate from topic overrides, so launches stay explicit.
             </p>
-            <p className="mt-2 text-sm leading-6 text-[color:var(--agents-muted)]">
-              Topic overrides remain explicit. Global defaults stay separate from topic workflow state.
-            </p>
-          </div>
+          </section>
         </div>
       </aside>
 
-      <div className="relative z-10 pt-16 lg:pl-64">{children}</div>
+      <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 xl:pl-[17.5rem]">
+        <div className="mb-6 space-y-4 xl:hidden">
+          <section className={`${workspaceShellPanelClassName} px-5 py-5`}>
+            <p className={workspaceEyebrowClassName}>Workspace Status</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+              <div>
+                <div className={workspaceLabelClassName}>Live Profiles</div>
+                <div className="mt-1 text-lg font-semibold text-white">{activeAgentCount}</div>
+              </div>
+              <div>
+                <div className={workspaceLabelClassName}>Selected Scope</div>
+                <div className="mt-1 text-lg font-semibold text-white">{selectedTopicLabel}</div>
+              </div>
+              <div>
+                <div className={workspaceLabelClassName}>Recent Runs</div>
+                <div className="mt-1 text-lg font-semibold text-white">{recentRunCount}</div>
+              </div>
+            </div>
+          </section>
+
+          <nav aria-label="Agents workspace sections" className="overflow-x-auto pb-1">
+            <div className="flex min-w-max gap-2">
+              {WORKSPACE_SECTIONS.map((section) => (
+                <a
+                  key={section.href}
+                  href={section.href}
+                  className={workspaceSectionLinkClassName(true)}
+                >
+                  <Icon name={section.icon} />
+                  <span>{section.label}</span>
+                </a>
+              ))}
+            </div>
+          </nav>
+        </div>
+
+        {children}
+      </main>
     </div>
   );
 }

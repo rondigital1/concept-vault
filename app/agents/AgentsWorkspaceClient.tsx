@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AgentsChrome } from './AgentsChrome';
 import { AgentRegistry } from './AgentRegistry';
@@ -21,7 +21,11 @@ import type {
 
 type Props = {
   initialView: AgentsView;
-  fontClassName: string;
+};
+
+type WorkspaceNotice = {
+  status: 'info' | 'ok' | 'error' | 'running';
+  message: string;
 };
 
 type RunTracePayload = {
@@ -72,7 +76,8 @@ function buildComposerState(
   globalProfiles: AgentProfileSettingsMap,
 ): RunComposerState {
   return {
-    runMode: selectedTopic?.workflowSettings.defaultRunMode ?? globalProfiles.pipeline.defaultRunMode,
+    runMode:
+      selectedTopic?.workflowSettings.defaultRunMode ?? globalProfiles.pipeline.defaultRunMode,
     goal: selectedTopic?.goal ?? '',
     enableCategorization:
       selectedTopic?.workflowSettings.enableCategorizationByDefault ??
@@ -83,11 +88,11 @@ function buildComposerState(
     minQualityResults:
       selectedTopic?.workflowSettings.minQualityResults ?? globalProfiles.webScout.minQualityResults,
     minRelevanceScore:
-      selectedTopic?.workflowSettings.minRelevanceScore ?? globalProfiles.webScout.minRelevanceScore,
+      selectedTopic?.workflowSettings.minRelevanceScore ??
+      globalProfiles.webScout.minRelevanceScore,
     maxIterations:
       selectedTopic?.workflowSettings.maxIterations ?? globalProfiles.webScout.maxIterations,
-    maxQueries:
-      selectedTopic?.workflowSettings.maxQueries ?? globalProfiles.webScout.maxQueries,
+    maxQueries: selectedTopic?.workflowSettings.maxQueries ?? globalProfiles.webScout.maxQueries,
     maxDocsPerRun:
       selectedTopic?.workflowSettings.maxDocsPerRun ?? globalProfiles.distiller.maxDocsPerRun,
   };
@@ -223,14 +228,14 @@ function toSelectedRunDetail(
   };
 }
 
-export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
+export function AgentsWorkspaceClient({ initialView }: Props) {
   const router = useRouter();
   const [topicOptions, setTopicOptions] = useState(initialView.topicOptions);
   const [globalDraft, setGlobalDraft] = useState(initialView.globalProfiles);
-  const [selectedTopicId, setSelectedTopicId] = useState(
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(
     initialView.selectedTopic?.id ?? initialView.topicOptions[0]?.id ?? null,
   );
-  const [selectedRunId, setSelectedRunId] = useState(
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(
     initialView.selectedRun?.id ?? initialView.recentRuns[0]?.id ?? null,
   );
   const [selectedRun, setSelectedRun] = useState(initialView.selectedRun);
@@ -244,7 +249,7 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
   const [globalSaveState, setGlobalSaveState] = useState<'idle' | 'saving'>('idle');
   const [topicSaveState, setTopicSaveState] = useState<'idle' | 'saving'>('idle');
   const [launchState, setLaunchState] = useState<'idle' | 'launching'>('idle');
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusNotice, setStatusNotice] = useState<WorkspaceNotice | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
   const selectedTopic = topicOptions.find((topic) => topic.id === selectedTopicId) ?? null;
@@ -270,7 +275,10 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
       })
       .catch(() => {
         if (!cancelled) {
-          setStatusMessage('Unable to load run detail.');
+          setStatusNotice({
+            status: 'error',
+            message: 'Unable to load run detail.',
+          });
         }
       });
 
@@ -318,14 +326,22 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
         if (trace.status !== 'running') {
           setActiveRunId(null);
           setLaunchState('idle');
-          setStatusMessage(`Run ${trace.status}. Refreshing workspace metrics.`);
-          router.refresh();
+          setStatusNotice({
+            status: trace.status === 'error' ? 'error' : 'ok',
+            message: `Run ${trace.status}. Refreshing workspace metrics.`,
+          });
+          startTransition(() => {
+            router.refresh();
+          });
         }
       } catch {
         if (!cancelled) {
           setActiveRunId(null);
           setLaunchState('idle');
-          setStatusMessage('Run polling failed.');
+          setStatusNotice({
+            status: 'error',
+            message: 'Run polling failed.',
+          });
         }
       }
     };
@@ -343,7 +359,7 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
 
   async function handleSaveGlobal() {
     setGlobalSaveState('saving');
-    setStatusMessage(null);
+    setStatusNotice(null);
 
     try {
       const entries = [
@@ -373,9 +389,15 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
         webScout: responses[2].profile.settings,
         distiller: responses[3].profile.settings,
       });
-      setStatusMessage('Global defaults saved.');
+      setStatusNotice({
+        status: 'ok',
+        message: 'Global defaults saved.',
+      });
     } catch {
-      setStatusMessage('Failed to save global defaults.');
+      setStatusNotice({
+        status: 'error',
+        message: 'Failed to save global defaults.',
+      });
     } finally {
       setGlobalSaveState('idle');
     }
@@ -387,7 +409,7 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
     }
 
     setTopicSaveState('saving');
-    setStatusMessage(null);
+    setStatusNotice(null);
 
     try {
       const response = await fetch(`/api/topics/${selectedTopicId}`, {
@@ -404,9 +426,15 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
       setTopicOptions((current) =>
         current.map((topic) => (topic.id === selectedTopicId ? body.topicOption : topic)),
       );
-      setStatusMessage('Topic overrides saved.');
+      setStatusNotice({
+        status: 'ok',
+        message: 'Topic overrides saved.',
+      });
     } catch {
-      setStatusMessage('Failed to save topic overrides.');
+      setStatusNotice({
+        status: 'error',
+        message: 'Failed to save topic overrides.',
+      });
     } finally {
       setTopicSaveState('idle');
     }
@@ -414,7 +442,7 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
 
   async function handleLaunchRun() {
     setLaunchState('launching');
-    setStatusMessage(null);
+    setStatusNotice(null);
 
     try {
       const response = await fetch('/api/runs/pipeline', {
@@ -453,7 +481,9 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
         lastError: null,
       };
 
-      setRecentRuns((current) => [placeholderRun, ...current.filter((run) => run.id !== body.runId)].slice(0, 12));
+      setRecentRuns((current) =>
+        [placeholderRun, ...current.filter((run) => run.id !== body.runId)].slice(0, 12),
+      );
       setSelectedRunId(body.runId);
       setSelectedRun({
         ...placeholderRun,
@@ -461,10 +491,16 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
         stages: [],
       });
       setActiveRunId(body.runId);
-      setStatusMessage('Run started. Live execution detail is updating now.');
+      setStatusNotice({
+        status: 'running',
+        message: 'Run started. Live execution detail is updating now.',
+      });
     } catch {
       setLaunchState('idle');
-      setStatusMessage('Failed to start run.');
+      setStatusNotice({
+        status: 'error',
+        message: 'Failed to start run.',
+      });
     }
   }
 
@@ -472,46 +508,50 @@ export function AgentsWorkspaceClient({ initialView, fontClassName }: Props) {
     <AgentsChrome
       activeAgentCount={agentRegistry.filter((entry) => entry.state === 'live').length}
       selectedTopicName={selectedTopic?.name ?? null}
+      topicCount={topicOptions.length}
+      recentRunCount={recentRuns.length}
     >
-      <main className={`${fontClassName} min-h-screen pb-12`}>
-        <div className="mx-auto max-w-[1520px] px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
-          <div className="grid grid-cols-12 gap-6">
-            <section className="col-span-12 xl:col-span-8">
-              <AgentRegistry
-                agentRegistry={agentRegistry}
-                recentRuns={recentRuns}
-                executionEvents={executionEvents}
-                selectedRunId={selectedRunId}
-                selectedTopicName={selectedTopic?.name ?? null}
-                onRunSelect={setSelectedRunId}
-              />
-            </section>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.92fr)] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="min-w-0">
+          <AgentRegistry
+            agentRegistry={agentRegistry}
+            recentRuns={recentRuns}
+            executionEvents={executionEvents}
+            selectedRunId={selectedRunId}
+            selectedTopicName={selectedTopic?.name ?? null}
+            onRunSelect={setSelectedRunId}
+          />
+        </section>
 
-            <aside className="col-span-12 xl:col-span-4">
-              <AgentsInspector
-                topicOptions={topicOptions}
-                selectedTopicId={selectedTopicId}
-                selectedTopic={selectedTopic}
-                globalDraft={globalDraft}
-                topicDraft={topicDraft}
-                composer={composer}
-                selectedRun={selectedRun}
-                globalSaveState={globalSaveState}
-                topicSaveState={topicSaveState}
-                launchState={launchState}
-                statusMessage={statusMessage}
-                onSelectTopic={setSelectedTopicId}
-                onGlobalChange={(field, value) => setGlobalDraft((current) => updateNestedProfile(current, field, value))}
-                onSaveGlobal={handleSaveGlobal}
-                onTopicChange={(field, value) => setTopicDraft((current) => updateTopicDraftField(current, field, value))}
-                onSaveTopic={handleSaveTopic}
-                onComposerChange={(field, value) => setComposer((current) => updateComposerField(current, field, value))}
-                onLaunchRun={handleLaunchRun}
-              />
-            </aside>
-          </div>
-        </div>
-      </main>
+        <aside className="min-w-0">
+          <AgentsInspector
+            topicOptions={topicOptions}
+            selectedTopicId={selectedTopicId}
+            selectedTopic={selectedTopic}
+            globalDraft={globalDraft}
+            topicDraft={topicDraft}
+            composer={composer}
+            selectedRun={selectedRun}
+            globalSaveState={globalSaveState}
+            topicSaveState={topicSaveState}
+            launchState={launchState}
+            statusNotice={statusNotice}
+            onSelectTopic={(topicId) => setSelectedTopicId(topicId)}
+            onGlobalChange={(field, value) =>
+              setGlobalDraft((current) => updateNestedProfile(current, field, value))
+            }
+            onSaveGlobal={handleSaveGlobal}
+            onTopicChange={(field, value) =>
+              setTopicDraft((current) => updateTopicDraftField(current, field, value))
+            }
+            onSaveTopic={handleSaveTopic}
+            onComposerChange={(field, value) =>
+              setComposer((current) => updateComposerField(current, field, value))
+            }
+            onLaunchRun={handleLaunchRun}
+          />
+        </aside>
+      </div>
     </AgentsChrome>
   );
 }

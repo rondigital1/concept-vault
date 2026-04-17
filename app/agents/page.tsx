@@ -1,4 +1,3 @@
-import { Inter } from 'next/font/google';
 import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getAgentsView } from '@/server/services/agents.service';
 import { AgentsWorkspaceClient } from './AgentsWorkspaceClient';
@@ -7,11 +6,6 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 type PageSearchParams = Record<string, string | string[] | undefined>;
-
-const agentsSans = Inter({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800', '900'],
-});
 
 function firstQueryParam(value: string | string[] | undefined): string | null {
   if (typeof value === 'string') {
@@ -36,10 +30,5 @@ export default async function AgentsPage({
   const selectedRunId = firstQueryParam(resolvedSearchParams.runId);
   const initialView = await getAgentsView(scope, { selectedTopicId, selectedRunId });
 
-  return (
-    <AgentsWorkspaceClient
-      initialView={initialView}
-      fontClassName={agentsSans.className}
-    />
-  );
+  return <AgentsWorkspaceClient initialView={initialView} />;
 }
