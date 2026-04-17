@@ -3,8 +3,8 @@ import { updateAgentProfile } from '@/server/repos/agentProfiles.repo';
 import { createSavedTopic, getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
 import {
   cleanAllTables,
+  createAdditionalTestWorkspace,
   closeTestDb,
-  getTestWorkspaceScope,
   initTestSchema,
 } from '../helpers/testDb';
 
@@ -29,11 +29,12 @@ describe('topic patch route', () => {
     await cleanAllTables();
     const validation = await import('@/server/http/requestValidation');
     validation.resetValidationFailureCounts();
-    scope = await getTestWorkspaceScope();
+    const workspace = await createAdditionalTestWorkspace('topic-patch');
+    scope = { workspaceId: workspace.workspaceId };
     mockAuth.mockResolvedValue({
       user: {
-        id: 'test-user',
-        email: 'test@example.com',
+        id: workspace.userId,
+        email: workspace.email,
         membershipRole: 'owner',
       },
       workspace: {

@@ -3,8 +3,8 @@ import { updateAgentProfile } from '@/server/repos/agentProfiles.repo';
 import { listSavedTopics } from '@/server/repos/savedTopics.repo';
 import {
   cleanAllTables,
+  createAdditionalTestWorkspace,
   closeTestDb,
-  getTestWorkspaceScope,
   initTestSchema,
 } from '../helpers/testDb';
 
@@ -27,6 +27,8 @@ vi.mock('@/auth', () => ({
 }));
 
 describe('topics route', () => {
+  let scope: { workspaceId: string };
+
   beforeAll(async () => {
     await initTestSchema();
   });
@@ -42,11 +44,12 @@ describe('topics route', () => {
     const validation = await import('@/server/http/requestValidation');
     validation.resetValidationFailureCounts();
 
-    const scope = await getTestWorkspaceScope();
+    const workspace = await createAdditionalTestWorkspace('topics');
+    scope = { workspaceId: workspace.workspaceId };
     mockAuth.mockResolvedValue({
       user: {
-        id: 'test-user',
-        email: 'test@example.com',
+        id: workspace.userId,
+        email: workspace.email,
         membershipRole: 'owner',
       },
       workspace: {
@@ -101,7 +104,6 @@ describe('topics route', () => {
     expect(body.setupRunId).toBe('run-topic-setup-1');
     expect(body.setupJobId).toBe('job-topic-setup-1');
 
-    const scope = await getTestWorkspaceScope();
     const topic = (await listSavedTopics(scope))[0];
     expect(topic).toBeDefined();
     expect(topic?.max_docs_per_run).toBe(7);

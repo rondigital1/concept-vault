@@ -17,13 +17,15 @@ type JsonParam = Parameters<typeof sql.json>[0];
 
 type TestWorkspaceContext = WorkspaceScope & {
   userId: string;
+  email: string;
 };
 
 async function createTestWorkspace(seed = 'default'): Promise<TestWorkspaceContext> {
   const suffix = `${seed}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const email = `test-${suffix}@example.com`;
   const userRows = await sql<Array<{ id: string }>>`
     INSERT INTO users (email, display_name)
-    VALUES (${`test-${suffix}@example.com`}, ${`Test User ${suffix}`})
+    VALUES (${email}, ${`Test User ${suffix}`})
     RETURNING id
   `;
   const userId = userRows[0].id;
@@ -40,7 +42,7 @@ async function createTestWorkspace(seed = 'default'): Promise<TestWorkspaceConte
     VALUES (${userId}, ${workspaceId}, 'owner', true)
   `;
 
-  return { userId, workspaceId };
+  return { userId, workspaceId, email };
 }
 
 export async function getTestWorkspaceScope(): Promise<WorkspaceScope> {
