@@ -3,6 +3,7 @@ import { TEST_DAY } from '../helpers/fixtures';
 
 const mockFindSources = vi.hoisted(() => vi.fn());
 const mockAuth = vi.hoisted(() => vi.fn());
+const mockGetDefaultMembershipContextForUser = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/services/findSources.service', () => ({
   findSources: mockFindSources,
@@ -10,6 +11,10 @@ vi.mock('@/server/services/findSources.service', () => ({
 
 vi.mock('@/auth', () => ({
   auth: mockAuth,
+}));
+
+vi.mock('@/server/repos/identity.repo', () => ({
+  getDefaultMembershipContextForUser: mockGetDefaultMembershipContextForUser,
 }));
 
 describe('find sources route', () => {
@@ -26,6 +31,17 @@ describe('find sources route', () => {
         name: 'Test Workspace',
         slug: 'test-workspace',
       },
+    });
+    mockGetDefaultMembershipContextForUser.mockResolvedValue({
+      user_id: 'test-user',
+      email: 'test@example.com',
+      display_name: 'Test User',
+      avatar_url: null,
+      workspace_id: 'workspace-1',
+      workspace_name: 'Test Workspace',
+      workspace_slug: 'test-workspace',
+      membership_role: 'owner',
+      is_default: true,
     });
   });
 

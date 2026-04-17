@@ -4,10 +4,15 @@ const mockAuth = vi.hoisted(() => vi.fn());
 const mockDrainPipelineJobQueue = vi.hoisted(() => vi.fn());
 const mockEnqueuePipelineJob = vi.hoisted(() => vi.fn());
 const mockExecutePipelineInline = vi.hoisted(() => vi.fn());
+const mockGetDefaultMembershipContextForUser = vi.hoisted(() => vi.fn());
 const mockSchedulePipelineJobDrain = vi.hoisted(() => vi.fn());
 
 vi.mock('@/auth', () => ({
   auth: mockAuth,
+}));
+
+vi.mock('@/server/repos/identity.repo', () => ({
+  getDefaultMembershipContextForUser: mockGetDefaultMembershipContextForUser,
 }));
 
 vi.mock('@/server/jobs/pipelineJobs', () => ({
@@ -32,6 +37,17 @@ describe('refresh topic route', () => {
         name: 'Test Workspace',
         slug: 'test-workspace',
       },
+    });
+    mockGetDefaultMembershipContextForUser.mockResolvedValue({
+      user_id: 'test-user',
+      email: 'test@example.com',
+      display_name: 'Test User',
+      avatar_url: null,
+      workspace_id: 'workspace-1',
+      workspace_name: 'Test Workspace',
+      workspace_slug: 'test-workspace',
+      membership_role: 'owner',
+      is_default: true,
     });
     mockEnqueuePipelineJob.mockResolvedValue({
       jobId: 'job-1',

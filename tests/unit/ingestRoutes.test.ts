@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockAuth = vi.hoisted(() => vi.fn());
+const mockGetDefaultMembershipContextForUser = vi.hoisted(() => vi.fn());
 const mockIngestDocument = vi.hoisted(() => vi.fn());
 const mockExtractDocumentFromUrl = vi.hoisted(() => vi.fn());
 
 vi.mock('@/auth', () => ({
   auth: mockAuth,
+}));
+
+vi.mock('@/server/repos/identity.repo', () => ({
+  getDefaultMembershipContextForUser: mockGetDefaultMembershipContextForUser,
 }));
 
 vi.mock('@/server/services/ingest.service', () => ({
@@ -31,6 +36,17 @@ describe('ingest routes', () => {
         name: 'Test Workspace',
         slug: 'test-workspace',
       },
+    });
+    mockGetDefaultMembershipContextForUser.mockResolvedValue({
+      user_id: 'test-user',
+      email: 'test@example.com',
+      display_name: 'Test User',
+      avatar_url: null,
+      workspace_id: 'workspace-1',
+      workspace_name: 'Test Workspace',
+      workspace_slug: 'test-workspace',
+      membership_role: 'owner',
+      is_default: true,
     });
     mockIngestDocument.mockResolvedValue({
       documentId: 'doc-1',

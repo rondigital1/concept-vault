@@ -1,5 +1,7 @@
 import { auth } from '@/auth';
 import { sql } from '@/db';
+import { getDefaultMembershipContextForUser } from '@/server/repos/identity.repo';
+import { resolveSessionIdentity } from '@/server/auth/sessionIdentity';
 
 export type WorkspaceScope = {
   workspaceId: string;
@@ -26,17 +28,41 @@ export class WorkspaceAccessError extends Error {
 export async function requireSessionWorkspace(): Promise<SessionWorkspaceContext> {
   const session = await auth();
 
-  if (!session?.user?.id || !session.workspace?.id || !session.user.membershipRole) {
+  const email =
+    typeof session?.user?.email === 'string' && session.user.email.trim().length > 0
+      ? session.user.email.trim()
+      : null;
+
+  if (!session?.user?.id || !email) {
     throw new WorkspaceAccessError(401, 'Unauthorized');
   }
 
+  const persistedMembership = await getDefaultMembershipContextForUser(session.user.id);
+
+  if (persistedMembership) {
+    return {
+      userId: persistedMembership.user_id,
+      email: persistedMembership.email,
+      workspaceId: persistedMembership.workspace_id,
+      workspaceName: persistedMembership.workspace_name,
+      workspaceSlug: persistedMembership.workspace_slug,
+      membershipRole: persistedMembership.membership_role,
+    };
+  }
+
+  const recoveredIdentity = await resolveSessionIdentity({
+    email,
+    name: typeof session.user.name === 'string' ? session.user.name : null,
+    image: typeof session.user.image === 'string' ? session.user.image : null,
+  });
+
   return {
-    userId: session.user.id,
-    email: typeof session.user.email === 'string' ? session.user.email : null,
-    workspaceId: session.workspace.id,
-    workspaceName: session.workspace.name,
-    workspaceSlug: session.workspace.slug,
-    membershipRole: session.user.membershipRole,
+    userId: recoveredIdentity.userId,
+    email: recoveredIdentity.email,
+    workspaceId: recoveredIdentity.workspaceId,
+    workspaceName: recoveredIdentity.workspaceName,
+    workspaceSlug: recoveredIdentity.workspaceSlug,
+    membershipRole: recoveredIdentity.membershipRole,
   };
 }
 
