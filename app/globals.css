@@ -10,6 +10,51 @@
 @layer base {
   :root {
     color-scheme: light;
+    --font-ui: var(--font-ui-sans), system-ui, -apple-system, sans-serif;
+    --font-display: var(--font-editorial-serif), Georgia, serif;
+    --font-mono: var(--font-data-mono), "SFMono-Regular", ui-monospace, monospace;
+
+    /* WS-01 shell contract: these semantic and default-shell tokens are canonical. */
+    --surface-text: #15252f;
+    --surface-text-muted: #6e797d;
+    --surface-panel: rgba(251, 247, 241, 0.96);
+    --surface-panel-elevated: rgba(255, 252, 248, 0.82);
+    --surface-accent: #4c7887;
+    --surface-accent-soft: rgba(23, 60, 73, 0.08);
+    --surface-accent-strong: #2f6272;
+    --surface-accent-ink: #173c49;
+    --surface-accent-ink-hover: #214d5d;
+    --surface-outline: rgba(21, 37, 47, 0.1);
+    --surface-outline-strong: rgba(21, 37, 47, 0.16);
+    --feedback-success: #2f6b5a;
+    --feedback-warning: #8c6630;
+    --feedback-danger: #934849;
+
+    --shell-default-canvas: #d9d0c4;
+    --shell-default-background:
+      radial-gradient(circle at top, rgba(149, 188, 198, 0.18), transparent 26%),
+      radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.26), transparent 18%),
+      linear-gradient(180deg, #ded5c9 0%, #d9d0c4 48%, #d6cdc1 100%);
+    --shell-default-chrome: rgba(245, 239, 231, 0.92);
+    --shell-default-nav-rail: rgba(255, 252, 248, 0.45);
+    --shell-default-panel-strong: rgba(255, 255, 255, 0.72);
+    --shell-default-outline: var(--surface-outline);
+    --shell-default-outline-strong: var(--surface-outline-strong);
+    --shell-default-grid-line: rgba(21, 37, 47, 0.03);
+    --shell-default-shadow-soft: 0 14px 36px rgba(43, 30, 20, 0.08);
+    --shell-default-shadow: 0 28px 80px rgba(43, 30, 20, 0.14);
+    --shell-default-selection-bg: #b9dce2;
+    --shell-default-selection-text: #10242c;
+
+    --shell-immersive-background:
+      radial-gradient(circle at 18% 10%, rgba(255, 255, 255, 0.05), transparent 24%),
+      radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.035), transparent 20%),
+      linear-gradient(180deg, #151515 0%, #131313 100%);
+    --shell-immersive-text: #e2e2e2;
+    --shell-immersive-selection-bg: rgba(241, 238, 229, 0.22);
+    --shell-immersive-selection-text: #ffffff;
+
+    /* Legacy compatibility for shared/light-shell consumers until route workstreams migrate. */
     --workbench-paper: #d9d0c4;
     --workbench-shell: rgba(245, 239, 231, 0.92);
     --workbench-panel: rgba(251, 247, 241, 0.96);
@@ -32,6 +77,33 @@
 
   html[data-resolved-theme='dark'] {
     color-scheme: dark;
+    --surface-text: #edf1f3;
+    --surface-text-muted: #9ba7ae;
+    --surface-panel: rgba(27, 31, 36, 0.92);
+    --surface-panel-elevated: rgba(34, 39, 44, 0.9);
+    --surface-accent: #84aeba;
+    --surface-accent-soft: rgba(132, 174, 186, 0.18);
+    --surface-accent-strong: #b9dce2;
+    --surface-accent-ink: #2a5361;
+    --surface-accent-ink-hover: #356775;
+    --surface-outline: rgba(255, 255, 255, 0.08);
+    --surface-outline-strong: rgba(255, 255, 255, 0.14);
+
+    --shell-default-background:
+      radial-gradient(circle at top, rgba(109, 149, 160, 0.16), transparent 26%),
+      radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.05), transparent 18%),
+      linear-gradient(180deg, #1b2024 0%, #171b1f 52%, #14171b 100%);
+    --shell-default-chrome: rgba(18, 22, 26, 0.88);
+    --shell-default-nav-rail: rgba(24, 29, 34, 0.9);
+    --shell-default-panel-strong: rgba(34, 39, 44, 0.96);
+    --shell-default-outline: rgba(255, 255, 255, 0.08);
+    --shell-default-outline-strong: rgba(255, 255, 255, 0.14);
+    --shell-default-grid-line: rgba(255, 255, 255, 0.04);
+    --shell-default-shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.22);
+    --shell-default-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+    --shell-default-selection-bg: rgba(185, 220, 226, 0.26);
+    --shell-default-selection-text: #f6fbfc;
+
     --color-black: #09090b;
     --color-white: #fafafa;
     --color-zinc-950: #09090b;
@@ -49,6 +121,33 @@
 
   html[data-resolved-theme='light'] {
     color-scheme: light;
+    --surface-text: #15252f;
+    --surface-text-muted: #6e797d;
+    --surface-panel: rgba(251, 247, 241, 0.96);
+    --surface-panel-elevated: rgba(255, 252, 248, 0.82);
+    --surface-accent: #4c7887;
+    --surface-accent-soft: rgba(23, 60, 73, 0.08);
+    --surface-accent-strong: #2f6272;
+    --surface-accent-ink: #173c49;
+    --surface-accent-ink-hover: #214d5d;
+    --surface-outline: rgba(21, 37, 47, 0.1);
+    --surface-outline-strong: rgba(21, 37, 47, 0.16);
+
+    --shell-default-background:
+      radial-gradient(circle at top, rgba(149, 188, 198, 0.18), transparent 26%),
+      radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.26), transparent 18%),
+      linear-gradient(180deg, #ded5c9 0%, #d9d0c4 48%, #d6cdc1 100%);
+    --shell-default-chrome: rgba(245, 239, 231, 0.92);
+    --shell-default-nav-rail: rgba(255, 252, 248, 0.45);
+    --shell-default-panel-strong: rgba(255, 255, 255, 0.72);
+    --shell-default-outline: rgba(21, 37, 47, 0.1);
+    --shell-default-outline-strong: rgba(21, 37, 47, 0.16);
+    --shell-default-grid-line: rgba(21, 37, 47, 0.03);
+    --shell-default-shadow-soft: 0 14px 36px rgba(43, 30, 20, 0.08);
+    --shell-default-shadow: 0 28px 80px rgba(43, 30, 20, 0.14);
+    --shell-default-selection-bg: #b9dce2;
+    --shell-default-selection-text: #10242c;
+
     --color-black: #fafaf9;
     --color-white: #18181b;
     --color-zinc-950: #fcfcfd;
@@ -71,21 +170,15 @@
   }
 
   body {
-    font-family: var(--font-ui-sans), system-ui, -apple-system, sans-serif;
+    font-family: var(--font-ui);
     line-height: 1.6;
-    background:
-      radial-gradient(circle at top, rgba(149, 188, 198, 0.18), transparent 26%),
-      radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.26), transparent 18%),
-      linear-gradient(180deg, #ded5c9 0%, #d9d0c4 48%, #d6cdc1 100%);
-    color: var(--workbench-ink);
+    background: var(--shell-default-background);
+    color: var(--surface-text);
   }
 
-  body[data-app-chrome='immersive'] {
-    background:
-      radial-gradient(circle at 18% 10%, rgba(255, 255, 255, 0.05), transparent 24%),
-      radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.035), transparent 20%),
-      linear-gradient(180deg, #151515 0%, #131313 100%);
-    color: #e2e2e2;
+  body[data-app-shell='immersive'] {
+    background: var(--shell-immersive-background);
+    color: var(--shell-immersive-text);
   }
 
   a {
@@ -93,13 +186,28 @@
     text-decoration: none;
   }
 
-  /* Improved focus states for accessibility */
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  ::selection {
+    background: var(--shell-default-selection-bg);
+    color: var(--shell-default-selection-text);
+  }
+
+  body[data-app-shell='immersive'] ::selection {
+    background: var(--shell-immersive-selection-bg);
+    color: var(--shell-immersive-selection-text);
+  }
+
   :focus-visible {
-    outline: 2px solid rgba(77, 147, 161, 0.8);
+    outline: 2px solid color-mix(in srgb, var(--surface-accent-strong) 72%, transparent);
     outline-offset: 2px;
   }
 
-  /* Better details/summary styling */
   summary {
     list-style: none;
   }
@@ -124,19 +232,27 @@
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(21, 37, 47, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(21, 37, 47, 0.03) 1px, transparent 1px);
+    linear-gradient(var(--shell-default-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--shell-default-grid-line) 1px, transparent 1px);
   background-size: 28px 28px;
   opacity: 0.24;
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent 72%);
 }
 
-.app-shell[data-app-chrome='immersive']::before {
+.app-shell[data-app-shell='immersive']::before {
   opacity: 0;
 }
 
+.font-ui {
+  font-family: var(--font-ui);
+}
+
 .font-editorial {
-  font-family: var(--font-editorial-serif), Georgia, serif;
+  font-family: var(--font-display);
+}
+
+.font-data {
+  font-family: var(--font-mono);
 }
 
 /* Slide-in animation for toasts */

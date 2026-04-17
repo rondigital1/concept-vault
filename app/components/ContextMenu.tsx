@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 interface ContextMenuProps {
   x: number;
@@ -11,6 +11,12 @@ interface ContextMenuProps {
 
 export function ContextMenu({ x, y, onClose, onSaveToLibrary }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const [position, setPosition] = useState({ x, y });
+
+  useEffect(() => {
+    setPosition({ x, y });
+  }, [x, y]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -34,13 +40,50 @@ export function ContextMenu({ x, y, onClose, onSaveToLibrary }: ContextMenuProps
     };
   }, [onClose]);
 
+  useEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) {
+      return;
+    }
+
+    const nextLeft = Math.max(12, Math.min(x, window.innerWidth - menu.offsetWidth - 12));
+    const nextTop = Math.max(12, Math.min(y, window.innerHeight - menu.offsetHeight - 12));
+    setPosition({ x: nextLeft, y: nextTop });
+    saveButtonRef.current?.focus();
+  }, [x, y]);
+
+  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (
+      event.key === 'ArrowDown' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'Home' ||
+      event.key === 'End'
+    ) {
+      event.preventDefault();
+      saveButtonRef.current?.focus();
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      onClose();
+    }
+  };
+
   return (
     <div
       ref={menuRef}
+      role="menu"
+      aria-label="Message actions"
+      tabIndex={-1}
+      onKeyDown={handleMenuKeyDown}
       className="fixed z-[200] min-w-[200px] rounded-lg border border-zinc-800 bg-zinc-950 py-1 shadow-xl"
-      style={{ top: y, left: x }}
+      style={{ top: position.y, left: position.x }}
     >
       <button
+        ref={saveButtonRef}
+        type="button"
+        role="menuitem"
         onClick={() => {
           onSaveToLibrary();
           onClose();

@@ -1,12 +1,16 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
-type ThemePreference = 'dark' | 'light' | 'system';
+export type ThemePreference = 'dark' | 'light' | 'system';
 type ResolvedTheme = 'dark' | 'light';
+type ThemeDirection = 'next' | 'previous';
 
 const STORAGE_KEY = 'concept-vault-theme';
+const THEME_ORDER: ThemePreference[] = ['light', 'dark', 'system'];
+
+export const THEME_SCOPE_COPY = 'Shared shell only. Immersive workspaces stay dark.';
 
 function MoonIcon() {
   return (
@@ -59,13 +63,26 @@ function SystemIcon() {
 }
 
 const OPTIONS: Array<{ value: ThemePreference; label: string; icon: ReactNode }> = [
-  { value: 'dark', label: 'Dark', icon: <MoonIcon /> },
   { value: 'light', label: 'Light', icon: <SunIcon /> },
+  { value: 'dark', label: 'Dark', icon: <MoonIcon /> },
   { value: 'system', label: 'System', icon: <SystemIcon /> },
 ];
 
-function isThemePreference(value: string | null | undefined): value is ThemePreference {
+export function isThemePreference(value: string | null | undefined): value is ThemePreference {
   return value === 'dark' || value === 'light' || value === 'system';
+}
+
+export function getThemePreferenceIndex(theme: ThemePreference): number {
+  return THEME_ORDER.indexOf(theme);
+}
+
+export function getRelativeThemePreference(
+  theme: ThemePreference,
+  direction: ThemeDirection,
+): ThemePreference {
+  const currentIndex = getThemePreferenceIndex(theme);
+  const offset = direction === 'next' ? 1 : -1;
+  return THEME_ORDER[(currentIndex + offset + THEME_ORDER.length) % THEME_ORDER.length];
 }
 
 function getSystemTheme(): ResolvedTheme {
@@ -83,6 +100,14 @@ function applyTheme(theme: ThemePreference): ResolvedTheme {
   return resolvedTheme;
 }
 
+function persistTheme(theme: ThemePreference) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, theme);
+  } catch {
+    // Ignore persistence failures and keep the in-memory theme selection.
+  }
+}
+
 function getStoredTheme(): ThemePreference {
   if (typeof window === 'undefined') {
     return 'system';
@@ -93,11 +118,18 @@ function getStoredTheme(): ThemePreference {
     return rootTheme;
   }
 
-  const storedTheme = window.localStorage.getItem(STORAGE_KEY);
-  return isThemePreference(storedTheme) ? storedTheme : 'system';
+  try {
+    const storedTheme = window.localStorage.getItem(STORAGE_KEY);
+    return isThemePreference(storedTheme) ? storedTheme : 'system';
+  } catch {
+    return 'system';
+  }
 }
 
 export function ThemeToggle() {
+  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const groupLabelId = useId();
+  const groupDescriptionId = useId();
   const [theme, setTheme] = useState<ThemePreference>('system');
   const [hasHydrated, setHasHydrated] = useState(false);
 
@@ -105,7 +137,7 @@ export function ThemeToggle() {
     const storedTheme = getStoredTheme();
     setTheme(storedTheme);
     applyTheme(storedTheme);
-    window.localStorage.setItem(STORAGE_KEY, storedTheme);
+    persistTheme(storedTheme);
     setHasHydrated(true);
   }, []);
 
@@ -115,7 +147,7 @@ export function ThemeToggle() {
     }
 
     applyTheme(theme);
-    window.localStorage.setItem(STORAGE_KEY, theme);
+    persistTheme(theme);
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const syncSystemTheme = () => {
@@ -131,27 +163,76 @@ export function ThemeToggle() {
     };
   }, [hasHydrated, theme]);
 
+  const moveSelection = (nextTheme: ThemePreference) => {
+    setTheme(nextTheme);
+    buttonRefs.current[getThemePreferenceIndex(nextTheme)]?.focus();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, optionTheme: ThemePreference) => {
+    let nextTheme: ThemePreference | null = null;
+
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        nextTheme = getRelativeThemePreference(optionTheme, 'next');
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        nextTheme = getRelativeThemePreference(optionTheme, 'previous');
+        break;
+      case 'Home':
+        nextTheme = THEME_ORDER[0];
+        break;
+      case 'End':
+        nextTheme = THEME_ORDER[THEME_ORDER.length - 1];
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    moveSelection(nextTheme);
+  };
+
   return (
-    <div className="flex justify-center sm:justify-end">
+    <div className="flex flex-col items-start gap-2 sm:items-end">
+      <div className="space-y-1 text-left sm:text-right">
+        <p
+          id={groupLabelId}
+          className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--surface-text-muted)]"
+        >
+          Workbench Theme
+        </p>
+        <p id={groupDescriptionId} className="text-xs text-[color:var(--surface-text-muted)]">
+          {THEME_SCOPE_COPY}
+        </p>
+      </div>
       <div
-        aria-label="Theme selector"
-        className="inline-flex items-center rounded-full border border-black/8 bg-white/80 p-1 shadow-[0_10px_24px_rgba(28,48,64,0.06)]"
-        role="tablist"
+        aria-describedby={groupDescriptionId}
+        aria-labelledby={groupLabelId}
+        className="inline-flex items-center rounded-full border border-[color:var(--shell-default-outline)] bg-[color:var(--surface-panel)] p-1 shadow-[var(--shell-default-shadow-soft)]"
+        role="radiogroup"
       >
-        {OPTIONS.map((option) => {
+        {OPTIONS.map((option, index) => {
           const isActive = option.value === theme;
 
           return (
             <button
               key={option.value}
-              aria-pressed={isActive}
+              ref={(element) => {
+                buttonRefs.current[index] = element;
+              }}
+              aria-checked={isActive}
               className={[
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-[background-color,color,box-shadow]',
                 isActive
-                  ? 'bg-[#153d4c] text-white shadow-sm'
-                  : 'text-[#5b6e77] hover:bg-white hover:text-[#10242c]',
+                  ? 'bg-[color:var(--surface-accent-ink)] text-white shadow-[0_8px_20px_rgba(16,35,44,0.18)]'
+                  : 'text-[color:var(--surface-text-muted)] hover:bg-[color:var(--surface-panel-elevated)] hover:text-[color:var(--surface-text)]',
               ].join(' ')}
               onClick={() => setTheme(option.value)}
+              onKeyDown={(event) => handleKeyDown(event, option.value)}
+              role="radio"
+              tabIndex={isActive ? 0 : -1}
               type="button"
             >
               {option.icon}

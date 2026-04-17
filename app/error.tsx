@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { RouteStatusShell } from './components/RouteStatusShell';
+import { RouteStatusShell, routeStatusActionClassName } from './components/RouteStatusShell';
 import { reportRouteError } from './components/routeErrorReporting';
 
 export default function Error({
@@ -25,7 +25,7 @@ export default function Error({
         <button
           type="button"
           onClick={() => reset()}
-          className="inline-flex items-center justify-center rounded-full bg-[#efeded] px-5 py-3 text-[0.72rem] font-bold uppercase tracking-[0.24em] text-[#171717] transition hover:bg-white"
+          className={routeStatusActionClassName('primary')}
         >
           Retry route
         </button>

@@ -1,24 +1,34 @@
+import type { ReactNode } from 'react';
+
 export function EmptyState({
   title,
   description,
   message,
   icon,
+  actions,
   className = '',
 }: {
   title?: string;
   description?: string;
   message?: string;
-  icon?: string;
+  icon?: ReactNode;
+  actions?: ReactNode;
   className?: string;
 }) {
+  const body = description ?? message;
+
   return (
-    <div
-      className={`rounded-lg border border-dashed border-zinc-800 bg-zinc-900 p-12 text-center ${className}`}
+    <section
+      className={`rounded-[24px] border border-white/[0.08] bg-[rgba(20,20,20,0.88)] p-12 text-center shadow-[0_18px_50px_rgba(0,0,0,0.24)] ${className}`}
     >
-      {icon && <div className="mb-4 text-4xl">{icon}</div>}
-      {title && <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>}
-      {description && <p className="text-sm text-zinc-400">{description}</p>}
-      {message && <p className="text-sm text-zinc-400">{message}</p>}
-    </div>
+      {icon ? (
+        <div aria-hidden="true" className="mb-4 text-4xl text-zinc-300">
+          {icon}
+        </div>
+      ) : null}
+      {title ? <h3 className="text-lg font-semibold text-white">{title}</h3> : null}
+      {body ? <p className="mt-2 text-sm leading-7 text-zinc-400">{body}</p> : null}
+      {actions ? <div className="mt-6 flex flex-wrap justify-center gap-3">{actions}</div> : null}
+    </section>
   );
 }

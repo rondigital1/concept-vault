@@ -12,13 +12,6 @@ export const KIND_THEMES: Record<string, string> = {
   'research-report': 'border-rose-800 bg-rose-950 text-rose-200',
 };
 
-export const KIND_ACCENT_BORDERS: Record<string, string> = {
-  'web-proposal': 'border-l-amber-500',
-  concept: 'border-l-emerald-500',
-  flashcard: 'border-l-sky-500',
-  'research-report': 'border-l-rose-500',
-};
-
 function formatTitleCase(value: string): string {
   return value
     .replace(/[_-]+/g, ' ')
@@ -26,11 +19,14 @@ function formatTitleCase(value: string): string {
 }
 
 export function KindBadge({ kind }: { kind: string }) {
+  const renderedLabel = KIND_LABELS[kind] ?? formatTitleCase(kind);
+
   return (
     <span
-      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${KIND_THEMES[kind] ?? 'border-zinc-700 bg-zinc-900 text-zinc-200'}`}
+      aria-label={renderedLabel}
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${KIND_THEMES[kind] ?? 'border-zinc-700 bg-zinc-900 text-zinc-200'}`}
     >
-      {KIND_LABELS[kind] ?? formatTitleCase(kind)}
+      {renderedLabel}
     </span>
   );
 }

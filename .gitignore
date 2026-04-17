@@ -35,3 +35,9 @@ next-env.d.ts
 
 # database
 pgdata/
+
+# docs
+docs/audit
+docs/frontend-audit
+docs/redesign-ui
+docs/ui-audit-and-simplification-plan

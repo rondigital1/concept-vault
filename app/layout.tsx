@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { IBM_Plex_Sans, Source_Serif_4 } from 'next/font/google';
+import { IBM_Plex_Mono, IBM_Plex_Sans, Source_Serif_4 } from 'next/font/google';
 import './globals.css';
 import { AppChrome } from './components/AppChrome';
 
@@ -13,6 +13,12 @@ const editorialSerif = Source_Serif_4({
   subsets: ['latin'],
   variable: '--font-editorial-serif',
   weight: ['400', '600', '700'],
+});
+
+const metadataMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  variable: '--font-data-mono',
+  weight: ['400', '500', '600'],
 });
 
 const themeInitScript = `
@@ -55,9 +61,9 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${uiSans.variable} ${editorialSerif.variable}`}
+      className={`${uiSans.variable} ${editorialSerif.variable} ${metadataMono.variable}`}
     >
-      <body className="app-shell flex min-h-screen flex-col antialiased selection:bg-[#b9dce2] selection:text-[#10242c]">
+      <body className="app-shell flex min-h-screen flex-col antialiased">
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <AppChrome>{children}</AppChrome>
       </body>

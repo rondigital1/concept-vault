@@ -14,8 +14,12 @@ export function CountChip({
   };
 
   return (
-    <div className={`rounded-full border px-3 py-1 text-xs ${tones[tone]}`}>
-      <span className="font-semibold text-white">{value}</span> {label}
+    <div
+      aria-label={`${value} ${label}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${tones[tone]}`}
+    >
+      <span className="font-semibold text-white">{value}</span>
+      <span>{label}</span>
     </div>
   );
 }

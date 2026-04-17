@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRIMARY_TOP_NAV_KEYS,
+  UTILITY_TOP_NAV_KEYS,
+  getAppShellMode,
+  getTopNavGroupsWithState,
   getTopNavItemsWithState,
   isImmersiveAppRoute,
   isTopNavItemActive,
@@ -34,6 +37,43 @@ describe('getTopNavItemsWithState', () => {
     expect(items.find((item) => item.key === 'reports')?.active).toBe(true);
     expect(items.filter((item) => item.active)).toHaveLength(1);
   });
+
+  it('marks shared utility destinations from the same source of truth', () => {
+    const items = getTopNavItemsWithState('/chat', UTILITY_TOP_NAV_KEYS);
+    expect(items.map((item) => item.label)).toEqual(['Add Content', 'Ask Vault']);
+    expect(items.find((item) => item.key === 'chat')?.active).toBe(true);
+  });
+});
+
+describe('getTopNavGroupsWithState', () => {
+  it('splits primary and utility navigation for the shared shell', () => {
+    const groups = getTopNavGroupsWithState('/chat');
+    expect(groups.primary.map((item) => item.label)).toEqual([
+      'Research',
+      'Agents',
+      'Library',
+      'Reports',
+    ]);
+    expect(groups.utility.map((item) => item.label)).toEqual(['Add Content', 'Ask Vault']);
+  });
+});
+
+describe('getAppShellMode', () => {
+  it('classifies immersive route families', () => {
+    expect(getAppShellMode('/reports')).toBe('immersive');
+    expect(getAppShellMode('/reports/123')).toBe('immersive');
+    expect(getAppShellMode('/library/collections/abc')).toBe('immersive');
+  });
+
+  it('keeps utility detail routes on the shared shell', () => {
+    expect(getAppShellMode('/web-scout')).toBe('utility-detail');
+    expect(getAppShellMode('/artifacts/item-1')).toBe('utility-detail');
+  });
+
+  it('leaves default-shell utilities and fallbacks on the shared shell', () => {
+    expect(getAppShellMode('/chat')).toBe('immersive');
+    expect(getAppShellMode('/unknown-route')).toBe('default');
+  });
 });
 
 describe('isImmersiveAppRoute', () => {
@@ -44,7 +84,7 @@ describe('isImmersiveAppRoute', () => {
   });
 
   it('leaves non-workbench routes on the default shell', () => {
-    expect(isImmersiveAppRoute('/chat')).toBe(false);
+    expect(isImmersiveAppRoute('/chat')).toBe(true);
     expect(isImmersiveAppRoute('/web-scout')).toBe(false);
   });
 });
