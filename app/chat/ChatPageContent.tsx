@@ -1,16 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { saveToLibraryAction } from '../actions/saveToLibraryAction';
 import { ContextMenu } from '../components/ContextMenu';
+import { Drawer } from '../components/OverlaySurface';
 import { SaveToLibraryModal } from '../components/SaveToLibraryModal';
-import { toast, ToastContainer } from '../components/Toast';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { toast, ToastContainer } from '../components/Toast';
+import { AskVaultIcon } from './components/AskVaultIcon';
 import { ChatHistorySidebar } from './components/ChatHistorySidebar';
 import { useChatSession } from './hooks/useChatSession';
-import type { Message } from './types';
+import { WELCOME_MESSAGE, type Message } from './types';
 
 type ContextMenuState = {
   x: number;
@@ -19,12 +21,22 @@ type ContextMenuState = {
   messageId: string;
 };
 
+type TimelineLink = {
+  id: string;
+  label: string;
+  meta: string;
+};
+
 const MarkdownMessage = dynamic(
   () => import('./components/MarkdownMessage').then((mod) => mod.MarkdownMessage),
   {
-    loading: () => <div className="h-4 animate-pulse rounded bg-zinc-800" />,
-  }
+    loading: () => <div className="h-4 animate-pulse rounded bg-white/[0.08]" />,
+  },
 );
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(' ');
+}
 
 function formatOutlineLabel(content: string, index: number): string {
   const normalized = content.replace(/\s+/g, ' ').trim();
@@ -55,8 +67,108 @@ function getTargetScrollTop(container: HTMLDivElement, target: HTMLDivElement): 
   return container.scrollTop + targetRect.top - containerRect.top;
 }
 
+function getLastUserPrompt(messages: Message[], messageId: string) {
+  const messageIndex = messages.findIndex((msg) => msg.id === messageId);
+
+  for (let index = messageIndex - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      return messages[index].content;
+    }
+  }
+
+  return '';
+}
+
+function formatTimelineMeta(timestamp: Date, index: number): string {
+  if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) {
+    return `Prompt ${String(index + 1).padStart(2, '0')}`;
+  }
+
+  return timestamp.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function AgentOrb({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className={cx(
+        'relative flex items-center justify-center rounded-full bg-gradient-to-br from-[#7f7c7c] via-[#535353] to-[#202020] text-[#1b1b1b] shadow-[0_26px_52px_rgba(0,0,0,0.38)]',
+        compact ? 'h-10 w-10' : 'h-24 w-24',
+      )}
+    >
+      <div className="absolute inset-[10%] rounded-full bg-white/[0.08] blur-md" />
+      <div className="absolute inset-[-10%] rounded-full bg-black/35 blur-2xl" />
+      <AskVaultIcon
+        name="brand"
+        filled
+        className={cx('relative z-10', compact ? 'h-[18px] w-[18px]' : 'h-9 w-9')}
+      />
+    </div>
+  );
+}
+
+function PromptTimeline({
+  links,
+  highlightedMessageId,
+  onJump,
+}: {
+  links: TimelineLink[];
+  highlightedMessageId: string | null;
+  onJump: (messageId: string) => void;
+}) {
+  if (links.length === 0) {
+    return (
+      <p className="rounded-[1.35rem] bg-[#161616] px-4 py-4 text-sm leading-6 text-[#8f8888]">
+        Ask your first question to build the prompt timeline for this session.
+      </p>
+    );
+  }
+
+  return (
+    <nav className="relative pl-6">
+      <div className="absolute bottom-0 left-[0.3rem] top-1 w-px bg-white/[0.08]" />
+      <div className="space-y-8">
+        {links.map((link) => {
+          const active = highlightedMessageId === link.id;
+
+          return (
+            <button
+              key={link.id}
+              type="button"
+              onClick={() => onJump(link.id)}
+              className="group relative block w-full text-left"
+            >
+              <span
+                className={cx(
+                  'absolute -left-6 top-1.5 h-3 w-3 rounded-full transition',
+                  active
+                    ? 'bg-[#d7d2d2] shadow-[0_0_12px_rgba(255,255,255,0.28)]'
+                    : 'bg-white/[0.14] group-hover:bg-white/[0.3]',
+                )}
+              />
+              <span
+                className={cx(
+                  'block text-[1.08rem] leading-7 tracking-[-0.035em] transition',
+                  active ? 'text-white' : 'text-[#d5d0d0] group-hover:text-white',
+                )}
+              >
+                {link.label}
+              </span>
+              <span className="mt-2 block text-[0.73rem] uppercase tracking-[0.2em] text-[#878181]">
+                {link.meta}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 export function ChatPageContent() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [selectedTimelineMessageId, setSelectedTimelineMessageId] = useState<string | null>(null);
   const [isOutlineDrawerOpen, setIsOutlineDrawerOpen] = useState(false);
@@ -87,20 +199,41 @@ export function ChatPageContent() {
     handleNewChat,
   } = useChatSession();
 
-  const userMessages = useMemo(
-    () => messages.filter((msg) => msg.role === 'user'),
-    [messages]
+  const visibleMessages = useMemo(
+    () => messages.filter((msg) => msg.id !== WELCOME_MESSAGE.id),
+    [messages],
   );
-
-  const messageOutlineLinks = useMemo(
+  const userMessages = useMemo(
+    () => visibleMessages.filter((msg) => msg.role === 'user'),
+    [visibleMessages],
+  );
+  const starterSuggestions = useMemo(() => {
+    const welcomeMessage = messages.find((msg) => msg.id === WELCOME_MESSAGE.id);
+    return welcomeMessage?.suggestedReplies ?? [];
+  }, [messages]);
+  const messageOutlineLinks = useMemo<TimelineLink[]>(
     () =>
       userMessages.map((msg, index) => ({
         id: msg.id,
         label: formatOutlineLabel(msg.content, index + 1),
+        meta: formatTimelineMeta(msg.timestamp, index),
       })),
-    [userMessages]
+    [userMessages],
   );
   const highlightedMessageId = selectedTimelineMessageId ?? activeMessageId;
+  const showIntroState =
+    !isLoadingSession && !sessionId && messages.length === 1 && messages[0]?.id === WELCOME_MESSAGE.id;
+  const composerSuggestions = useMemo(() => {
+    if (showIntroState) {
+      return starterSuggestions;
+    }
+
+    const latestReplySet = [...visibleMessages]
+      .reverse()
+      .find((msg) => msg.role === 'assistant' && (msg.suggestedReplies?.length ?? 0) > 0);
+
+    return latestReplySet?.suggestedReplies ?? [];
+  }, [showIntroState, starterSuggestions, visibleMessages]);
 
   useEffect(() => {
     if (userMessages.length === 0) {
@@ -167,9 +300,9 @@ export function ChatPageContent() {
       },
       {
         root,
-        rootMargin: '-12% 0px -70% 0px',
+        rootMargin: '-15% 0px -68% 0px',
         threshold: 0.1,
-      }
+      },
     );
 
     userMessages.forEach((msg) => {
@@ -190,69 +323,55 @@ export function ChatPageContent() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isOutlineDrawerOpen) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOutlineDrawerOpen(false);
-      }
-    };
-
-    document.body.style.overflow = 'hidden';
-    window.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOutlineDrawerOpen]);
-
-  const handleContextMenu = useCallback((e: MouseEvent, msg: Message) => {
-    e.preventDefault();
+  const handleContextMenu = useCallback((event: MouseEvent, msg: Message) => {
+    event.preventDefault();
 
     if (msg.role !== 'assistant') {
       return;
     }
 
     const selectedText = window.getSelection()?.toString().trim();
-    const textToSave = selectedText || msg.content;
+    const textSelection = selectedText || msg.content;
 
-    if (!textToSave) {
+    if (!textSelection) {
       return;
     }
 
     setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      text: textToSave,
+      x: event.clientX,
+      y: event.clientY,
+      text: textSelection,
       messageId: msg.id,
     });
   }, []);
+
+  const openSaveModal = useCallback(
+    (messageId: string, explicitText?: string) => {
+      const assistantMessage = messages.find(
+        (msg) => msg.id === messageId && msg.role === 'assistant',
+      );
+      const contentToSave = explicitText?.trim() || assistantMessage?.content.trim();
+
+      if (!contentToSave) {
+        toast.error('No content to save');
+        return;
+      }
+
+      setTextToSave(contentToSave);
+      setDefaultTitle(getLastUserPrompt(messages, messageId) || 'Saved from chat');
+      setShowSaveModal(true);
+      setContextMenu(null);
+    },
+    [messages],
+  );
 
   const handleSaveToLibrary = useCallback(() => {
     if (!contextMenu) {
       return;
     }
 
-    const messageIndex = messages.findIndex((msg) => msg.id === contextMenu.messageId);
-
-    let userPrompt = '';
-    for (let i = messageIndex - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        userPrompt = messages[i].content;
-        break;
-      }
-    }
-
-    setTextToSave(contextMenu.text);
-    setDefaultTitle(userPrompt || 'Saved from chat');
-    setShowSaveModal(true);
-    setContextMenu(null);
-  }, [contextMenu, messages]);
+    openSaveModal(contextMenu.messageId, contextMenu.text);
+  }, [contextMenu, openSaveModal]);
 
   const handleSaveWithTitle = useCallback(async (title: string, content: string) => {
     if (!content || !content.trim()) {
@@ -264,10 +383,11 @@ export function ChatPageContent() {
       const result = await saveToLibraryAction(content, title);
 
       if (result.success) {
-        const message = result.created
-          ? `Saved "${title}" to library`
-          : `"${title}" already exists in library`;
-        toast.success(message);
+        toast.success(
+          result.created
+            ? `Saved "${title}" to library`
+            : `"${title}" already exists in library`,
+        );
       } else {
         toast.error(result.error || 'Failed to save to library');
         console.error('Failed to save:', result.error);
@@ -285,7 +405,7 @@ export function ChatPageContent() {
     }
     isProgrammaticScrollRef.current = false;
     handleNewChat();
-    setSidebarOpen(false);
+    setHistoryDrawerOpen(false);
     setIsOutlineDrawerOpen(false);
     setSelectedTimelineMessageId(null);
   }, [handleNewChat]);
@@ -305,7 +425,7 @@ export function ChatPageContent() {
     setActiveMessageId(messageId);
     setSelectedTimelineMessageId(messageId);
     container.scrollTo({
-      top: Math.max(0, getTargetScrollTop(container, target) - 16),
+      top: Math.max(0, getTargetScrollTop(container, target) - 24),
       behavior: 'smooth',
     });
 
@@ -320,354 +440,381 @@ export function ChatPageContent() {
       handleJumpToMessage(messageId);
       setIsOutlineDrawerOpen(false);
     },
-    [handleJumpToMessage]
+    [handleJumpToMessage],
   );
 
   return (
-    <div className="flex h-[calc(100vh-73px)] bg-gradient-to-b from-black via-zinc-950 to-black text-zinc-100">
-      <ChatHistorySidebar
-        isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
-        currentSessionId={sessionId}
-        onNewChat={handleNewChatClick}
-      />
+    <div className="relative min-h-screen overflow-hidden bg-[#131313] text-[#e2e2e2]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-[-12%] top-[-8%] h-[28rem] w-[28rem] rounded-full bg-white/[0.04] blur-[130px]" />
+        <div className="absolute bottom-[-18%] right-[-10%] h-[30rem] w-[30rem] rounded-full bg-white/[0.03] blur-[150px]" />
+      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex-none border-b border-zinc-800 bg-zinc-950 px-6 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-white"
-                title="Toggle chat history"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#5a3020] bg-[#2a1810] shadow-sm">
-                <svg className="h-5 w-5 text-[#f1b39a]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
+      <header className="fixed inset-x-0 top-0 z-50 h-16 bg-[#151515]/66 backdrop-blur-2xl">
+        <div className="mx-auto flex h-full max-w-[1800px] items-center justify-between px-5 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setHistoryDrawerOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04] text-[#b9b3b3] transition hover:bg-white/[0.08] hover:text-white lg:hidden"
+              aria-label="Open Ask Vault navigation"
+            >
+              <AskVaultIcon name="menu" className="h-4 w-4" />
+            </button>
+
+            <Link href="/chat" className="transition-opacity hover:opacity-80">
+              <div className="text-[1.85rem] font-black tracking-[-0.075em] text-[#c7c2c2]">
+                Ask Vault
               </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-lg font-semibold text-white">Ask Vault</h1>
-                  <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
-                    Secondary tool
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Use chat for follow-up questions about saved documents, reports, and concepts.
-                </p>
-              </div>
-            </div>
+            </Link>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setIsOutlineDrawerOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800 xl:hidden"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04] text-[#b9b3b3] transition hover:bg-white/[0.08] hover:text-white xl:hidden"
+              aria-label="Open prompt timeline"
             >
-              <span>Prompts</span>
-              <span className="rounded-md bg-white px-1.5 py-0.5 text-xs text-black">
-                {messageOutlineLinks.length}
-              </span>
+              <AskVaultIcon name="timeline" className="h-4 w-4" />
             </button>
+            <Link
+              href="/today"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04] text-[#b9b3b3] transition hover:bg-white/[0.08] hover:text-white"
+              aria-label="Open Research"
+            >
+              <AskVaultIcon name="research" className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/ingest"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04] text-[#b9b3b3] transition hover:bg-white/[0.08] hover:text-white"
+              aria-label="Add content"
+            >
+              <AskVaultIcon name="ingest" className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/agents"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#202020] text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[#ddd7d7] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:bg-[#2a2a2a]"
+              aria-label="Open agents"
+            >
+              CV
+            </Link>
           </div>
         </div>
+      </header>
 
-        <div ref={messageScrollContainerRef} className="flex-1 overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-7xl gap-8 px-6 py-8">
-            <div className="min-w-0 flex-1">
-              <div className="mx-auto max-w-4xl space-y-8">
-                {isLoadingSession ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="flex items-center gap-3 text-zinc-500">
-                      <LoadingSpinner className="h-5 w-5 border-zinc-700 border-t-zinc-200" />
-                      <span>Loading conversation...</span>
-                    </div>
+      <div className="fixed bottom-0 left-0 top-16 z-30 hidden w-[18.75rem] lg:block">
+        <ChatHistorySidebar
+          isOpen
+          variant="desktop"
+          onToggle={() => undefined}
+          currentSessionId={sessionId}
+          onNewChat={handleNewChatClick}
+        />
+      </div>
+
+      <div className="fixed bottom-0 right-0 top-16 z-30 hidden w-[20rem] xl:block">
+        <aside className="flex h-full flex-col bg-[#1a1a1a]/92 px-8 pb-8 pt-12 backdrop-blur-2xl shadow-[-18px_0_48px_rgba(0,0,0,0.24)]">
+          <div className="pb-8">
+            <p className="text-[0.9rem] font-semibold uppercase tracking-[0.28em] text-[#d0cbcb]">
+              Prompt Timeline
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-2">
+            <PromptTimeline
+              links={messageOutlineLinks}
+              highlightedMessageId={highlightedMessageId}
+              onJump={handleJumpToMessage}
+            />
+          </div>
+        </aside>
+      </div>
+
+      <div
+        ref={messageScrollContainerRef}
+        className="relative h-screen overflow-y-auto pt-16 lg:pl-[18.75rem] xl:pr-[20rem]"
+      >
+        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-[1020px] flex-col px-4 pb-[14rem] pt-5 sm:px-6 lg:px-8">
+          {isLoadingSession ? (
+            <div className="flex min-h-[calc(100vh-16rem)] flex-1 items-center justify-center py-10">
+              <div className="w-full rounded-[2rem] bg-[#171717]/94 px-8 py-10 shadow-[0_24px_80px_rgba(0,0,0,0.42)] ring-1 ring-white/[0.04]">
+                <div className="flex items-center gap-4 text-[#d7d2d2]">
+                  <LoadingSpinner className="h-5 w-5 border-white/[0.14] border-t-[#d0d0d0]" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">Loading conversation</p>
+                    <p className="mt-1 text-sm text-[#8e8a8a]">
+                      Restoring the selected Ask Vault session.
+                    </p>
                   </div>
-                ) : (
-                  messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      id={msg.role === 'user' ? `chat-message-${msg.id}` : undefined}
-                      data-message-id={msg.role === 'user' ? msg.id : undefined}
-                      ref={
-                        msg.role === 'user'
-                          ? (node) => {
+                </div>
+              </div>
+            </div>
+          ) : showIntroState ? (
+            <div className="flex min-h-[calc(100vh-15rem)] flex-1 items-center justify-center py-10">
+              <section className="relative flex min-h-[34rem] w-full flex-col items-center justify-center overflow-hidden rounded-[2.2rem] bg-[#151515] px-8 py-16 text-center shadow-[0_24px_90px_rgba(0,0,0,0.44)]">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.045),transparent_38%)]" />
+                <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(to_top,rgba(255,255,255,0.02),transparent)]" />
+                <div className="relative z-10">
+                  <div className="mx-auto mb-9">
+                    <AgentOrb />
+                  </div>
+                  <h1 className="mx-auto max-w-[14ch] text-[clamp(3rem,6vw,4.75rem)] font-black tracking-[-0.085em] text-[#d0cbcb]">
+                    How can I assist your research?
+                  </h1>
+                  <p className="mx-auto mt-6 max-w-[32rem] text-[clamp(1.1rem,2vw,1.3rem)] leading-9 text-[#b1abab]">
+                    Access your saved materials, query the knowledge base, or synthesize new
+                    insights.
+                  </p>
+                </div>
+              </section>
+            </div>
+          ) : (
+            <div className="flex-1 py-8">
+              <div className="space-y-8">
+                {visibleMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    id={msg.role === 'user' ? `chat-message-${msg.id}` : undefined}
+                    data-message-id={msg.role === 'user' ? msg.id : undefined}
+                    ref={
+                      msg.role === 'user'
+                        ? (node) => {
                             if (node) {
                               userMessageRefs.current[msg.id] = node;
                             } else {
                               delete userMessageRefs.current[msg.id];
                             }
                           }
-                          : undefined
-                      }
-                      className={`flex gap-4 scroll-mt-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      {msg.role === 'assistant' && (
-                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900">
-                          <svg className="h-4 w-4 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a1 1 0 1 1 1-1 1 1 0 0 1-1 1zm2.36-5.24a2 2 0 0 0 .64-1.76 2 2 0 0 0-4 0c0 .53.21 1.04.59 1.41a2 2 0 0 1 .59 1.41V12h2.36v-.36a4 4 0 0 0-1.18-2.88z" />
-                          </svg>
-                        </div>
-                      )}
+                        : undefined
+                    }
+                    className={cx(
+                      'flex gap-4 scroll-mt-24',
+                      msg.role === 'user' ? 'justify-end' : 'justify-start',
+                    )}
+                  >
+                    {msg.role === 'assistant' ? (
+                      <div className="pt-1">
+                        <AgentOrb compact />
+                      </div>
+                    ) : null}
 
-                      <div className={`flex max-w-[85%] flex-col space-y-1 ${msg.role === 'user' ? 'items-end' : ''}`}>
-                        <div className={`text-xs font-medium ${msg.role === 'user' ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                          {msg.role === 'user' ? 'You' : 'Vault'}
-                        </div>
-                        <div
-                          className={`text-[15px] leading-7 ${
-                            msg.role === 'user'
-                              ? 'rounded-2xl rounded-tr-sm border border-[#5a3020] bg-[#2a1810] px-4 py-3 text-zinc-100 [&::selection]:bg-[#5a3020] [&::selection]:text-white'
-                              : msg.status === 'failed'
-                                ? 'px-1 py-0.5 text-red-300'
-                                : 'px-1 py-0.5 text-zinc-100'
-                          }`}
-                          onContextMenu={(e) => handleContextMenu(e, msg)}
-                          style={{ userSelect: 'text', cursor: 'text' }}
-                        >
-                          {msg.role === 'assistant' ? (
-                            <MarkdownMessage content={msg.content} />
-                          ) : (
-                            <>{msg.content}</>
-                          )}
-                        </div>
-                        {msg.role === 'assistant' && msg.status === 'failed' && msg.failedRequestContent && (
-                          <div className="mt-2">
-                            <button
-                              type="button"
-                              onClick={() => retryFailedMessage(msg.id)}
-                              disabled={isLoading}
-                              className="inline-flex items-center gap-1 rounded-md border border-red-800 bg-red-950 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {isLoading ? 'Retrying...' : 'Retry'}
-                            </button>
-                          </div>
+                    <div className={cx('flex max-w-[88%] flex-col', msg.role === 'user' ? 'items-end' : '')}>
+                      <div
+                        className={cx(
+                          'mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.24em]',
+                          msg.role === 'user' ? 'text-[#8f8888]' : 'text-[#a39d9d]',
                         )}
-                        {msg.suggestedReplies && msg.suggestedReplies.length > 0 && (
-                          <div className="mt-3 w-full">
-                            <div className="mb-2 flex items-center justify-between">
-                              <span className="text-xs font-medium text-zinc-500">Suggested prompts</span>
-                              <button
-                                onClick={refreshSuggestions}
-                                disabled={isRefreshingSuggestions}
-                                className="flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300 disabled:opacity-50"
-                                title="Get new suggestions"
-                              >
-                                <svg
-                                  className={`w-3.5 h-3.5 ${isRefreshingSuggestions ? 'animate-spin' : ''}`}
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                                  />
-                                </svg>
-                                {isRefreshingSuggestions ? 'Refreshing...' : 'Refresh'}
-                              </button>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                              {msg.suggestedReplies.map((reply, idx) => (
-                                <button
-                                  key={idx}
-                                  onClick={() => {
-                                    handleSubmit(undefined, reply);
-                                  }}
-                                  className="flex items-center rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-left text-sm text-zinc-100 transition-all hover:bg-zinc-800"
-                                >
-                                  {reply}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                      >
+                        {msg.role === 'user' ? 'You' : 'Ask Vault'}
+                      </div>
+
+                      <div
+                        className={cx(
+                          'overflow-hidden rounded-[1.55rem] px-5 py-4 text-[0.98rem] leading-8 shadow-[0_12px_28px_rgba(0,0,0,0.2)]',
+                          msg.role === 'user'
+                            ? 'rounded-tr-[0.5rem] bg-gradient-to-br from-[#8f8a8a] to-[#c5c0c0] text-[#171717]'
+                            : msg.status === 'failed'
+                              ? 'bg-[#3b1717] text-[#ffe1de]'
+                              : 'rounded-tl-[0.5rem] bg-[#1a1a1a] text-[#ece7e7]',
+                        )}
+                        onContextMenu={(event) => handleContextMenu(event, msg)}
+                        style={{ cursor: 'text', userSelect: 'text' }}
+                      >
+                        {msg.role === 'assistant' ? (
+                          <MarkdownMessage content={msg.content} />
+                        ) : (
+                          <>{msg.content}</>
                         )}
                       </div>
-                    </div>
-                  ))
-                )}
 
-                {!isLoadingSession && isTyping && (
-                  <div className="flex justify-start gap-4">
-                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900">
-                      <svg className="h-4 w-4 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a1 1 0 1 1 1-1 1 1 0 0 1-1 1zm2.36-5.24a2 2 0 0 0 .64-1.76 2 2 0 0 0-4 0c0 .53.21 1.04.59 1.41a2 2 0 0 1 .59 1.41V12h2.36v-.36a4 4 0 0 0-1.18-2.88z" />
-                      </svg>
-                    </div>
-                    <div className="flex h-8 items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:-0.3s]" />
-                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:-0.15s]" />
-                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500" />
+                      {msg.role === 'assistant' && msg.status !== 'failed' ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-[0.78rem] text-[#8d8787]">
+                          <button
+                            type="button"
+                            onClick={() => openSaveModal(msg.id)}
+                            className="rounded-full bg-white/[0.04] px-3 py-1.5 text-[#d4cece] transition hover:bg-white/[0.08] hover:text-white"
+                          >
+                            Save to library
+                          </button>
+                          <span>Select text first if you only want to save an excerpt.</span>
+                        </div>
+                      ) : null}
+
+                      {msg.role === 'assistant' && msg.status === 'failed' && msg.failedRequestContent ? (
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void retryFailedMessage(msg.id);
+                            }}
+                            disabled={isLoading}
+                            className="rounded-full bg-[#5d2a2a] px-3 py-1.5 text-sm font-medium text-[#ffe1de] transition hover:bg-[#753232] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isLoading ? 'Retrying...' : 'Retry'}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                )}
+                ))}
+
+                {!isLoadingSession && isTyping ? (
+                  <div className="flex justify-start gap-4">
+                    <div className="pt-1">
+                      <AgentOrb compact />
+                    </div>
+                    <div className="flex items-center gap-2 rounded-full bg-[#1a1a1a] px-4 py-3">
+                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#a7a1a1] [animation-delay:-0.3s]" />
+                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#a7a1a1] [animation-delay:-0.15s]" />
+                      <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#a7a1a1]" />
+                    </div>
+                  </div>
+                ) : null}
+
                 <div ref={messagesEndRef} />
               </div>
             </div>
-
-            <aside className="hidden xl:block xl:w-72 xl:shrink-0">
-              <div className="sticky top-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-                <div className="px-2 pb-2">
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                    Prompt Timeline
-                  </h2>
-                  <p className="mt-1 text-xs text-zinc-600">Quick jumps through your questions</p>
-                </div>
-
-                {messageOutlineLinks.length === 0 ? (
-                  <p className="px-2 pb-2 text-sm text-zinc-500">
-                    Send a message to build quick links.
-                  </p>
-                ) : (
-                  <nav className="max-h-[calc(100vh-220px)] space-y-1 overflow-y-auto pr-1">
-                    {messageOutlineLinks.map((link, index) => (
-                      <button
-                        key={link.id}
-                        onClick={() => handleJumpToMessage(link.id)}
-                        className={`w-full rounded-xl border-l-4 px-2 py-2 text-left text-sm transition-colors ${
-                          highlightedMessageId === link.id
-                            ? 'border-[#d97757] bg-[#2a1810] text-white'
-                            : 'border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-                        }`}
-                      >
-                        <span className="mr-2 text-[11px] font-medium opacity-70">{index + 1}.</span>
-                        <span>{link.label}</span>
-                      </button>
-                    ))}
-                  </nav>
-                )}
-              </div>
-            </aside>
-          </div>
+          )}
         </div>
+      </div>
 
-        <div className="flex-none border-t border-zinc-800 bg-zinc-950 px-6 py-4">
-          <div className="mx-auto max-w-4xl">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
-              <span>Ask about saved documents, reports, or concepts already in your vault.</span>
-              <span>Use Research for new runs and approvals.</span>
-            </div>
-            <div className="relative flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2">
-              <div className="relative flex-1">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 lg:left-[18.75rem] xl:right-[20rem]">
+        <div className="bg-[linear-gradient(to_top,rgba(19,19,19,0.98),rgba(19,19,19,0.96),transparent)] px-4 pb-5 pt-14 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-[1020px] pointer-events-auto">
+            {composerSuggestions.length > 0 ? (
+              <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+                {composerSuggestions.map((reply) => (
+                  <button
+                    key={reply}
+                    type="button"
+                    onClick={() => {
+                      void handleSubmit(undefined, reply);
+                    }}
+                    className="rounded-full bg-[#1a1a1a] px-4 py-2.5 text-[0.88rem] tracking-[-0.02em] text-[#d7d1d1] transition hover:bg-[#232323] hover:text-white"
+                  >
+                    {reply}
+                  </button>
+                ))}
+
+                {!showIntroState ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void refreshSuggestions();
+                    }}
+                    disabled={isRefreshingSuggestions}
+                    className="rounded-full bg-white/[0.04] px-4 py-2.5 text-[0.82rem] uppercase tracking-[0.18em] text-[#989191] transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
+                  >
+                    {isRefreshingSuggestions ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="rounded-[1.7rem] bg-[#101010]/94 px-4 py-3 shadow-[0_22px_60px_rgba(0,0,0,0.38)] ring-1 ring-white/[0.04] backdrop-blur-2xl">
+              <div className="flex items-end gap-3">
+                <button
+                  type="button"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#c8c2c2] transition hover:bg-white/[0.05] hover:text-white"
+                  aria-label="Attachments are not available in Ask Vault"
+                  title="Ask Vault currently uses saved material already in the vault"
+                >
+                  <AskVaultIcon name="paperclip" className="h-5 w-5" />
+                </button>
+
                 <textarea
                   ref={textareaRef}
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={(event) => setMessage(event.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask about your saved material..."
                   rows={1}
-                  className="max-h-[200px] w-full resize-none border-0 bg-transparent py-3 text-[15px] text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-0"
-                  style={{ minHeight: '44px' }}
+                  aria-label="Ask Vault prompt"
+                  className="max-h-[220px] min-h-[52px] w-full resize-none border-0 bg-transparent py-3 text-[1.02rem] leading-7 text-[#ece7e7] placeholder:text-[#706a6a] focus:outline-none focus:ring-0"
                 />
-              </div>
 
-              <button
-                onClick={() => handleSubmit()}
-                disabled={!message.trim() || isLoading}
-                className={`mb-1 rounded-lg p-2 transition-all duration-200 ${
-                  message.trim() && !isLoading
-                    ? 'bg-[#d97757] text-white shadow-sm hover:bg-[#c66849]'
-                    : 'cursor-not-allowed bg-zinc-900 text-zinc-500'
-                }`}
-              >
-                {isLoading ? (
-                  <LoadingSpinner className="h-5 w-5 border-zinc-600 border-t-white p-0.5" />
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
-                  </svg>
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleSubmit();
+                  }}
+                  disabled={!message.trim() || isLoading}
+                  aria-label="Send message"
+                  className={cx(
+                    'mb-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition',
+                    message.trim() && !isLoading
+                      ? 'bg-gradient-to-b from-[#8f8a8a] to-[#c8c3c3] text-[#151515] shadow-[0_12px_24px_rgba(0,0,0,0.22)] hover:from-[#a6a0a0] hover:to-[#d9d4d4]'
+                      : 'cursor-not-allowed bg-white/[0.04] text-[#5f5a5a]',
+                  )}
+                >
+                  {isLoading ? (
+                    <LoadingSpinner className="h-5 w-5 border-black/20 border-t-[#151515]" />
+                  ) : (
+                    <AskVaultIcon name="send" className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="pt-2 text-center">
-              <p className="text-xs text-zinc-600">
-                Markdown supported. The assistant can make mistakes, so verify important information before acting on it.
-              </p>
+
+            <div className="pt-3 text-center text-[0.72rem] uppercase tracking-[0.22em] text-[#767070]">
+              AI agent may produce inaccurate information. Verify critical data.
             </div>
           </div>
         </div>
-
-        {contextMenu && (
-          <ContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onClose={() => setContextMenu(null)}
-            onSaveToLibrary={handleSaveToLibrary}
-          />
-        )}
-
-        <SaveToLibraryModal
-          isOpen={showSaveModal}
-          onClose={() => setShowSaveModal(false)}
-          onSave={handleSaveWithTitle}
-          defaultText={textToSave}
-          defaultTitle={defaultTitle}
-        />
-
-        <ToastContainer />
       </div>
 
-      {isOutlineDrawerOpen && (
-        <div className="fixed inset-0 z-40 xl:hidden">
-          <button
-            type="button"
-            aria-label="Close message links"
-            className="absolute inset-0 bg-zinc-950"
-            onClick={() => setIsOutlineDrawerOpen(false)}
+      {contextMenu ? (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onSaveToLibrary={handleSaveToLibrary}
+        />
+      ) : null}
+
+      <SaveToLibraryModal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        onSave={handleSaveWithTitle}
+        defaultText={textToSave}
+        defaultTitle={defaultTitle}
+      />
+
+      <Drawer
+        open={historyDrawerOpen}
+        onClose={() => setHistoryDrawerOpen(false)}
+        title="Ask Vault navigation"
+        description="Recent sessions and quick access to related workspaces."
+        panelClassName="max-w-[22rem] border-0 bg-transparent shadow-none"
+        contentClassName="p-0"
+      >
+        <div className="h-full">
+          <ChatHistorySidebar
+            isOpen={historyDrawerOpen}
+            variant="drawer"
+            onToggle={() => setHistoryDrawerOpen(false)}
+            currentSessionId={sessionId}
+            onNewChat={handleNewChatClick}
           />
-
-          <aside className="absolute right-0 top-0 h-full w-[86vw] max-w-sm border-l border-zinc-800 bg-zinc-950 shadow-xl">
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-4">
-                <div>
-                  <h2 className="text-sm font-semibold text-white">Prompt Timeline</h2>
-                  <p className="text-xs text-zinc-500">Jump through your recent questions</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsOutlineDrawerOpen(false)}
-                  className="rounded-md p-2 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-white"
-                  title="Close message links"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-3 py-3">
-                {messageOutlineLinks.length === 0 ? (
-                  <p className="rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-3 text-sm text-zinc-500">
-                    Send a message to build quick links.
-                  </p>
-                ) : (
-                  <nav className="space-y-1">
-                    {messageOutlineLinks.map((link, index) => (
-                      <button
-                        key={link.id}
-                        onClick={() => handleJumpToMessageFromDrawer(link.id)}
-                        className={`w-full rounded-xl border-l-4 px-3 py-2 text-left text-sm transition-colors ${
-                          highlightedMessageId === link.id
-                            ? 'border-[#d97757] bg-[#2a1810] text-white'
-                            : 'border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-                        }`}
-                      >
-                        <span className="mr-2 text-[11px] font-medium opacity-70">{index + 1}.</span>
-                        <span>{link.label}</span>
-                      </button>
-                    ))}
-                  </nav>
-                )}
-              </div>
-            </div>
-          </aside>
         </div>
-      )}
+      </Drawer>
+
+      <Drawer
+        open={isOutlineDrawerOpen}
+        onClose={() => setIsOutlineDrawerOpen(false)}
+        title="Prompt timeline"
+        description="Jump through the questions in this session."
+        panelClassName="max-w-[22rem] bg-[#1a1a1a]"
+        contentClassName="pt-2"
+      >
+        <PromptTimeline
+          links={messageOutlineLinks}
+          highlightedMessageId={highlightedMessageId}
+          onJump={handleJumpToMessageFromDrawer}
+        />
+      </Drawer>
+
+      <ToastContainer />
     </div>
   );
 }
