@@ -1,6 +1,5 @@
 'use client';
 
-import { Inter } from 'next/font/google';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -25,12 +24,8 @@ import {
 } from '@/app/library/documentPresentation';
 import { ingestContent } from './actions';
 
-const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-});
-
 type IngestMode = 'file' | 'url' | 'text';
+type FeedbackTone = 'default' | 'loading' | 'success' | 'error';
 
 export type IngestWorkspaceDocument = {
   id: string;
@@ -63,26 +58,29 @@ const MAX_FILE_SIZE_MB = 10;
 const MODE_CONFIG: Record<IngestMode, ModeConfig> = {
   file: {
     label: 'File Upload',
-    title: 'Ingest New Intelligence',
-    description: 'Drag in research papers, markdown notes, CSV exports, or source files from your machine.',
+    title: 'Import a file',
+    description: 'Drag in PDFs, markdown notes, transcripts, or exports from your machine.',
     actionLabel: 'Upload File',
-    footerNote: 'Files are processed inline, tagged automatically, and sent into the library when extraction finishes.',
+    footerNote:
+      'Files are parsed inline and added to the library immediately. Any follow-on enrichment still follows the normal review flow.',
     helper: 'PDF, TXT, DOCX, MD, CSV',
   },
   url: {
     label: 'URL Submission',
-    title: 'Capture a Public Source',
-    description: 'Import a public article or docs page without leaving the vault.',
+    title: 'Import a public page',
+    description: 'Capture an article or documentation page directly into the library.',
     actionLabel: 'Import URL',
-    footerNote: 'The page is fetched immediately and saved as a new document after extraction succeeds.',
+    footerNote:
+      'Public http(s) pages are fetched inline and saved as new library documents after extraction succeeds.',
     helper: 'Public http(s) pages only',
   },
   text: {
     label: 'Text Input',
-    title: 'Paste Notes or Excerpts',
-    description: 'Bring in copied notes, transcripts, or raw excerpts and store them as a first-class document.',
-    actionLabel: 'Add Note',
-    footerNote: 'Manual entries need at least 50 characters so the vault has enough signal to tag the document.',
+    title: 'Save pasted notes',
+    description: 'Store copied notes, excerpts, or transcripts as a first-class library document.',
+    actionLabel: 'Save Note',
+    footerNote:
+      'Manual entries need at least 50 characters so the vault has enough signal to tag and retrieve the document.',
     helper: 'Markdown-friendly text',
   },
 };
@@ -100,6 +98,42 @@ const monoInputClass =
   'w-full rounded-[1.35rem] bg-[#0f0f0f] px-4 py-3.5 text-sm text-[#f1eeee] placeholder:text-[#6f6a6a] outline-none transition duration-200 focus:bg-[#232323] focus:shadow-[0_0_0_1px_rgba(193,193,193,0.14),0_0_0_12px_rgba(119,119,119,0.1)]';
 const monoTextareaClass = `${monoInputClass} min-h-[220px] resize-y font-[450]`;
 
+function getDefaultFeedback(mode: IngestMode, selectedFile: File | null, source: string, content: string) {
+  if (mode === 'file' && !selectedFile) {
+    return {
+      tone: 'default' as const,
+      eyebrow: 'Awaiting file',
+      title: 'Choose a file to begin',
+      description: 'Upload a document from your machine to create a new library record.',
+    };
+  }
+
+  if (mode === 'url' && !source.trim()) {
+    return {
+      tone: 'default' as const,
+      eyebrow: 'Awaiting URL',
+      title: 'Paste a public page URL',
+      description: 'Use URL import when you want the vault to fetch a public article or docs page inline.',
+    };
+  }
+
+  if (mode === 'text' && content.trim().length < 50) {
+    return {
+      tone: 'default' as const,
+      eyebrow: 'Awaiting text',
+      title: 'Paste enough text to save',
+      description: 'Manual notes need at least 50 characters so the vault can classify and retrieve them well.',
+    };
+  }
+
+  return {
+    tone: 'default' as const,
+    eyebrow: 'Ready',
+    title: 'Ready to import',
+    description: 'Review the title if needed, then add this content to the library.',
+  };
+}
+
 function getUserInitials(userName: string): string {
   const initials = userName
     .split(/\s+/)
@@ -112,19 +146,19 @@ function getUserInitials(userName: string): string {
 }
 
 function formatModeLabel(mode: IngestMode): string {
-  return MODE_CONFIG[mode].label.replace(/\s+/g, '_').toUpperCase();
+  return MODE_CONFIG[mode].label;
 }
 
 function getReadyStateLabel(mode: IngestMode, selectedFile: File | null, source: string, content: string): string {
   if (mode === 'file') {
-    return selectedFile ? 'READY' : 'AWAITING_FILE';
+    return selectedFile ? 'Ready to import' : 'Choose a file';
   }
 
   if (mode === 'url') {
-    return source.trim() ? 'READY' : 'AWAITING_URL';
+    return source.trim() ? 'Ready to import' : 'Paste a URL';
   }
 
-  return content.trim().length >= 50 ? 'READY' : 'AWAITING_TEXT';
+  return content.trim().length >= 50 ? 'Ready to import' : 'Paste enough text';
 }
 
 function formatSourceType(source: string, isWebScoutDiscovered: boolean): string {
@@ -270,46 +304,58 @@ function renderIcon(icon: 'terminal' | 'brain' | 'database' | 'network' | 'setti
 
 function TopNav({ userName, pathname }: { userName: string; pathname: string }) {
   const userInitials = getUserInitials(userName);
-  const navItems = getTopNavItemsWithState(pathname, [...PRIMARY_TOP_NAV_KEYS, 'ingest']);
+  const navItems = getTopNavItemsWithState(pathname, PRIMARY_TOP_NAV_KEYS);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 h-16 bg-[rgba(19,19,19,0.55)] backdrop-blur-2xl">
-      <div className="mx-auto flex h-full max-w-[1560px] items-center justify-between px-6 lg:px-10">
-        <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-85">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f3f0f0] text-[0.72rem] font-black uppercase tracking-[0.18em] text-[#131313]">
-            CV
-          </div>
-          <div className="leading-none">
-            <div className="text-[1.2rem] font-black tracking-[-0.06em] text-white">Concept Vault</div>
-            <div className="mt-1 text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-[#8f8a8a]">
-              Document Intelligence
+    <header className="fixed inset-x-0 top-0 z-50 h-16 bg-[rgba(19,19,19,0.58)] backdrop-blur-2xl">
+      <div className="mx-auto flex h-full max-w-[1560px] items-center justify-between px-4 sm:px-6 lg:px-10">
+        <div className="flex items-center gap-4">
+          <Link href="/ingest" className="leading-none transition-opacity hover:opacity-85">
+            <div className="text-[1.18rem] font-black tracking-[-0.07em] text-white sm:text-[1.3rem]">
+              CONCEPT_VAULT
             </div>
-          </div>
-        </Link>
-        <nav className="hidden items-center gap-10 md:flex">
+            <div className="mt-1 hidden text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-[#8f8a8a] sm:block">
+              Add Content
+            </div>
+          </Link>
+          <span className="hidden rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#d9d2d2] lg:inline-flex">
+            Library intake
+          </span>
+        </div>
+
+        <nav className="hidden items-center gap-8 md:flex lg:gap-10">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`relative text-[1.1rem] font-medium tracking-[-0.035em] transition-colors ${
+              className={`relative text-[1rem] font-medium tracking-[-0.035em] transition-colors lg:text-[1.08rem] ${
                 item.active ? 'text-white' : 'text-[#8f8a8a] hover:text-white'
               }`}
               aria-current={item.active ? 'page' : undefined}
             >
               {item.label}
-              {item.active && <span className="absolute inset-x-0 -bottom-2 h-0.5 rounded-full bg-white" />}
+              {item.active ? <span className="absolute inset-x-0 -bottom-2 h-0.5 rounded-full bg-white" /> : null}
             </Link>
           ))}
         </nav>
-        <div className="flex items-center gap-3">
-          <button type="button" className="rounded-full p-2 text-white/90 transition hover:bg-white/5" aria-label="Settings">
-            {renderIcon('settings')}
-          </button>
-          <button type="button" className="rounded-full p-2 text-white/90 transition hover:bg-white/5" aria-label="Notifications">
-            {renderIcon('bell')}
-          </button>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link
+            href="/library"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-[#d8d2d2] transition hover:bg-white/10 hover:text-white"
+            aria-label="Open library"
+          >
+            {renderIcon('database')}
+          </Link>
+          <Link
+            href="/chat"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-[#d8d2d2] transition hover:bg-white/10 hover:text-white"
+            aria-label="Open Ask Vault"
+          >
+            {renderIcon('article')}
+          </Link>
           <div
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ececec] text-[0.72rem] font-black tracking-[0.18em] text-[#1a1a1a]"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[#ececec] text-[0.72rem] font-black tracking-[0.18em] text-[#1a1a1a]"
             aria-label={userName}
             title={userName}
           >
@@ -325,10 +371,12 @@ function SideNav({ pathname }: { pathname: string }) {
   return (
     <>
       <aside className="fixed left-0 top-16 hidden h-[calc(100vh-4rem)] w-64 bg-[#151515] px-5 py-6 lg:flex lg:flex-col">
-        <Link href="/" className="px-4 transition-opacity hover:opacity-85">
-          <p className="text-[0.76rem] font-bold uppercase tracking-[0.08em] text-white">CONCEPT_VAULT</p>
-          <p className="mt-1 text-[0.76rem] uppercase tracking-[0.08em] text-[#747070]">RESEARCH_WORKBENCH</p>
-        </Link>
+        <div className="px-4">
+          <p className="text-[0.76rem] font-bold uppercase tracking-[0.08em] text-white">Add Content</p>
+          <p className="mt-2 text-sm leading-6 text-[#8f8a8a]">
+            Bring files, public pages, and pasted notes into the library.
+          </p>
+        </div>
 
         <div className="mt-10 px-4">
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#6f6a6a]">Workspace</p>
@@ -354,21 +402,21 @@ function SideNav({ pathname }: { pathname: string }) {
 
         <div className="mt-auto space-y-3 pt-6">
           <div className="px-4">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#6f6a6a]">Quick Links</p>
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#6f6a6a]">Next steps</p>
           </div>
           <Link
             href="/today"
             className="flex w-full items-center justify-center rounded-full bg-[#f3f0f0] px-5 py-3 text-[0.72rem] font-bold uppercase tracking-[0.28em] text-[#171717] transition hover:bg-white"
           >
-            OPEN RESEARCH
-          </Link>
-          <Link href="/chat" className="flex items-center gap-4 px-5 py-3 text-[0.78rem] uppercase tracking-[0.16em] text-[#787373] transition hover:text-white">
-            {renderIcon('article')}
-            <span>Ask Vault</span>
+            Continue Research
           </Link>
           <Link href="/library" className="flex items-center gap-4 px-5 py-3 text-[0.78rem] uppercase tracking-[0.16em] text-[#787373] transition hover:text-white">
             {renderIcon('database')}
             <span>Open Library</span>
+          </Link>
+          <Link href="/chat" className="flex items-center gap-4 px-5 py-3 text-[0.78rem] uppercase tracking-[0.16em] text-[#787373] transition hover:text-white">
+            {renderIcon('article')}
+            <span>Ask Vault</span>
           </Link>
         </div>
       </aside>
@@ -482,54 +530,74 @@ function StatusCard({
   mode,
   readyState,
   stats,
+  feedback,
 }: {
   mode: IngestMode;
   readyState: string;
   stats: IngestWorkspaceStats;
+  feedback: { tone: FeedbackTone; eyebrow: string; title: string; description: string };
 }) {
-  const modeConfig = MODE_CONFIG[mode];
+  const toneClassName =
+    feedback.tone === 'success'
+      ? 'border-[#3d5648] bg-[rgba(34,62,47,0.78)] text-[#d5eadb]'
+      : feedback.tone === 'error'
+        ? 'border-[#68433b] bg-[rgba(60,26,24,0.78)] text-[#f2c7bc]'
+        : feedback.tone === 'loading'
+          ? 'border-[#5b4f36] bg-[rgba(49,35,16,0.78)] text-[#f0d7a7]'
+          : 'border-white/[0.08] bg-[rgba(255,255,255,0.03)] text-[#d9d2d2]';
 
   return (
-    <div className="rounded-[1.8rem] bg-[#2a2a2a] p-8">
+    <div className="rounded-[1.8rem] border border-white/[0.08] bg-[#2a2a2a] p-8">
       <div className="mb-5 flex items-center gap-3">
         <span className="h-2.5 w-2.5 rounded-full bg-[#d9d9d9] shadow-[0_0_20px_rgba(255,255,255,0.45)]" />
-        <span className="text-[0.72rem] font-bold uppercase tracking-[0.22em] text-[#efefef]">LIVE_STREAM</span>
+        <span className="text-[0.72rem] font-bold uppercase tracking-[0.22em] text-[#efefef]">
+          {feedback.eyebrow}
+        </span>
       </div>
-      <h2 className="text-[2rem] font-bold tracking-[-0.05em] text-white">Vault Intake Status</h2>
+      <h2 className="text-[2rem] font-bold tracking-[-0.05em] text-white">Import status</h2>
       <p className="mt-4 max-w-sm text-[1.05rem] leading-8 text-[#d1cbcb]">
-        {modeConfig.description} Human review still governs downstream research activation after content lands in the vault.
+        Keep intake fast. New content lands in the library immediately, while research activation still follows the normal review and approval flow.
       </p>
+
+      <div
+        className={`mt-8 rounded-[1.35rem] border px-5 py-4 ${toneClassName}`}
+        aria-live="polite"
+      >
+        <p className={monoLabelClass}>{formatModeLabel(mode)}</p>
+        <p className="mt-3 text-lg font-semibold text-white">{feedback.title}</p>
+        <p className="mt-2 text-sm leading-7 text-current">{feedback.description}</p>
+      </div>
 
       <div className="mt-8 space-y-4">
         <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
           <div className="flex items-center justify-between gap-4">
-            <span className={monoLabelClass}>INGEST_MODE</span>
+            <span className={monoLabelClass}>Mode</span>
             <span className="font-mono text-[1rem] text-[#f4f4f4]">{formatModeLabel(mode)}</span>
           </div>
         </div>
         <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
           <div className="flex items-center justify-between gap-4">
-            <span className={monoLabelClass}>READY_STATE</span>
+            <span className={monoLabelClass}>Ready state</span>
             <span className="font-mono text-[1rem] text-[#f4f4f4]">{readyState}</span>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
-            <p className={monoLabelClass}>DIRECT_IMPORTS</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.directImports}</p>
+            <p className={monoLabelClass}>Library documents</p>
+            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.totalRecords}</p>
           </div>
           <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
-            <p className={monoLabelClass}>RESEARCH_SAVED</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.researchImports}</p>
+            <p className={monoLabelClass}>Direct imports</p>
+            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.directImports}</p>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
-            <p className={monoLabelClass}>FAVORITES</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.favorites}</p>
+            <p className={monoLabelClass}>Research imports</p>
+            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.researchImports}</p>
           </div>
           <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
-            <p className={monoLabelClass}>NEEDS_CLEANUP</p>
+            <p className={monoLabelClass}>Needs cleanup</p>
             <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.cleanupCandidates}</p>
           </div>
         </div>
@@ -547,12 +615,12 @@ function RecentDocumentRow({
   const status = titleIssue
     ? {
         icon: 'warning' as const,
-        label: 'NEEDS CLEANUP',
+        label: 'Needs cleanup',
         className: 'text-[#ffb4ab]',
       }
     : {
         icon: 'check' as const,
-        label: document.is_webscout_discovered ? 'RESEARCH SAVED' : 'INDEXED',
+        label: document.is_webscout_discovered ? 'Research import' : 'Indexed',
         className: 'text-[#d9d9d9]',
       };
 
@@ -894,6 +962,12 @@ export function IngestWorkspace({
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [feedbackState, setFeedbackState] = useState<{
+    tone: FeedbackTone;
+    eyebrow: string;
+    title: string;
+    description: string;
+  } | null>(null);
 
   const titlePlaceholder =
     mode === 'file'
@@ -907,12 +981,26 @@ export function IngestWorkspace({
   const isFileReady = Boolean(selectedFile);
   const isActionDisabled = mode === 'file' ? !isFileReady : mode === 'url' ? !isUrlReady : !isTextReady;
   const readyState = getReadyStateLabel(mode, selectedFile, source, content);
+  const feedback = feedbackState ?? getDefaultFeedback(mode, selectedFile, source, content);
+  const handleTitleChange = (value: string) => {
+    setFeedbackState(null);
+    setTitle(value);
+  };
+  const handleSourceChange = (value: string) => {
+    setFeedbackState(null);
+    setSource(value);
+  };
+  const handleContentChange = (value: string) => {
+    setFeedbackState(null);
+    setContent(value);
+  };
 
   const resetAndRedirect = () => {
     setTitle('');
     setSource('');
     setContent('');
     setSelectedFile(null);
+    setDragActive(false);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -927,16 +1015,29 @@ export function IngestWorkspace({
     const extension = `.${file.name.split('.').pop()?.toLowerCase()}`;
 
     if (!ALLOWED_EXTENSIONS.includes(extension)) {
+      setFeedbackState({
+        tone: 'error',
+        eyebrow: 'Unsupported file',
+        title: 'This file type is not supported',
+        description: `Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}`,
+      });
       toast.error(`Unsupported file type. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`);
       return;
     }
 
     if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      setFeedbackState({
+        tone: 'error',
+        eyebrow: 'File too large',
+        title: 'Choose a smaller file',
+        description: `The current size limit is ${MAX_FILE_SIZE_MB}MB per upload.`,
+      });
       toast.error(`File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB`);
       return;
     }
 
     setSelectedFile(file);
+    setFeedbackState(null);
 
     if (!title.trim()) {
       setTitle(file.name.replace(/\.[^/.]+$/, ''));
@@ -972,11 +1073,23 @@ export function IngestWorkspace({
 
   const handleFileUpload = async () => {
     if (!selectedFile) {
+      setFeedbackState({
+        tone: 'error',
+        eyebrow: 'Missing file',
+        title: 'Select a file before uploading',
+        description: 'Choose a supported file from your machine, then try the upload again.',
+      });
       toast.error('Please select a file');
       return;
     }
 
     setIsLoading(true);
+    setFeedbackState({
+      tone: 'loading',
+      eyebrow: 'Uploading',
+      title: 'Extracting and saving your file',
+      description: 'The vault is parsing the file inline and will take you to the library when it finishes.',
+    });
 
     try {
       const formData = new FormData();
@@ -993,14 +1106,38 @@ export function IngestWorkspace({
       const result = await response.json();
 
       if (!result.ok) {
+        setFeedbackState({
+          tone: 'error',
+          eyebrow: 'Upload failed',
+          title: 'The file could not be imported',
+          description: result.error || result.message || 'Upload failed',
+        });
         toast.error(result.error || result.message || 'Upload failed');
         return;
       }
 
-      toast.success(`Content added successfully. Extracted ${result.extractedLength.toLocaleString()} characters.`);
+      setFeedbackState({
+        tone: 'success',
+        eyebrow: result.created ? 'Import saved' : 'Already in library',
+        title: result.created ? 'File added to the library' : 'Matching content already exists',
+        description: result.created
+          ? `Extracted ${result.extractedLength.toLocaleString()} characters and queued the document for normal follow-on processing.`
+          : 'The vault recognized this content and kept the existing library record instead of creating a duplicate.',
+      });
+      toast.success(
+        result.created
+          ? `Content added successfully. Extracted ${result.extractedLength.toLocaleString()} characters.`
+          : 'This content is already in the library.',
+      );
       resetAndRedirect();
     } catch (error) {
       console.error('Upload error:', error);
+      setFeedbackState({
+        tone: 'error',
+        eyebrow: 'Upload failed',
+        title: 'An unexpected upload error occurred',
+        description: 'Check the file and try again. If the issue persists, inspect the server logs for the upload route.',
+      });
       toast.error('An unexpected error occurred');
     } finally {
       setIsLoading(false);
@@ -1014,6 +1151,12 @@ export function IngestWorkspace({
       const trimmedSource = source.trim();
 
       if (!trimmedSource) {
+        setFeedbackState({
+          tone: 'error',
+          eyebrow: 'Missing URL',
+          title: 'Paste a public page URL',
+          description: 'Paste the page address first so the vault can fetch it inline.',
+        });
         toast.error('URL is required');
         return;
       }
@@ -1022,19 +1165,46 @@ export function IngestWorkspace({
         const parsed = new URL(trimmedSource);
 
         if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          setFeedbackState({
+            tone: 'error',
+            eyebrow: 'Invalid URL',
+            title: 'Only http and https URLs are supported',
+            description: 'Use a public page address that starts with http:// or https://.',
+          });
           toast.error('URL must use http or https');
           return;
         }
       } catch {
+        setFeedbackState({
+          tone: 'error',
+          eyebrow: 'Invalid URL',
+          title: 'Enter a valid page URL',
+          description: 'Use a complete public URL so the vault can fetch the page inline.',
+        });
         toast.error('Please enter a valid URL');
         return;
       }
     } else if (!isTextReady) {
+      setFeedbackState({
+        tone: 'error',
+        eyebrow: 'More text needed',
+        title: 'Paste at least 50 characters',
+        description: 'Short notes do not provide enough signal for tagging and retrieval.',
+      });
       toast.error('Content must be at least 50 characters');
       return;
     }
 
     setIsLoading(true);
+    setFeedbackState({
+      tone: 'loading',
+      eyebrow: mode === 'url' ? 'Importing page' : 'Saving note',
+      title: mode === 'url' ? 'Fetching and saving the page' : 'Adding your text to the library',
+      description:
+        mode === 'url'
+          ? 'The vault is extracting the page inline and will open the library when it completes.'
+          : 'Your note is being stored as a new library document.',
+    });
 
     try {
       const result = await ingestContent({
@@ -1044,14 +1214,34 @@ export function IngestWorkspace({
       });
 
       if (!result.success) {
+        setFeedbackState({
+          tone: 'error',
+          eyebrow: 'Import failed',
+          title: 'The content could not be saved',
+          description: result.error,
+        });
         toast.error(result.error);
         return;
       }
 
-      toast.success('Content added successfully.');
+      setFeedbackState({
+        tone: 'success',
+        eyebrow: result.created ? 'Import saved' : 'Already in library',
+        title: result.created ? 'Content added to the library' : 'Matching content already exists',
+        description: result.created
+          ? 'The document was saved successfully. The library will open in a moment.'
+          : 'The vault recognized this content and kept the existing library record instead of creating a duplicate.',
+      });
+      toast.success(result.created ? 'Content added successfully.' : 'This content is already in the library.');
       resetAndRedirect();
     } catch (error) {
       console.error('Ingest error:', error);
+      setFeedbackState({
+        tone: 'error',
+        eyebrow: 'Import failed',
+        title: 'An unexpected import error occurred',
+        description: 'Try the request again. If the issue persists, inspect the server logs for the ingest action.',
+      });
       toast.error('An unexpected error occurred');
     } finally {
       setIsLoading(false);
@@ -1060,6 +1250,7 @@ export function IngestWorkspace({
 
   const clearFile = () => {
     setSelectedFile(null);
+    setFeedbackState(null);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -1069,6 +1260,7 @@ export function IngestWorkspace({
   const switchMode = (nextMode: IngestMode) => {
     setMode(nextMode);
     setIsLoading(false);
+    setFeedbackState(null);
 
     if (nextMode !== 'file') {
       setDragActive(false);
@@ -1078,7 +1270,7 @@ export function IngestWorkspace({
   return (
     <>
       <ToastContainer />
-      <div className={`${inter.className} relative min-h-screen overflow-x-hidden bg-[#131313] text-[#e2e2e2]`}>
+      <div className="relative min-h-screen overflow-x-hidden bg-[#131313] text-[#e2e2e2]">
         <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_8%,rgba(255,255,255,0.05),transparent_22%),radial-gradient(circle_at_84%_14%,rgba(255,255,255,0.035),transparent_18%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_28%)]" />
 
         <TopNav userName={userName} pathname={pathname} />
@@ -1086,18 +1278,30 @@ export function IngestWorkspace({
 
         <main className="relative min-h-screen pt-24 pb-14 lg:pl-64">
           <div className="mx-auto max-w-6xl px-6 lg:px-12">
-            <header className="mb-12 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <h1 className="text-[3.4rem] font-black italic tracking-[-0.08em] text-white sm:text-[4.7rem]">INGESTION</h1>
-                <p className="mt-2 text-[0.76rem] uppercase tracking-[0.34em] text-[#bfb4b4] sm:text-[0.88rem]">
-                  DOCUMENT INTELLIGENCE HUB / CAPTURE_QUEUE
+            <header className="mb-12 flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+              <div className="max-w-3xl">
+                <p className={monoLabelClass}>Add Content</p>
+                <h1 className="mt-4 text-[clamp(3.1rem,7vw,5rem)] font-black tracking-[-0.08em] text-white">
+                  Bring new material into the vault.
+                </h1>
+                <p className="mt-4 max-w-2xl text-[1.05rem] leading-8 text-[#c8c1c1]">
+                  Use file upload, URL import, or pasted text to create new library documents without leaving the workspace.
                 </p>
               </div>
-              <div className="text-left lg:text-right">
-                <p className="text-[3rem] font-black tracking-[-0.08em] text-white sm:text-[4.3rem]">
-                  {stats.totalRecords.toLocaleString()}
-                </p>
-                <p className="text-[0.72rem] uppercase tracking-[0.26em] text-[#bfb4b4]">TOTAL_RECORDS</p>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[24rem]">
+                <div className="rounded-[1.4rem] border border-white/[0.08] bg-[rgba(255,255,255,0.04)] px-5 py-4">
+                  <p className={monoLabelClass}>Library documents</p>
+                  <p className="mt-3 text-[2.7rem] font-black tracking-[-0.08em] text-white">
+                    {stats.totalRecords.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-[1.4rem] border border-white/[0.08] bg-[rgba(255,255,255,0.04)] px-5 py-4">
+                  <p className={monoLabelClass}>Needs cleanup</p>
+                  <p className="mt-3 text-[2.7rem] font-black tracking-[-0.08em] text-white">
+                    {stats.cleanupCandidates.toLocaleString()}
+                  </p>
+                </div>
               </div>
             </header>
 
@@ -1115,7 +1319,7 @@ export function IngestWorkspace({
                         titlePlaceholder={titlePlaceholder}
                         isLoading={isLoading}
                         isActionDisabled={isActionDisabled}
-                        onTitleChange={setTitle}
+                        onTitleChange={handleTitleChange}
                         onDrag={handleDrag}
                         onDrop={handleDrop}
                         onOpenFilePicker={() => fileInputRef.current?.click()}
@@ -1133,8 +1337,8 @@ export function IngestWorkspace({
                         titlePlaceholder={titlePlaceholder}
                         isLoading={isLoading}
                         isActionDisabled={isActionDisabled}
-                        onTitleChange={setTitle}
-                        onSourceChange={setSource}
+                        onTitleChange={handleTitleChange}
+                        onSourceChange={handleSourceChange}
                       />
                     )}
 
@@ -1146,38 +1350,35 @@ export function IngestWorkspace({
                         titlePlaceholder={titlePlaceholder}
                         isLoading={isLoading}
                         isActionDisabled={isActionDisabled}
-                        onTitleChange={setTitle}
-                        onSourceChange={setSource}
-                        onContentChange={setContent}
+                        onTitleChange={handleTitleChange}
+                        onSourceChange={handleSourceChange}
+                        onContentChange={handleContentChange}
                       />
                     )}
                   </div>
 
                   <div className="col-span-12 lg:col-span-5">
-                    <StatusCard mode={mode} readyState={readyState} stats={stats} />
+                    <StatusCard mode={mode} readyState={readyState} stats={stats} feedback={feedback} />
                   </div>
                 </div>
               </form>
 
               <section className="mt-16">
                 <div className="mb-8 flex items-center justify-between gap-4">
-                  <h2 className="text-[2.2rem] font-black tracking-[-0.06em] text-white sm:text-[2.8rem]">RECENTLY_ADDED</h2>
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href="/library"
-                      className="rounded-full p-2 text-[#9f9898] transition hover:bg-white/5 hover:text-white"
-                      aria-label="Open library"
-                    >
-                      {renderIcon('filter')}
-                    </Link>
-                    <Link
-                      href="/library"
-                      className="rounded-full p-2 text-[#9f9898] transition hover:bg-white/5 hover:text-white"
-                      aria-label="Search library"
-                    >
-                      {renderIcon('search')}
-                    </Link>
+                  <div>
+                    <h2 className="text-[2.2rem] font-black tracking-[-0.06em] text-white sm:text-[2.8rem]">
+                      Recent imports
+                    </h2>
+                    <p className="mt-2 text-sm leading-7 text-[#a79f9f]">
+                      The latest documents already available in the library.
+                    </p>
                   </div>
+                  <Link
+                    href="/library"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.03] px-4 py-2 text-[0.72rem] font-bold uppercase tracking-[0.24em] text-[#ddd7d7] transition hover:bg-white/[0.08] hover:text-white"
+                  >
+                    Open Library
+                  </Link>
                 </div>
 
                 {recentDocuments.length > 0 ? (
@@ -1188,10 +1389,10 @@ export function IngestWorkspace({
                   </div>
                 ) : (
                   <div className="rounded-[1.5rem] bg-[#101010] px-6 py-10 text-center">
-                    <p className={monoLabelClass}>RECENT_DOCUMENTS</p>
-                    <h3 className="mt-4 text-2xl font-bold tracking-[-0.04em] text-white">The repository is empty.</h3>
+                    <p className={monoLabelClass}>Recent imports</p>
+                    <h3 className="mt-4 text-2xl font-bold tracking-[-0.04em] text-white">No content has been added yet.</h3>
                     <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[#a79f9f]">
-                      Use one of the intake modes above to add your first source. Imported content will appear here immediately after extraction completes.
+                      Use one of the intake modes above to add your first source. Imported content will appear here as soon as extraction completes.
                     </p>
                   </div>
                 )}
@@ -1201,7 +1402,7 @@ export function IngestWorkspace({
                     href="/library"
                     className="inline-flex items-center gap-2 text-[0.78rem] font-bold uppercase tracking-[0.24em] text-[#b9b0b0] transition hover:text-white"
                   >
-                    Load archived documents
+                    View all library documents
                     <span aria-hidden="true">⌄</span>
                   </Link>
                 </div>
