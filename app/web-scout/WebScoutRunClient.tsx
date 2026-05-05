@@ -15,27 +15,12 @@ import {
   summarizeStageProgress,
   type StageProgress as SharedStageProgress,
 } from '@/lib/agentRunPresentation';
-
-type RunStatus = 'running' | 'ok' | 'error' | 'partial';
-
-type RunStep = {
-  name: string;
-  status: 'running' | 'ok' | 'error' | 'skipped';
-  startedAt?: string;
-  endedAt?: string;
-  input?: unknown;
-  output?: unknown;
-  error?: unknown;
-};
-
-type RunTrace = {
-  id: string;
-  kind: 'distill' | 'curate' | 'webScout' | 'research' | 'pipeline';
-  status: RunStatus;
-  startedAt: string;
-  completedAt?: string;
-  steps: RunStep[];
-};
+import {
+  fetchRunResults,
+  fetchRunTraceOrNull,
+  type RunStatus,
+  type RunTracePayload,
+} from '@/lib/runApiClient';
 
 type StageProgress = SharedStageProgress;
 
@@ -255,7 +240,7 @@ function extractMetricsFromCounts(counts: Record<string, number> | null): Metric
   return [];
 }
 
-function extractMetricsFromTrace(trace: RunTrace | null): Metric[] {
+function extractMetricsFromTrace(trace: RunTracePayload | null): Metric[] {
   if (!trace) {
     return [];
   }
@@ -374,7 +359,7 @@ export function WebScoutRunClient({
 }: WebScoutRunClientProps) {
   const searchParams = useSearchParams();
   const [runId, setRunId] = useState<string | null>(null);
-  const [trace, setTrace] = useState<RunTrace | null>(null);
+  const [trace, setTrace] = useState<RunTracePayload | null>(null);
   const [results, setResults] = useState<RunResultsPayload | null>(null);
   const [batchResult, setBatchResult] = useState<BatchFindSourcesResult | null>(null);
   const [isStarting, setIsStarting] = useState(false);
@@ -494,31 +479,6 @@ export function WebScoutRunClient({
     }
   }, [isAwaitingTopicSelection, isBatchFindSources, searchParams]);
 
-  const fetchTrace = useCallback(async (id: string): Promise<RunTrace | null> => {
-    const response = await fetch(`/api/runs/${id}`, {
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    return (await response.json()) as RunTrace;
-  }, []);
-
-  const fetchResults = useCallback(async (id: string): Promise<RunResultsPayload> => {
-    const response = await fetch(`/api/runs/${id}/results`, {
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      throw new Error(body?.error || 'Failed to load generated results');
-    }
-
-    return (await response.json()) as RunResultsPayload;
-  }, []);
-
   useEffect(() => {
     if (autoStartedRef.current === autoStartKey) {
       return;
@@ -543,7 +503,9 @@ export function WebScoutRunClient({
 
     const poll = async () => {
       try {
-        const nextTrace = await fetchTrace(runId);
+        const nextTrace = await fetchRunTraceOrNull(runId, {
+          cache: 'no-store',
+        });
         if (cancelled || !nextTrace) {
           return;
         }
@@ -572,7 +534,7 @@ export function WebScoutRunClient({
         window.clearTimeout(timer);
       }
     };
-  }, [fetchTrace, isBatchFindSources, runId]);
+  }, [isBatchFindSources, runId]);
 
   useEffect(() => {
     if (isBatchFindSources) {
@@ -591,7 +553,11 @@ export function WebScoutRunClient({
 
     const loadResults = async () => {
       try {
-        const nextResults = await fetchResults(runId);
+        const nextResults = await fetchRunResults<RunResultsPayload>(
+          runId,
+          { cache: 'no-store' },
+          'Failed to load generated results',
+        );
         if (!cancelled) {
           setResults(nextResults);
           setResultsError(null);
@@ -610,7 +576,7 @@ export function WebScoutRunClient({
     return () => {
       cancelled = true;
     };
-  }, [fetchResults, isBatchFindSources, runId, trace]);
+  }, [isBatchFindSources, runId, trace]);
 
   const requestedMaxTopics = parseNumberParam(searchParams.get('maxTopics')) ?? 10;
   const selectedTopicId = searchParams.get('topicId');

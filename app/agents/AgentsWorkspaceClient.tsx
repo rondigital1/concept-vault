@@ -18,6 +18,7 @@ import type {
   RunComposerState,
   SelectedRunDetail,
 } from '@/lib/agentsWorkspaceTypes';
+import { fetchRunResults, fetchRunTrace, type RunTracePayload } from '@/lib/runApiClient';
 
 type Props = {
   initialView: AgentsView;
@@ -26,21 +27,6 @@ type Props = {
 type WorkspaceNotice = {
   status: 'info' | 'ok' | 'error' | 'running';
   message: string;
-};
-
-type RunTracePayload = {
-  id: string;
-  kind: string;
-  status: 'running' | 'ok' | 'error' | 'partial';
-  startedAt: string;
-  completedAt?: string;
-  steps: Array<{
-    name: string;
-    status: 'running' | 'ok' | 'error' | 'skipped';
-    startedAt?: string;
-    endedAt?: string;
-    error?: unknown;
-  }>;
 };
 
 type RunResultsPayload = {
@@ -163,22 +149,6 @@ function updateComposerField(
   } as RunComposerState;
 }
 
-async function fetchTrace(runId: string): Promise<RunTracePayload> {
-  const response = await fetch(`/api/runs/${runId}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch run trace');
-  }
-  return response.json();
-}
-
-async function fetchResults(runId: string): Promise<RunResultsPayload> {
-  const response = await fetch(`/api/runs/${runId}/results`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch run results');
-  }
-  return response.json();
-}
-
 function toSelectedRunDetail(
   trace: RunTracePayload,
   results: RunResultsPayload | null,
@@ -267,7 +237,10 @@ export function AgentsWorkspaceClient({ initialView }: Props) {
     let cancelled = false;
     const fallbackRun = recentRuns.find((run) => run.id === selectedRunId) ?? null;
 
-    void Promise.all([fetchTrace(selectedRunId), fetchResults(selectedRunId)])
+    void Promise.all([
+      fetchRunTrace(selectedRunId),
+      fetchRunResults<RunResultsPayload>(selectedRunId),
+    ])
       .then(([trace, results]) => {
         if (!cancelled) {
           setSelectedRun(toSelectedRunDetail(trace, results, fallbackRun));
@@ -297,8 +270,8 @@ export function AgentsWorkspaceClient({ initialView }: Props) {
     const poll = async () => {
       try {
         const [trace, results] = await Promise.all([
-          fetchTrace(activeRunId),
-          fetchResults(activeRunId),
+          fetchRunTrace(activeRunId),
+          fetchRunResults<RunResultsPayload>(activeRunId),
         ]);
 
         if (cancelled) {

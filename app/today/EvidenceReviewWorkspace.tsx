@@ -267,6 +267,23 @@ function MetricPair({ value, label }: { value: string; label: string }) {
   );
 }
 
+function EvidenceDetailStack({
+  queueFilter,
+  selectedArtifact,
+  summarizeArtifact,
+}: Pick<Props, 'queueFilter' | 'selectedArtifact' | 'summarizeArtifact'>) {
+  return (
+    <>
+      <EvidenceDetailPane
+        queueFilter={queueFilter}
+        selectedArtifact={selectedArtifact}
+        summarizeArtifact={summarizeArtifact}
+      />
+      <EvidenceDecisionBar selectedArtifact={selectedArtifact} />
+    </>
+  );
+}
+
 function WorkspaceChrome({
   displayDate,
   selectedTopic,
@@ -681,21 +698,11 @@ export function EvidenceReviewWorkspace({
                     </div>
 
                     <div className="hidden min-[980px]:flex min-[980px]:min-h-0 min-[980px]:flex-col">
-                      <EvidenceDetailPane
+                      <EvidenceDetailStack
                         queueFilter={queueFilter}
                         selectedArtifact={selectedArtifact}
                         summarizeArtifact={summarizeArtifact}
                       />
-                      <EvidenceDecisionBar selectedArtifact={selectedArtifact} />
-                    </div>
-
-                    <div className="min-[980px]:hidden">
-                      <EvidenceDetailPane
-                        queueFilter={queueFilter}
-                        selectedArtifact={selectedArtifact}
-                        summarizeArtifact={summarizeArtifact}
-                      />
-                      <EvidenceDecisionBar selectedArtifact={selectedArtifact} />
                     </div>
                   </div>
                 </article>
@@ -725,12 +732,11 @@ export function EvidenceReviewWorkspace({
               </button>
             </div>
             <div className="flex h-full min-h-0 flex-col">
-              <EvidenceDetailPane
+              <EvidenceDetailStack
                 queueFilter={queueFilter}
                 selectedArtifact={selectedArtifact}
                 summarizeArtifact={summarizeArtifact}
               />
-              <EvidenceDecisionBar selectedArtifact={selectedArtifact} />
             </div>
           </aside>
         </div>
