@@ -9,17 +9,10 @@ import {
 } from '../helpers/testDb';
 
 const mockAuth = vi.hoisted(() => vi.fn());
-const mockDrainPipelineJobQueue = vi.hoisted(() => vi.fn());
-const mockEnqueuePipelineJob = vi.hoisted(() => vi.fn());
-const mockExecutePipelineInline = vi.hoisted(() => vi.fn());
-const mockSchedulePipelineJobDrain = vi.hoisted(() => vi.fn());
+const mockPipelineFlow = vi.hoisted(() => vi.fn());
 
-vi.mock('@/server/jobs/pipelineJobs', () => ({
-  drainPipelineJobQueue: mockDrainPipelineJobQueue,
-  enqueuePipelineJob: mockEnqueuePipelineJob,
-  executePipelineInline: mockExecutePipelineInline,
-  isPipelineInlineExecutionEnabled: () => false,
-  schedulePipelineJobDrain: mockSchedulePipelineJobDrain,
+vi.mock('@/server/flows/pipeline.flow', () => ({
+  pipelineFlow: mockPipelineFlow,
 }));
 
 vi.mock('@/auth', () => ({
@@ -59,12 +52,16 @@ describe('topics route', () => {
       },
     });
 
-    mockEnqueuePipelineJob.mockResolvedValue({
-      jobId: 'job-topic-setup-1',
+    mockPipelineFlow.mockResolvedValue({
       runId: 'run-topic-setup-1',
-      status: 'queued',
-      reused: false,
-      queueDepth: 1,
+      status: 'ok',
+      mode: 'topic_setup',
+      trigger: 'auto_topic',
+      counts: {},
+      artifacts: {},
+      reportId: null,
+      notionPageId: null,
+      errors: [],
     });
   });
 
@@ -102,7 +99,7 @@ describe('topics route', () => {
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.setupRunId).toBe('run-topic-setup-1');
-    expect(body.setupJobId).toBe('job-topic-setup-1');
+    expect(body.setupJobId).toBeNull();
 
     const topic = (await listSavedTopics(scope))[0];
     expect(topic).toBeDefined();
@@ -119,15 +116,13 @@ describe('topics route', () => {
       },
     });
 
-    expect(mockEnqueuePipelineJob).toHaveBeenCalledWith({
-      scope: expect.objectContaining({ workspaceId: scope.workspaceId }),
-      route: '/api/topics',
-      input: expect.objectContaining({
-        workspaceId: scope.workspaceId,
-        topicId: topic?.id,
-        runMode: 'topic_setup',
-        trigger: 'auto_topic',
-      }),
+    expect(mockPipelineFlow).toHaveBeenCalledWith({
+      workspaceId: scope.workspaceId,
+      topicId: topic?.id,
+      runMode: 'topic_setup',
+      trigger: 'auto_topic',
+      enableCategorization: false,
+      idempotencyKey: expect.stringMatching(/^topic_setup:/),
     });
   });
 
@@ -159,7 +154,7 @@ describe('topics route', () => {
         }),
       ]),
     });
-    expect(mockEnqueuePipelineJob).not.toHaveBeenCalled();
+    expect(mockPipelineFlow).not.toHaveBeenCalled();
     const validation = await import('@/server/http/requestValidation');
     expect(validation.getValidationFailureCount('/api/topics')).toBe(1);
   });

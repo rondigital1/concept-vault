@@ -24,9 +24,6 @@ import { listInboxArtifacts, listArtifactsByAgentAndKind } from '@/server/repos/
 import { AI_BUDGETS } from '@/server/ai/budget-policy';
 import { AI_TASKS } from '@/server/ai/tasks';
 
-// Track which mock response to return
-let conceptCallCount = 0;
-let flashcardCallCount = 0;
 const mockExecuteStructured = vi.hoisted(() => vi.fn());
 
 vi.mock('@/server/ai/openai-execution-service', () => ({
@@ -52,18 +49,14 @@ describe('Distiller Agent', () => {
     await cleanAllTables();
     scope = await getTestWorkspaceScope();
     vi.clearAllMocks();
-    conceptCallCount = 0;
-    flashcardCallCount = 0;
     mockExecuteStructured.mockImplementation(async ({ task }: { task: string }) => {
       if (task === AI_TASKS.distillDocument) {
-        conceptCallCount += 1;
         return {
           output: MOCK_LLM_RESPONSES.conceptExtraction,
         };
       }
 
       if (task === AI_TASKS.generateFlashcards) {
-        flashcardCallCount += 1;
         return {
           output: MOCK_LLM_RESPONSES.flashcardGeneration,
         };
@@ -184,7 +177,7 @@ describe('Distiller Agent', () => {
         title: 'Document 1',
         content: 'Content for document 1 about learning.',
       });
-      const doc2Id = await insertTestDocument({
+      await insertTestDocument({
         title: 'Document 2',
         content: 'Content for document 2 about memory.',
       });

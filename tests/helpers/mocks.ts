@@ -67,6 +67,7 @@ export const MOCK_TAVILY_RESULTS: MockTavilyResult[] = [
 export function createMockTavilySearch(results: MockTavilyResult[] = MOCK_TAVILY_RESULTS) {
   return vi.fn().mockImplementation(
     async (query: string, _maxResults?: number, _searchDepth?: string): Promise<MockTavilyResponse> => {
+      void _searchDepth;
       return {
         query,
         results: results.slice(0, _maxResults ?? 10),
@@ -187,6 +188,7 @@ export function createMockStructuredModel<T>(response: T) {
 export function createMockExtractionModelFactory() {
   return vi.fn().mockImplementation(() => ({
     withStructuredOutput: vi.fn().mockImplementation((schema: { description?: string }) => {
+      void schema;
       // Determine which response to return based on schema shape
       // This is a heuristic - in real tests you might want to be more explicit
       return {
@@ -236,12 +238,19 @@ export function normalizeArtifactForSnapshot(artifact: {
   reviewed_at?: string | null;
   [key: string]: unknown;
 }): Record<string, unknown> {
-  const { id, run_id, created_at, reviewed_at, ...rest } = artifact;
+  const rest = { ...artifact };
+  const runId = artifact.run_id;
+  const reviewedAt = artifact.reviewed_at;
+  delete rest.id;
+  delete rest.run_id;
+  delete rest.created_at;
+  delete rest.reviewed_at;
+
   return {
     ...rest,
     id: '<UUID>',
-    run_id: run_id ? '<UUID>' : null,
+    run_id: runId ? '<UUID>' : null,
     created_at: '<TIMESTAMP>',
-    reviewed_at: reviewed_at ? '<TIMESTAMP>' : null,
+    reviewed_at: reviewedAt ? '<TIMESTAMP>' : null,
   };
 }

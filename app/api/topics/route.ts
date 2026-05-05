@@ -14,16 +14,11 @@ import {
 } from '@/server/http/requestValidation';
 import { createSavedTopic, listSavedTopics } from '@/server/repos/savedTopics.repo';
 import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
+import { pipelineFlow } from '@/server/flows/pipeline.flow';
 import {
   isAgentDefaultRunMode,
   mergeTopicWorkflowMetadata,
 } from '@/server/agents/configuration';
-import {
-  enqueuePipelineJob,
-  executePipelineInline,
-  isPipelineInlineExecutionEnabled,
-  schedulePipelineJobDrain,
-} from '@/server/jobs/pipelineJobs';
 import { publicErrorMessage } from '@/server/security/publicError';
 
 export const runtime = 'nodejs';
@@ -243,7 +238,7 @@ export async function POST(request: Request) {
     });
 
     let setupRunId: string | null = null;
-    let setupJobId: string | null = null;
+    const setupJobId: string | null = null;
     try {
       const setupInput = {
         workspaceId: scope.workspaceId,
@@ -254,20 +249,8 @@ export async function POST(request: Request) {
         idempotencyKey: `topic_setup:${topic.id}:${new Date().toISOString().slice(0, 10)}`,
       };
 
-      if (isPipelineInlineExecutionEnabled()) {
-        const setupResult = await executePipelineInline(setupInput);
-        setupRunId = setupResult.runId;
-      } else {
-        const queued = await enqueuePipelineJob({
-          scope,
-          route: '/api/topics',
-          input: setupInput,
-        });
-        setupRunId = queued.runId;
-        setupJobId = queued.jobId;
-
-        schedulePipelineJobDrain();
-      }
+      const setupResult = await pipelineFlow(setupInput);
+      setupRunId = setupResult.runId;
     } catch (setupError) {
       console.error('Topic setup pipeline failed:', setupError);
     }

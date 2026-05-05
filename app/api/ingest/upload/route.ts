@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
-import { ingestDocument } from "@/server/services/ingest.service";
-import { schedulePipelineJobDrain } from '@/server/jobs/pipelineJobs';
 import { publicErrorMessage } from '@/server/security/publicError';
+import {
+  buildIngestSuccessPayload,
+  IngestWorkflowError,
+  ingestPreparedContent,
+} from '@/server/services/ingestWorkflow.service';
 
 export const runtime = "nodejs";
 
@@ -289,29 +292,24 @@ export async function POST(request: Request) {
 
     const source = `file:${file.name}`;
 
-    const result = await ingestDocument({
+    const result = await ingestPreparedContent({
       workspaceId: scope.workspaceId,
       title,
       source,
       content,
+      minContentLength: 50,
+      shortContentMessage:
+        "Extracted content is too short (min 50 chars). The file may be empty or contain only images.",
     });
 
-    if (result.enrichmentQueued) {
-      schedulePipelineJobDrain();
-    }
-
     return NextResponse.json(
-      {
-        ok: true,
-        documentId: result.documentId,
-        created: result.created,
-        enrichmentJobId: result.enrichmentJobId,
-        enrichmentRunId: result.enrichmentRunId,
-        extractedLength: content.length,
-      },
+      buildIngestSuccessPayload(result, { extractedLength: result.contentLength }),
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error: unknown) {
+    if (error instanceof IngestWorkflowError) {
+      return badRequest(error.message);
+    }
     if (error instanceof WorkspaceAccessError) {
       return NextResponse.json(
         { ok: false, error: "UNAUTHORIZED", message: error.message },

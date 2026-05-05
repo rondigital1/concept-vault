@@ -46,9 +46,10 @@ export function TodayClient() {
           | {
               error?: string;
               libraryImport?: {
-                status: 'imported' | 'linked';
-                documentId: string;
-                created: boolean;
+                status: 'imported' | 'linked' | 'failed';
+                documentId?: string;
+                created?: boolean;
+                error?: string;
               } | null;
             }
           | null;
@@ -60,11 +61,17 @@ export function TodayClient() {
         }
 
         if (action === 'approve' && payload?.libraryImport) {
-          toast.success(
-            payload.libraryImport.created
-              ? 'Saved. Added to Library and available for future topic reports.'
-              : 'Saved. This source was already in Library and will stay available for future topic reports.',
-          );
+          if (payload.libraryImport.status === 'failed') {
+            toast.error(
+              payload.libraryImport.error ?? 'Evidence saved, but the Library import failed.',
+            );
+          } else {
+            toast.success(
+              payload.libraryImport.created
+                ? 'Saved. Added to Library and available for future topic reports.'
+                : 'Saved. This source was already in Library and will stay available for future topic reports.',
+            );
+          }
         } else {
           toast.success(action === 'approve' ? 'Evidence saved' : 'Evidence rejected');
         }

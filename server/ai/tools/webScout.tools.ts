@@ -45,12 +45,6 @@ const LOW_QUALITY_DOMAINS = new Set([
   'instagram.com',
 ]);
 
-const NEUTRAL_DOMAINS = new Set([
-  'reddit.com',
-  'twitter.com',
-  'x.com',
-]);
-
 const SIX_MONTHS_MS = 180 * 24 * 60 * 60 * 1000;
 
 function isValidHttpUrl(value: string): boolean {
@@ -115,7 +109,7 @@ function computeHeuristicScore(
   if (LOW_QUALITY_DOMAINS.has(domain)) {
     score -= 0.3;
   }
-  // NEUTRAL_DOMAINS (reddit, twitter/x) get no bonus or penalty — they proceed to LLM evaluation on merit.
+  // Social/forum domains get no bonus or penalty; they proceed to LLM evaluation on merit.
 
   const terms = extractSearchTerms(goal);
   const titleLower = title.toLowerCase();

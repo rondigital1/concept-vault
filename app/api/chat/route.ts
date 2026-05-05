@@ -5,32 +5,20 @@ import { buildPrompt } from '@/server/ai/prompt-builder';
 import { AI_TASKS } from '@/server/ai/tasks';
 import { localKbTool } from '@/server/tools/localKb.tool';
 import { publicErrorMessage } from '@/server/security/publicError';
+import { chatRequestSchema } from '@/server/http/requestSchemas';
+import {
+  parseJsonRequest,
+  RequestValidationError,
+  validationErrorResponse,
+} from '@/server/http/requestValidation';
 
 export const runtime = 'nodejs';
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
-
-interface ChatRequest {
-  message: string;
-  history: ChatMessage[];
-}
-
 export async function POST(request: Request) {
   try {
-    const body: ChatRequest = await request.json();
-    const { message, history } = body;
-
-    if (!message?.trim()) {
-      return NextResponse.json(
-        { error: 'Message is required' },
-        { status: 400 }
-      );
-    }
+    const { message, history } = await parseJsonRequest(request, chatRequestSchema, {
+      route: '/api/chat',
+    });
 
     // Query the knowledge base for relevant context
     const kbResults = await localKbTool({
@@ -93,6 +81,10 @@ When you don't have specific information from the knowledge base, you can still 
       usage: response.usage,
     });
   } catch (error: unknown) {
+    if (error instanceof RequestValidationError) {
+      return validationErrorResponse(error);
+    }
+
     console.error('Chat API error:', error);
 
     const errorMessage = publicErrorMessage(error, 'Chat request failed');

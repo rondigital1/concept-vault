@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockAuth = vi.hoisted(() => vi.fn());
-const mockDrainPipelineJobQueue = vi.hoisted(() => vi.fn());
-const mockEnqueuePipelineJob = vi.hoisted(() => vi.fn());
-const mockExecutePipelineInline = vi.hoisted(() => vi.fn());
 const mockGetDefaultMembershipContextForUser = vi.hoisted(() => vi.fn());
-const mockSchedulePipelineJobDrain = vi.hoisted(() => vi.fn());
+const mockPipelineFlow = vi.hoisted(() => vi.fn());
 
 vi.mock('@/auth', () => ({
   auth: mockAuth,
@@ -15,12 +12,8 @@ vi.mock('@/server/repos/identity.repo', () => ({
   getDefaultMembershipContextForUser: mockGetDefaultMembershipContextForUser,
 }));
 
-vi.mock('@/server/jobs/pipelineJobs', () => ({
-  drainPipelineJobQueue: mockDrainPipelineJobQueue,
-  enqueuePipelineJob: mockEnqueuePipelineJob,
-  executePipelineInline: mockExecutePipelineInline,
-  isPipelineInlineExecutionEnabled: () => false,
-  schedulePipelineJobDrain: mockSchedulePipelineJobDrain,
+vi.mock('@/server/flows/pipeline.flow', () => ({
+  pipelineFlow: mockPipelineFlow,
 }));
 
 describe('refresh topic route', () => {
@@ -49,12 +42,16 @@ describe('refresh topic route', () => {
       membership_role: 'owner',
       is_default: true,
     });
-    mockEnqueuePipelineJob.mockResolvedValue({
-      jobId: 'job-1',
+    mockPipelineFlow.mockResolvedValue({
       runId: 'run-1',
-      status: 'queued',
-      reused: false,
-      queueDepth: 1,
+      status: 'ok',
+      mode: 'scout_only',
+      trigger: 'manual',
+      counts: {},
+      artifacts: {},
+      reportId: null,
+      notionPageId: null,
+      errors: [],
     });
   });
 
@@ -71,17 +68,13 @@ describe('refresh topic route', () => {
       }),
     );
 
-    expect(response.status).toBe(202);
-    expect(mockEnqueuePipelineJob).toHaveBeenCalledWith({
-      scope: expect.objectContaining({ workspaceId: 'workspace-1' }),
-      route: '/api/runs/refresh-topic',
-      input: {
-        workspaceId: 'workspace-1',
-        trigger: 'manual',
-        runMode: 'scout_only',
-        topicId: 'topic-1',
-        enableCategorization: true,
-      },
+    expect(response.status).toBe(200);
+    expect(mockPipelineFlow).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      trigger: 'manual',
+      runMode: 'scout_only',
+      topicId: 'topic-1',
+      enableCategorization: true,
     });
   });
 
@@ -112,7 +105,7 @@ describe('refresh topic route', () => {
         }),
       ]),
     });
-    expect(mockEnqueuePipelineJob).not.toHaveBeenCalled();
+    expect(mockPipelineFlow).not.toHaveBeenCalled();
     const validation = await import('@/server/http/requestValidation');
     expect(validation.getValidationFailureCount('/api/runs/refresh-topic')).toBe(1);
   });

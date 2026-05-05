@@ -23,7 +23,6 @@ import { ingestDocument } from '@/server/services/ingest.service';
 import { getAllDocumentsForLibrary } from '@/server/services/document.service';
 import { searchDocuments } from '@/server/repos/documents.repo';
 import {
-  getRecentDocumentsForQuery,
   getDocumentsByTags,
   filterExistingUrls,
   checkUrlExists,
@@ -229,7 +228,7 @@ describe('Document Repository', () => {
   describe('getDocumentsByIds', () => {
     it('should return documents matching the provided IDs', async () => {
       const doc1Id = await insertTestDocument({ title: 'Document 1' });
-      const doc2Id = await insertTestDocument({ title: 'Document 2' });
+      await insertTestDocument({ title: 'Document 2' });
       const doc3Id = await insertTestDocument({ title: 'Document 3' });
 
       const docs = await getDocumentsByIds(scope, [doc1Id, doc3Id], 10);

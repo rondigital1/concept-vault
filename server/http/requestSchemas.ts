@@ -197,6 +197,26 @@ export const llmIngestRequestSchema = z.object({
   }),
 });
 
+const chatHistoryMessageSchema = z.object({
+  role: z.enum(['user', 'assistant'], {
+    errorMap: () => ({ message: 'history role must be user or assistant' }),
+  }),
+  content: z.string({ invalid_type_error: 'history content must be a string' }),
+}).catchall(z.unknown());
+
+export const chatRequestSchema = z.object({
+  message: z
+    .string({ invalid_type_error: 'message must be a string' })
+    .trim()
+    .min(1, 'Message is required'),
+  history: z
+    .array(chatHistoryMessageSchema, {
+      invalid_type_error: 'history must be an array',
+    })
+    .optional()
+    .default([]),
+});
+
 export const agentProfilePatchRequestSchema = z.object({}).catchall(z.unknown());
 
 export const cronPipelineRequestSchema = z.object({

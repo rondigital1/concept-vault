@@ -6,11 +6,13 @@ import {
   RequestValidationError,
   validationErrorResponse,
 } from '@/server/http/requestValidation';
-import { ingestDocument } from "@/server/services/ingest.service";
-import { extractDocumentFromUrl, isHttpUrl } from "@/server/services/urlExtract.service";
-import { schedulePipelineJobDrain } from '@/server/jobs/pipelineJobs';
+import {
+  buildIngestSuccessPayload,
+  IngestWorkflowError,
+  ingestTextOrUrl,
+} from '@/server/services/ingestWorkflow.service';
 import { publicErrorMessage } from '@/server/security/publicError';
-import { assertTrustedSource, BlockedSourceError } from '@/server/security/sourceTrust';
+import { BlockedSourceError } from '@/server/security/sourceTrust';
 
 export const runtime = "nodejs";
 
@@ -25,70 +27,24 @@ export async function POST(request: Request) {
       route: '/api/ingest',
     });
 
-    const source =
-      typeof body.source === "string" && body.source.trim()
-        ? body.source.trim().slice(0, 500)
-        : "manual";
-    const rawContent = typeof body.content === "string" ? body.content : "";
-    let content = rawContent.trim();
-    let extractedTitle: string | undefined;
-
-    const shouldExtractFromUrl = isHttpUrl(source) && content.length < 50;
-
-    if (isHttpUrl(source) && !shouldExtractFromUrl) {
-      assertTrustedSource({
-        context: '/api/ingest',
-        url: source,
-        title: body.title,
-        content,
-      });
-    }
-
-    if (shouldExtractFromUrl) {
-      try {
-        const extraction = await extractDocumentFromUrl(source);
-        content = extraction.content;
-        extractedTitle = extraction.title;
-      } catch (error: unknown) {
-        if (!content) {
-          return badRequest(publicErrorMessage(error, 'Failed to extract content from URL'));
-        }
-      }
-    }
-
-    if (!content) {
-      return badRequest("content is required for non-URL sources");
-    }
-    if (content.length < 50) {
-      return badRequest("content is too short (min 50 chars)");
-    }
-
-    const title =
-      typeof body.title === "string" && body.title.trim()
-        ? body.title.trim().slice(0, 200)
-        : extractedTitle
-          ? extractedTitle.slice(0, 200)
-        : deriveTitleFromContent(content);
-
-    const result = await ingestDocument({ workspaceId: scope.workspaceId, title, source, content });
-
-    if (result.enrichmentQueued) {
-      schedulePipelineJobDrain();
-    }
+    const result = await ingestTextOrUrl({
+      workspaceId: scope.workspaceId,
+      title: body.title,
+      source: body.source,
+      content: body.content,
+      context: '/api/ingest',
+    });
 
     return NextResponse.json(
-      {
-        ok: true,
-        documentId: result.documentId,
-        created: result.created,
-        enrichmentJobId: result.enrichmentJobId,
-        enrichmentRunId: result.enrichmentRunId,
-      },
+      buildIngestSuccessPayload(result),
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error: unknown) {
     if (error instanceof RequestValidationError) {
       return validationErrorResponse(error);
+    }
+    if (error instanceof IngestWorkflowError) {
+      return badRequest(error.message);
     }
     if (error instanceof BlockedSourceError) {
       return badRequest(publicErrorMessage(error, 'Blocked by source trust policy'));
@@ -105,16 +61,4 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
-
-function deriveTitleFromContent(content: string): string {
-  // MVP: first non-empty line, stripped, bounded
-  const firstLine =
-    content
-      .split("\n")
-      .map((l) => l.trim())
-      .find((l) => l.length > 0) ?? "Untitled";
-
-  // Avoid absurdly long titles
-  return firstLine.slice(0, 200);
 }

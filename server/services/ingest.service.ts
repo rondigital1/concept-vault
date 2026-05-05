@@ -1,16 +1,19 @@
 import { sql } from '@/db';
 import { createHash } from 'node:crypto';
 import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
-import type { PipelineInput } from '@/server/flows/pipeline.flow';
-import {
-  enqueuePipelineJob,
-  executePipelineInline,
-  isPipelineInlineExecutionEnabled,
-} from '@/server/jobs/pipelineJobs';
+import { pipelineFlow, type PipelineInput } from '@/server/flows/pipeline.flow';
 
 function sha256(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
+
+export type IngestDocumentResult = {
+  documentId: string;
+  created: boolean;
+  enrichmentJobId: string | null;
+  enrichmentQueued: boolean;
+  enrichmentRunId: string | null;
+};
 
 export async function ingestDocument({
   workspaceId,
@@ -26,13 +29,7 @@ export async function ingestDocument({
   content: string;
   autoEnrich?: boolean;
   enableAutoDistill?: boolean;
-}): Promise<{
-  documentId: string;
-  created: boolean;
-  enrichmentJobId: string | null;
-  enrichmentQueued: boolean;
-  enrichmentRunId: string | null;
-}> {
+}): Promise<IngestDocumentResult> {
   const normalizedContent = normalizeContent(content);
   // 2. Compute a stable content_hash
   const contentHash = sha256(normalizedContent);
@@ -68,8 +65,6 @@ export async function ingestDocument({
   console.log(`[Ingest] Created document: ${title} (${documentId})`);
 
   let enrichmentRunId: string | null = null;
-  let enrichmentJobId: string | null = null;
-  let enrichmentQueued = false;
   if (autoEnrich) {
     try {
       const resolvedEnableAutoDistill =
@@ -87,19 +82,8 @@ export async function ingestDocument({
         idempotencyKey: `auto_enrich:${documentId}`,
       };
 
-      if (isPipelineInlineExecutionEnabled()) {
-        const enrichmentResult = await executePipelineInline(enrichmentInput);
-        enrichmentRunId = enrichmentResult.runId;
-      } else {
-        const queued = await enqueuePipelineJob({
-          scope: { workspaceId },
-          route: '/api/ingest',
-          input: enrichmentInput,
-        });
-        enrichmentRunId = queued.runId;
-        enrichmentJobId = queued.jobId;
-        enrichmentQueued = true;
-      }
+      const enrichmentResult = await pipelineFlow(enrichmentInput);
+      enrichmentRunId = enrichmentResult.runId;
     } catch (error) {
       // Ingest should succeed even if auto-enrichment fails.
       console.error('[Ingest] Auto enrichment failed:', error);
@@ -109,8 +93,8 @@ export async function ingestDocument({
   return {
     documentId,
     created: true,
-    enrichmentJobId,
-    enrichmentQueued,
+    enrichmentJobId: null,
+    enrichmentQueued: false,
     enrichmentRunId,
   };
 }

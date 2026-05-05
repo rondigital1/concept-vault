@@ -2,11 +2,18 @@ import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { detectWorkspaceAccess, recordAuthorizationDenied } from '@/server/auth/authzAudit';
 import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
-import { approveArtifact, getArtifactById } from '@/server/repos/artifacts.repo';
+import {
+  approveArtifact,
+  getArtifactById,
+  mergeArtifactReviewMetadata,
+} from '@/server/repos/artifacts.repo';
 import { publicErrorMessage } from '@/server/security/publicError';
 import { BlockedSourceError } from '@/server/security/sourceTrust';
 import { extractDocumentFromUrl, isHttpUrl } from '@/server/services/urlExtract.service';
-import { ingestDocument } from '@/server/services/ingest.service';
+import {
+  ingestPreparedContent,
+  type IngestWorkflowResult,
+} from '@/server/services/ingestWorkflow.service';
 
 export const runtime = 'nodejs';
 
@@ -56,15 +63,15 @@ function parseWebProposalSummary(content: unknown): string {
   return typeof record.summary === 'string' ? record.summary.trim() : '';
 }
 
-type ApprovedWebProposalImport = {
-  documentId: string;
-  created: boolean;
+type PreparedWebProposalImport = {
+  url: string;
+  title: string;
+  content: string;
 };
 
-async function importApprovedWebProposal(
-  workspaceId: string,
+async function prepareWebProposalImport(
   artifact: { id: string; title: string; content: unknown },
-): Promise<ApprovedWebProposalImport> {
+): Promise<PreparedWebProposalImport> {
   const url = parseWebProposalUrl(artifact.content);
   if (!isHttpUrl(url)) {
     throw new Error('Approved web proposal is missing a valid URL');
@@ -76,15 +83,11 @@ async function importApprovedWebProposal(
       typeof extracted.title === 'string' && extracted.title.trim()
         ? extracted.title.trim()
         : '';
-    const ingestTitle = (titleFromExtraction || artifact.title || url).slice(0, 300);
-    return await ingestDocument({
-      workspaceId,
-      title: ingestTitle,
-      source: url,
+    return {
+      url,
+      title: titleFromExtraction || artifact.title || url,
       content: extracted.content,
-      autoEnrich: true,
-      enableAutoDistill: false,
-    });
+    };
   } catch (importError) {
     if (importError instanceof BlockedSourceError) {
       throw importError;
@@ -100,16 +103,46 @@ async function importApprovedWebProposal(
       publicErrorMessage(importError, 'Import failed'),
     );
 
-    const ingestTitle = (artifact.title || url).slice(0, 300);
-    return ingestDocument({
-      workspaceId,
-      title: ingestTitle,
-      source: url,
+    return {
+      url,
+      title: artifact.title || url,
       content: summaryFallback,
-      autoEnrich: true,
-      enableAutoDistill: false,
-    });
+    };
   }
+}
+
+async function importApprovedWebProposal(
+  workspaceId: string,
+  preparedImport: PreparedWebProposalImport,
+): Promise<IngestWorkflowResult> {
+  return ingestPreparedContent({
+    workspaceId,
+    title: preparedImport.title,
+    source: preparedImport.url,
+    content: preparedImport.content,
+    autoEnrich: true,
+    enableAutoDistill: false,
+    titleMaxLength: 300,
+    missingContentMessage: 'Approved web proposal content is empty',
+  });
+}
+
+function buildLibraryImportPayload(result: IngestWorkflowResult) {
+  return {
+    status: result.created ? ('imported' as const) : ('linked' as const),
+    documentId: result.documentId,
+    created: result.created,
+    enrichmentJobId: result.enrichmentJobId,
+    enrichmentQueued: result.enrichmentQueued,
+    enrichmentRunId: result.enrichmentRunId,
+  };
+}
+
+function buildFailedLibraryImportPayload(error: unknown) {
+  return {
+    status: 'failed' as const,
+    error: publicErrorMessage(error, 'Library import failed'),
+  };
 }
 
 function getPostgresErrorCode(error: unknown): string | null {
@@ -186,7 +219,7 @@ export async function POST(
       return NextResponse.json({ error: message }, { status: 404 });
     }
 
-    let webImportResult: ApprovedWebProposalImport | null = null;
+    let preparedWebImport: PreparedWebProposalImport | null = null;
     if (artifact.kind === 'web-proposal') {
       const url = parseWebProposalUrl(artifact.content);
       if (!isHttpUrl(url)) {
@@ -197,18 +230,14 @@ export async function POST(
         return NextResponse.json({ error: message }, { status: 422 });
       }
 
-      webImportResult = await importApprovedWebProposal(scope.workspaceId, {
+      preparedWebImport = await prepareWebProposalImport({
         id: artifact.id,
         title: artifact.title,
         content: artifact.content,
       });
     }
 
-    const approved = await approveArtifact(
-      scope,
-      id,
-      webImportResult ? { documentId: webImportResult.documentId } : undefined,
-    );
+    const approved = await approveArtifact(scope, id);
 
     if (!approved) {
       if ((await detectWorkspaceAccess({ table: 'artifacts', recordId: id, workspaceId: scope.workspaceId })) === 'forbidden') {
@@ -227,12 +256,34 @@ export async function POST(
       return NextResponse.json({ error: message }, { status: 404 });
     }
 
+    let webImportResult: IngestWorkflowResult | null = null;
+    let webImportError: unknown = null;
+    if (preparedWebImport) {
+      try {
+        webImportResult = await importApprovedWebProposal(scope.workspaceId, preparedWebImport);
+        const linked = await mergeArtifactReviewMetadata(scope, id, {
+          documentId: webImportResult.documentId,
+        });
+        if (!linked) {
+          throw new Error('Approved artifact could not be linked to the imported document');
+        }
+      } catch (importError) {
+        webImportError = importError;
+        console.error(
+          `[artifact-approve] Approved ${id}, but library import failed:`,
+          importError,
+        );
+      }
+    }
+
     revalidatePath('/library');
     revalidatePath('/today');
 
     if (!expectsJson) {
       const infoMessage = artifact.kind === 'web-proposal'
-        ? webImportResult?.created
+        ? webImportError
+          ? 'Evidence saved, but the Library import failed. Try importing the source manually.'
+          : webImportResult?.created
           ? 'Evidence saved. Added to Library and available for future topic reports.'
           : 'Evidence saved. Source was already in Library and remains available for future topic reports.'
         : 'Evidence saved.';
@@ -243,12 +294,10 @@ export async function POST(
       ok: true,
       id,
       status: 'approved',
-      libraryImport: webImportResult
-        ? {
-            status: webImportResult.created ? 'imported' : 'linked',
-            documentId: webImportResult.documentId,
-            created: webImportResult.created,
-          }
+      libraryImport: preparedWebImport
+        ? webImportResult
+          ? buildLibraryImportPayload(webImportResult)
+          : buildFailedLibraryImportPayload(webImportError)
         : null,
     });
   } catch (error) {

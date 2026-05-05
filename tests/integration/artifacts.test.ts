@@ -23,6 +23,7 @@ import { TEST_DAY } from '../helpers/fixtures';
 import {
   insertArtifact,
   approveArtifact,
+  mergeArtifactReviewMetadata,
   rejectArtifact,
   getArtifactById,
   listInboxArtifacts,
@@ -201,6 +202,32 @@ describe('Artifact Lifecycle', () => {
       expect(artifact?.source_refs).toEqual({
         goal: 'learn retrieval practice',
         documentId: '123e4567-e89b-12d3-a456-426614174000',
+      });
+    });
+
+    it('merges review metadata after approval', async () => {
+      const artifactId = await createArtifact({
+        runId: null,
+        agent: 'webScout',
+        kind: 'web-proposal',
+        day: TEST_DAY,
+        title: 'Test Proposal',
+        content: {},
+        sourceRefs: { goal: 'learn retrieval practice' },
+      });
+
+      await approveArtifact(scope, artifactId);
+
+      const result = await mergeArtifactReviewMetadata(scope, artifactId, {
+        documentId: '223e4567-e89b-12d3-a456-426614174000',
+      });
+
+      expect(result).toBe(true);
+
+      const artifact = await getArtifactById(scope, artifactId);
+      expect(artifact?.source_refs).toEqual({
+        goal: 'learn retrieval practice',
+        documentId: '223e4567-e89b-12d3-a456-426614174000',
       });
     });
   });
@@ -436,7 +463,7 @@ describe('Artifact Lifecycle', () => {
     });
 
     it('should list only approved artifacts in active', async () => {
-      const proposedId = await createArtifact({
+      await createArtifact({
         runId: null,
         agent: 'webScout',
         kind: 'web-proposal',

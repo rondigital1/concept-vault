@@ -1,18 +1,16 @@
 import { NextResponse } from 'next/server';
 import { resolveDefaultWorkspaceScope } from '@/server/auth/workspaceContext';
-import { PipelineInput, PipelineRunMode } from '@/server/flows/pipeline.flow';
+import {
+  pipelineFlow,
+  type PipelineInput,
+  type PipelineRunMode,
+} from '@/server/flows/pipeline.flow';
 import { cronPipelineRequestSchema } from '@/server/http/requestSchemas';
 import {
   parseJsonRequest,
   RequestValidationError,
   validationErrorResponse,
 } from '@/server/http/requestValidation';
-import {
-  enqueuePipelineJob,
-  executePipelineInline,
-  isPipelineInlineExecutionEnabled,
-  schedulePipelineJobDrain,
-} from '@/server/jobs/pipelineJobs';
 import { getOrCreateRequestId, setResponseRequestId } from '@/server/observability/context';
 import { logger } from '@/server/observability/logger';
 import { listDueTrackedTopics, getSavedTopicsByIds } from '@/server/repos/savedTopics.repo';
@@ -45,37 +43,16 @@ function parseOptionalBoolean(value: unknown): boolean | undefined {
 }
 
 async function runSinglePipeline(input: PipelineInput): Promise<Response> {
-  const scope = { workspaceId: input.workspaceId! };
-
-  if (isPipelineInlineExecutionEnabled()) {
-    const result = await executePipelineInline(input);
-    return NextResponse.json({
-      ok: true,
-      runId: result.runId,
-      status: result.status,
-      mode: result.mode,
-      counts: result.counts,
-      reportId: result.reportId,
-      errors: result.errors,
-    });
-  }
-
-  const queued = await enqueuePipelineJob({
-    scope,
-    route: '/api/cron/pipeline',
-    input,
-  });
-
-  schedulePipelineJobDrain();
-
+  const result = await pipelineFlow(input);
   return NextResponse.json({
     ok: true,
-    runId: queued.runId,
-    jobId: queued.jobId,
-    status: queued.status,
-    reused: queued.reused,
-    queueDepth: queued.queueDepth,
-  }, { status: queued.reused && queued.status === 'succeeded' ? 200 : 202 });
+    runId: result.runId,
+    status: result.status,
+    mode: result.mode,
+    counts: result.counts,
+    reportId: result.reportId,
+    errors: result.errors,
+  });
 }
 
 async function runTrackedTopicsScheduler(day: string, maxTopics: number): Promise<Response> {
@@ -110,39 +87,17 @@ async function runTrackedTopicsScheduler(day: string, maxTopics: number): Promis
       enableCategorization: true,
     };
 
-    if (isPipelineInlineExecutionEnabled()) {
-      const result = await executePipelineInline(input);
-      runs.push({
-        topicId: topic.id,
-        topicName: topic.name,
-        chosenMode: decision.mode,
-        decisionReason: decision.reason,
-        runId: result.runId,
-        jobId: null,
-        status: result.status,
-      });
-      continue;
-    }
-
-    const queued = await enqueuePipelineJob({
-      scope,
-      route: '/api/cron/pipeline',
-      input,
-    });
+    const result = await pipelineFlow(input);
 
     runs.push({
       topicId: topic.id,
       topicName: topic.name,
       chosenMode: decision.mode,
       decisionReason: decision.reason,
-      runId: queued.runId,
-      jobId: queued.jobId,
-      status: queued.status,
+      runId: result.runId,
+      jobId: null,
+      status: result.status,
     });
-  }
-
-  if (!isPipelineInlineExecutionEnabled() && runs.length > 0) {
-    schedulePipelineJobDrain(runs.length);
   }
 
   return NextResponse.json({

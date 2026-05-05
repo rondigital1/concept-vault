@@ -1,21 +1,24 @@
 'use server';
 
-import { ingestDocument } from '@/server/services/ingest.service';
 import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { publicErrorMessage } from '@/server/security/publicError';
+import {
+  IngestWorkflowError,
+  ingestPreparedContent,
+} from '@/server/services/ingestWorkflow.service';
 
 export async function saveToLibraryAction(text: string, title?: string) {
   try {
     const scope = await requireSessionWorkspace();
     // Use the title provided or default to 'Saved from chat'
-    const documentTitle = title || 'Saved from chat';
+    const documentTitle = title?.trim() || 'Saved from chat';
 
-    // Call the ingest service
-    const result = await ingestDocument({
+    const result = await ingestPreparedContent({
       workspaceId: scope.workspaceId,
       title: documentTitle,
       source: 'chat',
       content: text,
+      missingContentMessage: 'Content is required',
     });
 
     return {
@@ -26,6 +29,13 @@ export async function saveToLibraryAction(text: string, title?: string) {
       created: result.created,
     };
   } catch (error) {
+    if (error instanceof IngestWorkflowError) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
     console.error('Failed to save to library:', error);
     return {
       success: false,

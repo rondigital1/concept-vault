@@ -211,6 +211,9 @@ export function EvidenceQueuePane({
                 const isActive = item.id === selectedArtifactId;
                 const itemUrl = item.sourceUrl ?? readString(item.content?.url);
                 const itemHost = getHostname(itemUrl);
+                const faviconUrl = itemHost
+                  ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(itemHost)}&sz=16`
+                  : null;
 
                 return (
                   <button
@@ -226,13 +229,11 @@ export function EvidenceQueuePane({
                     <div className="flex min-w-0 items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          {itemHost ? (
-                            <img
-                              src={`https://www.google.com/s2/favicons?domain=${itemHost}&sz=16`}
-                              alt=""
-                              width={16}
-                              height={16}
-                              className="h-4 w-4 shrink-0 rounded-sm"
+                          {faviconUrl ? (
+                            <span
+                              aria-hidden="true"
+                              className="h-4 w-4 shrink-0 rounded-sm bg-contain bg-center bg-no-repeat"
+                              style={{ backgroundImage: `url("${faviconUrl}")` }}
                             />
                           ) : null}
                           <span className="truncate text-sm font-semibold text-[color:var(--today-text)]">{item.title}</span>

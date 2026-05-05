@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "smoke:release": "tsx scripts/release-smoke.ts",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --ext .ts,.tsx --ignore-pattern .next --ignore-pattern node_modules",
+    "lint": "eslint . --ext .ts,.tsx",
     "db:reset": "bash scripts/db-reset.sh",
     "db:init": "tsx scripts/init-schema.ts",
     "test": "vitest run",

@@ -12,6 +12,7 @@ export interface LocalKbResult {
 export async function localKbTool(
   input: LocalKbQuery
 ): Promise<LocalKbResult[]> {
+  void input;
   // TODO: Implement vector search using pgvector
   // - Generate query embedding
   // - Perform similarity search

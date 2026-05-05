@@ -138,6 +138,27 @@ export async function approveArtifact(
   return approved;
 }
 
+export async function mergeArtifactReviewMetadata(
+  scope: WorkspaceScope,
+  artifactId: string,
+  reviewMetadata: Record<string, unknown>,
+): Promise<boolean> {
+  if (Object.keys(reviewMetadata).length === 0) {
+    return true;
+  }
+
+  const updated = await sql<Array<{ id: string }>>`
+    UPDATE artifacts
+    SET source_refs = COALESCE(source_refs, '{}'::jsonb) || ${sql.json(reviewMetadata as JsonParam)}
+    WHERE id = ${artifactId}
+      AND workspace_id = ${scope.workspaceId}
+      AND status = 'approved'
+    RETURNING id
+  `;
+
+  return updated.length > 0;
+}
+
 /**
  * Reject an artifact.
  * - Transitions status from 'proposed' to 'rejected'

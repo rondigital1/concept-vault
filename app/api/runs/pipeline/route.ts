@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
-import { PipelineInput, PipelineRunMode, PipelineTrigger } from '@/server/flows/pipeline.flow';
+import {
+  pipelineFlow,
+  type PipelineInput,
+  type PipelineRunMode,
+  type PipelineTrigger,
+} from '@/server/flows/pipeline.flow';
 import { pipelineRequestSchema } from '@/server/http/requestSchemas';
 import {
   formString,
@@ -13,12 +18,6 @@ import {
   RequestValidationError,
   validationErrorResponse,
 } from '@/server/http/requestValidation';
-import {
-  enqueuePipelineJob,
-  executePipelineInline,
-  isPipelineInlineExecutionEnabled,
-  schedulePipelineJobDrain,
-} from '@/server/jobs/pipelineJobs';
 import { getOrCreateRequestId, setResponseRequestId } from '@/server/observability/context';
 import { logger } from '@/server/observability/logger';
 import { publicErrorMessage } from '@/server/security/publicError';
@@ -177,26 +176,7 @@ export async function POST(request: Request) {
       }
     }
 
-        if (isPipelineInlineExecutionEnabled()) {
-          const result = await executePipelineInline(input);
-
-          if (!expectsJson) {
-            return setResponseRequestId(
-              NextResponse.redirect(new URL(RESEARCH_FALLBACK_PATH, request.url), { status: 303 }),
-              requestId,
-            );
-          }
-
-          return setResponseRequestId(NextResponse.json(result), requestId);
-        }
-
-        const queued = await enqueuePipelineJob({
-          scope,
-          route: '/api/runs/pipeline',
-          input,
-        });
-
-        schedulePipelineJobDrain();
+        const result = await pipelineFlow(input);
 
         if (!expectsJson) {
           return setResponseRequestId(
@@ -205,10 +185,7 @@ export async function POST(request: Request) {
           );
         }
 
-        return setResponseRequestId(
-          NextResponse.json(queued, { status: queued.reused && queued.status === 'succeeded' ? 200 : 202 }),
-          requestId,
-        );
+        return setResponseRequestId(NextResponse.json(result), requestId);
       } catch (error) {
         if (error instanceof RequestValidationError) {
           if (!expectsJson) {

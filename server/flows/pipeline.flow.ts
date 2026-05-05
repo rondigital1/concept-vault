@@ -229,6 +229,40 @@ function defaultArtifacts() {
   };
 }
 
+function buildPipelineResult(params: {
+  runId: string;
+  status: RunStatus;
+  mode: PipelineRunMode;
+  trigger: PipelineTrigger;
+  counts: PipelineCounts;
+  artifacts: PipelineResult['artifacts'];
+  reportId: string | null;
+  notionPageId: string | null;
+  errors: PipelineError[];
+}): PipelineResult {
+  return {
+    runId: params.runId,
+    status: params.status,
+    mode: params.mode,
+    trigger: params.trigger,
+    counts: params.counts,
+    artifacts: params.artifacts,
+    reportId: params.reportId,
+    notionPageId: params.notionPageId,
+    errors: params.errors,
+  };
+}
+
+async function completePipelineRun(result: PipelineResult): Promise<PipelineResult> {
+  await appendFlowStep(result.runId, {
+    name: 'pipeline',
+    status: 'ok',
+    output: result,
+  });
+  await finishRun(result.runId, result.status);
+  return result;
+}
+
 function shouldRunCurate(mode: PipelineRunMode): boolean {
   return mode !== 'topic_setup' && mode !== 'skip';
 }
@@ -648,7 +682,7 @@ export async function pipelineFlow(
         await markTopicRunCompleted({ workspaceId }, resolved.topic.id, mode);
       }
 
-      const result: PipelineResult = {
+      const result = buildPipelineResult({
         runId,
         status: 'ok',
         mode,
@@ -658,15 +692,9 @@ export async function pipelineFlow(
         reportId,
         notionPageId,
         errors,
-      };
-
-      await appendFlowStep(runId, {
-        name: 'pipeline',
-        status: 'ok',
-        output: result,
       });
-      await finishRun(runId, 'ok');
-      return result;
+
+      return completePipelineRun(result);
     }
 
     if (mode === 'topic_setup') {
@@ -706,7 +734,7 @@ export async function pipelineFlow(
       }
 
       const status: RunStatus = errors.length > 0 ? 'partial' : 'ok';
-      const result: PipelineResult = {
+      const result = buildPipelineResult({
         runId,
         status,
         mode,
@@ -716,15 +744,9 @@ export async function pipelineFlow(
         reportId,
         notionPageId,
         errors,
-      };
-
-      await appendFlowStep(runId, {
-        name: 'pipeline',
-        status: 'ok',
-        output: result,
       });
-      await finishRun(runId, status);
-      return result;
+
+      return completePipelineRun(result);
     }
 
     const curateTags: string[] = [...resolved.focusTags];
@@ -1126,7 +1148,7 @@ export async function pipelineFlow(
     }
 
     const status = finalizeStatus(mode, errors, analyzedFindings, reportId);
-    const result: PipelineResult = {
+    const result = buildPipelineResult({
       runId,
       status,
       mode,
@@ -1136,17 +1158,9 @@ export async function pipelineFlow(
       reportId,
       notionPageId,
       errors,
-    };
-
-    await appendFlowStep(runId, {
-      name: 'pipeline',
-      status: 'ok',
-      output: result,
     });
 
-    await finishRun(runId, status);
-
-    return result;
+    return completePipelineRun(result);
   } catch (error) {
     await appendFlowStep(runId, {
       name: 'pipeline_error',

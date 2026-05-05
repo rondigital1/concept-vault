@@ -3,6 +3,7 @@ import { BlockedSourceError } from '@/server/security/sourceTrust';
 
 const mockApproveArtifact = vi.hoisted(() => vi.fn());
 const mockGetArtifactById = vi.hoisted(() => vi.fn());
+const mockMergeArtifactReviewMetadata = vi.hoisted(() => vi.fn());
 const mockExtractDocumentFromUrl = vi.hoisted(() => vi.fn());
 const mockIngestDocument = vi.hoisted(() => vi.fn());
 const mockRevalidatePath = vi.hoisted(() => vi.fn());
@@ -11,6 +12,7 @@ const mockRequireSessionWorkspace = vi.hoisted(() => vi.fn());
 vi.mock('@/server/repos/artifacts.repo', () => ({
   approveArtifact: mockApproveArtifact,
   getArtifactById: mockGetArtifactById,
+  mergeArtifactReviewMetadata: mockMergeArtifactReviewMetadata,
 }));
 
 vi.mock('@/server/services/urlExtract.service', () => ({
@@ -79,6 +81,7 @@ describe('artifact approve route', () => {
       enrichmentRunId: null,
     });
     mockApproveArtifact.mockResolvedValue(true);
+    mockMergeArtifactReviewMetadata.mockResolvedValue(true);
   });
 
   it('imports the approved web proposal inline and links the library document on approval', async () => {
@@ -105,10 +108,17 @@ describe('artifact approve route', () => {
     expect(mockApproveArtifact).toHaveBeenCalledWith(
       expect.objectContaining({ workspaceId: 'workspace-1' }),
       'artifact-1',
+    );
+    expect(mockMergeArtifactReviewMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: 'workspace-1' }),
+      'artifact-1',
       { documentId: 'doc-1' },
     );
     expect(mockExtractDocumentFromUrl.mock.invocationCallOrder[0]).toBeLessThan(
       mockApproveArtifact.mock.invocationCallOrder[0],
+    );
+    expect(mockApproveArtifact.mock.invocationCallOrder[0]).toBeLessThan(
+      mockIngestDocument.mock.invocationCallOrder[0],
     );
     expect(mockRevalidatePath).toHaveBeenCalledWith('/library');
     expect(mockRevalidatePath).toHaveBeenCalledWith('/today');
@@ -122,6 +132,9 @@ describe('artifact approve route', () => {
         status: 'imported',
         documentId: 'doc-1',
         created: true,
+        enrichmentJobId: null,
+        enrichmentQueued: false,
+        enrichmentRunId: null,
       },
     });
   });
@@ -153,6 +166,62 @@ describe('artifact approve route', () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       error: 'Extraction failed',
+    });
+  });
+
+  it('does not import when approval loses the proposed-status race', async () => {
+    mockApproveArtifact.mockResolvedValue(false);
+
+    const { POST } = await import('@/app/api/artifacts/[id]/approve/route');
+
+    const response = await POST(
+      new Request('http://localhost/api/artifacts/artifact-1/approve', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      }),
+      {
+        params: Promise.resolve({ id: 'artifact-1' }),
+      },
+    );
+
+    expect(mockExtractDocumentFromUrl).toHaveBeenCalledWith('https://example.com/resource');
+    expect(mockIngestDocument).not.toHaveBeenCalled();
+    expect(mockMergeArtifactReviewMetadata).not.toHaveBeenCalled();
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Artifact not found or already reviewed',
+    });
+  });
+
+  it('keeps approval successful but reports a failed post-approval import', async () => {
+    mockIngestDocument.mockRejectedValue(new Error('Insert failed'));
+
+    const { POST } = await import('@/app/api/artifacts/[id]/approve/route');
+
+    const response = await POST(
+      new Request('http://localhost/api/artifacts/artifact-1/approve', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      }),
+      {
+        params: Promise.resolve({ id: 'artifact-1' }),
+      },
+    );
+
+    expect(mockApproveArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: 'workspace-1' }),
+      'artifact-1',
+    );
+    expect(mockMergeArtifactReviewMetadata).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      id: 'artifact-1',
+      status: 'approved',
+      libraryImport: {
+        status: 'failed',
+        error: 'Insert failed',
+      },
     });
   });
 

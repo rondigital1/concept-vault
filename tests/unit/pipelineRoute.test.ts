@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockAuth = vi.hoisted(() => vi.fn());
-const mockDrainPipelineJobQueue = vi.hoisted(() => vi.fn());
-const mockEnqueuePipelineJob = vi.hoisted(() => vi.fn());
-const mockExecutePipelineInline = vi.hoisted(() => vi.fn());
 const mockGetDefaultMembershipContextForUser = vi.hoisted(() => vi.fn());
-const mockSchedulePipelineJobDrain = vi.hoisted(() => vi.fn());
+const mockPipelineFlow = vi.hoisted(() => vi.fn());
 
 vi.mock('@/auth', () => ({
   auth: mockAuth,
@@ -15,12 +12,8 @@ vi.mock('@/server/repos/identity.repo', () => ({
   getDefaultMembershipContextForUser: mockGetDefaultMembershipContextForUser,
 }));
 
-vi.mock('@/server/jobs/pipelineJobs', () => ({
-  drainPipelineJobQueue: mockDrainPipelineJobQueue,
-  enqueuePipelineJob: mockEnqueuePipelineJob,
-  executePipelineInline: mockExecutePipelineInline,
-  isPipelineInlineExecutionEnabled: () => false,
-  schedulePipelineJobDrain: mockSchedulePipelineJobDrain,
+vi.mock('@/server/flows/pipeline.flow', () => ({
+  pipelineFlow: mockPipelineFlow,
 }));
 
 describe('pipeline route', () => {
@@ -49,23 +42,35 @@ describe('pipeline route', () => {
       membership_role: 'owner',
       is_default: true,
     });
-    mockEnqueuePipelineJob.mockResolvedValue({
-      jobId: 'job-1',
+    mockPipelineFlow.mockResolvedValue({
       runId: 'run-1',
-      status: 'queued',
-      reused: false,
-      queueDepth: 1,
-    });
-    mockDrainPipelineJobQueue.mockResolvedValue({
-      processed: 1,
-      completed: 1,
-      retried: 0,
-      failed: 0,
-      workerId: 'worker-1',
+      status: 'ok',
+      mode: 'scout_only',
+      trigger: 'manual',
+      counts: {
+        docsTargeted: 0,
+        docsCurated: 0,
+        docsCurateFailed: 0,
+        webProposals: 0,
+        analyzedEvidence: 0,
+        docsProcessed: 0,
+        conceptsProposed: 0,
+        flashcardsProposed: 0,
+        topicLinksCreated: 0,
+      },
+      artifacts: {
+        webProposalIds: [],
+        analysisArtifactIds: [],
+        conceptIds: [],
+        flashcardIds: [],
+      },
+      reportId: null,
+      notionPageId: null,
+      errors: [],
     });
   });
 
-  it('enqueues valid pipeline requests and returns the queued run id', async () => {
+  it('runs valid pipeline requests inline and returns the pipeline result', async () => {
     const { POST } = await import('@/app/api/runs/pipeline/route');
     const response = await POST(
       new Request('http://localhost/api/runs/pipeline', {
@@ -79,25 +84,18 @@ describe('pipeline route', () => {
       }),
     );
 
-    expect(response.status).toBe(202);
-    expect(mockEnqueuePipelineJob).toHaveBeenCalledWith({
-      scope: expect.objectContaining({ workspaceId: 'workspace-1' }),
-      route: '/api/runs/pipeline',
-      input: {
-        workspaceId: 'workspace-1',
-        topicId: 'topic-1',
-        runMode: 'scout_only',
-        maxQueries: 4,
-      },
+    expect(response.status).toBe(200);
+    expect(mockPipelineFlow).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      topicId: 'topic-1',
+      runMode: 'scout_only',
+      maxQueries: 4,
     });
-    await expect(response.json()).resolves.toEqual({
-      jobId: 'job-1',
+    await expect(response.json()).resolves.toMatchObject({
       runId: 'run-1',
-      status: 'queued',
-      reused: false,
-      queueDepth: 1,
+      status: 'ok',
+      mode: 'scout_only',
     });
-    expect(mockExecutePipelineInline).not.toHaveBeenCalled();
   });
 
   it('rejects malformed pipeline requests consistently', async () => {
@@ -127,7 +125,7 @@ describe('pipeline route', () => {
         }),
       ]),
     });
-    expect(mockEnqueuePipelineJob).not.toHaveBeenCalled();
+    expect(mockPipelineFlow).not.toHaveBeenCalled();
     const validation = await import('@/server/http/requestValidation');
     expect(validation.getValidationFailureCount('/api/runs/pipeline')).toBe(1);
   });

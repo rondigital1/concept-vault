@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { ingestDocument } from "@/server/services/ingest.service";
 import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { llmIngestRequestSchema } from '@/server/http/requestSchemas';
 import {
@@ -7,7 +6,11 @@ import {
   RequestValidationError,
   validationErrorResponse,
 } from '@/server/http/requestValidation';
-import { schedulePipelineJobDrain } from '@/server/jobs/pipelineJobs';
+import {
+  buildIngestSuccessPayload,
+  IngestWorkflowError,
+  ingestPreparedContent,
+} from '@/server/services/ingestWorkflow.service';
 
 export async function POST(request: Request) {
   try {
@@ -16,37 +19,28 @@ export async function POST(request: Request) {
       route: '/api/ingest/llm',
     });
 
-    if (content.length < 20) {
-      return NextResponse.json(
-        { ok: false, error: "INGEST_FAILED", message: "Content must be at least 20 characters" },
-        { status: 400 }
-      );
-    }
-
-    const result = await ingestDocument({
+    const result = await ingestPreparedContent({
       workspaceId: scope.workspaceId,
-      title: title ?? "Untitled",
+      title: title?.trim() || "Untitled",
       source: origin.feature,
       content,
+      minContentLength: 20,
+      shortContentMessage: "Content must be at least 20 characters",
     });
 
-    if (result.enrichmentQueued) {
-      schedulePipelineJobDrain();
-    }
-
     return NextResponse.json(
-      {
-        ok: true,
-        documentId: result.documentId,
-        created: result.created,
-        enrichmentJobId: result.enrichmentJobId,
-        enrichmentRunId: result.enrichmentRunId,
-      },
+      buildIngestSuccessPayload(result),
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
     if (error instanceof RequestValidationError) {
       return validationErrorResponse(error);
+    }
+    if (error instanceof IngestWorkflowError) {
+      return NextResponse.json(
+        { ok: false, error: "INGEST_FAILED", message: error.message },
+        { status: error.status },
+      );
     }
     if (error instanceof WorkspaceAccessError) {
       return NextResponse.json(
