@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
-import { pipelineFlow, type PipelineInput } from '@/server/flows/pipeline.flow';
+import { pipelineFlow } from '@/server/flows/pipeline.flow';
+import type { PipelineInput } from '@/server/flows/pipeline.types';
 import { refreshConceptsRequestSchema } from '@/server/http/requestSchemas';
 import {
   parseJsonRequest,

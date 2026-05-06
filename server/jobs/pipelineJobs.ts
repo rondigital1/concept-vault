@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
 import { sql } from '@/db';
-import type { PipelineInput, PipelineResult } from '@/server/flows/pipeline.flow';
+import type { PipelineInput, PipelineResult } from '@/server/flows/pipeline.types';
 import { pipelineFlow } from '@/server/flows/pipeline.flow';
 import type { WorkspaceScope } from '@/server/auth/workspaceContext';
 import { logger } from '@/server/observability/logger';

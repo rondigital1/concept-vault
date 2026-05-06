@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { WorkspaceAccessError, requireSessionWorkspace } from '@/server/auth/workspaceContext';
-import {
-  pipelineFlow,
-  type PipelineInput,
-  type PipelineRunMode,
-  type PipelineTrigger,
-} from '@/server/flows/pipeline.flow';
+import { pipelineFlow } from '@/server/flows/pipeline.flow';
+import type {
+  PipelineInput,
+  PipelineRunMode,
+  PipelineTrigger,
+} from '@/server/flows/pipeline.types';
 import { pipelineRequestSchema } from '@/server/http/requestSchemas';
 import {
   formString,

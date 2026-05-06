@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import { resolveDefaultWorkspaceScope } from '@/server/auth/workspaceContext';
-import {
-  pipelineFlow,
-  type PipelineInput,
-  type PipelineRunMode,
-} from '@/server/flows/pipeline.flow';
+import { pipelineFlow } from '@/server/flows/pipeline.flow';
+import type { PipelineInput, PipelineRunMode } from '@/server/flows/pipeline.types';
 import { cronPipelineRequestSchema } from '@/server/http/requestSchemas';
 import {
   parseJsonRequest,
