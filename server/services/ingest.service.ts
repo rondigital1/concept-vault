@@ -1,7 +1,8 @@
 import { sql } from '@/db';
 import { createHash } from 'node:crypto';
 import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
-import { pipelineFlow, type PipelineInput } from '@/server/flows/pipeline.flow';
+import { pipelineFlow } from '@/server/flows/pipeline.flow';
+import type { PipelineInput } from '@/server/flows/pipeline.types';
 
 function sha256(content: string): string {
   return createHash('sha256').update(content).digest('hex');

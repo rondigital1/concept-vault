@@ -3,8 +3,9 @@ import type {
   PipelineError,
   PipelineInput,
   PipelineResult,
-} from '@/server/flows/pipeline.flow';
+} from '@/server/flows/pipeline.types';
 import { pipelineFlow } from '@/server/flows/pipeline.flow';
+import { createDefaultPipelineCounts } from '@/server/flows/pipeline.result';
 import {
   listTopicsNeedingSources,
   MIN_LINKED_DOCUMENTS_FOR_REPORT,
@@ -102,20 +103,6 @@ function buildPipelineInput(
   return pipelineInput;
 }
 
-function defaultPipelineCounts(): PipelineCounts {
-  return {
-    docsTargeted: 0,
-    docsCurated: 0,
-    docsCurateFailed: 0,
-    webProposals: 0,
-    analyzedEvidence: 0,
-    docsProcessed: 0,
-    conceptsProposed: 0,
-    flashcardsProposed: 0,
-    topicLinksCreated: 0,
-  };
-}
-
 export async function findSources(input: FindSourcesInput): Promise<FindSourcesResult> {
   const scope = { workspaceId: input.workspaceId };
 
@@ -192,7 +179,7 @@ export async function findSources(input: FindSourcesInput): Promise<FindSourcesR
         topicName: entry.topic.name,
         runId: null,
         status: 'error',
-        counts: defaultPipelineCounts(),
+        counts: createDefaultPipelineCounts(),
         errors: [
           ...(setupError ? [setupError] : []),
           { stage: 'webscout', message },

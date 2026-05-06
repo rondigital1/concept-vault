@@ -1,568 +1,66 @@
-import { sql } from '@/db';
 import { curatorGraph } from '@/server/agents/curator.graph';
 import { distillerGraph } from '@/server/agents/distiller.graph';
 import { webScoutGraph } from '@/server/agents/webScout.graph';
-import { getTopTags } from '@/server/services/today.service';
-import { analyzeFindings, AnalyzeFindingsOutput } from '@/server/services/analyzeFindings.service';
+import { analyzeFindings, type AnalyzeFindingsOutput } from '@/server/services/analyzeFindings.service';
 import { synthesizeReport } from '@/server/services/report.service';
 import { publishReportToNotion } from '@/server/services/notionPublish.service';
 import { insertReport } from '@/server/repos/report.repo';
 import { insertArtifact } from '@/server/repos/artifacts.repo';
 import {
   getSavedTopicsByIds,
-  getTopicDocuments,
-  getTopicLinkedDocuments,
   linkDocumentToMatchingTopics,
   markTopicRunCompleted,
-  SavedTopicRow,
 } from '@/server/repos/savedTopics.repo';
 import { setupTopicContext } from '@/server/services/topicWorkflow.service';
-import { getDocumentsByIds, getRecentDocuments } from '@/server/repos/distiller.repo';
-import { appendStep, createRun, finishRun } from '@/server/observability/runTrace.store';
-import { RunStatus, RunStep } from '@/server/observability/runTrace.types';
+import { appendStep, createRun } from '@/server/observability/runTrace.store';
+import type { RunStatus } from '@/server/observability/runTrace.types';
 import { getAgentProfileSettingsMap } from '@/server/repos/agentProfiles.repo';
+import { resolveTopicWorkflowSettings } from '@/server/agents/configuration';
+import { splitDistillerArtifactIds } from '@/server/flows/pipeline.artifacts';
 import {
-  resolveTopicWorkflowSettings,
-  type AgentProfileSettingsMap,
-  type TopicWorkflowSettings,
-} from '@/server/agents/configuration';
+  finalizePipelineStatus,
+  resolveRequestedPipelineMode,
+  shouldRunCurate,
+  shouldRunDistill,
+  shouldRunWebScout,
+  shouldSynthesize,
+} from '@/server/flows/pipeline.policy';
+import {
+  buildPipelineResult,
+  createDefaultPipelineArtifacts,
+  createDefaultPipelineCounts,
+} from '@/server/flows/pipeline.result';
+import {
+  findExistingPipelineRunByIdempotencyKey,
+  hydratePipelineResultFromRun,
+} from '@/server/flows/pipeline.runLookup';
+import {
+  normalizePipelineTags,
+  resolvePipelineTargets,
+  resolvePipelineWorkspaceId,
+} from '@/server/flows/pipeline.targets';
+import {
+  appendPipelineFlowStep,
+  completePipelineRun,
+  finishPipelineRunAsError,
+} from '@/server/flows/pipeline.trace';
+import type {
+  PipelineError,
+  PipelineExecutionOptions,
+  PipelineInput,
+  PipelineResult,
+} from '@/server/flows/pipeline.types';
 
-export type PipelineStage =
-  | 'resolve_targets'
-  | 'topic_setup'
-  | 'curate'
-  | 'webscout'
-  | 'analyze_findings'
-  | 'distill'
-  | 'synthesize'
-  | 'persist_publish';
-
-export type PipelineRunMode =
-  | 'full_report'
-  | 'incremental_update'
-  | 'concept_only'
-  | 'scout_only'
-  | 'lightweight_enrichment'
-  | 'topic_setup'
-  | 'skip';
-
-export type PipelineTrigger = 'manual' | 'auto_document' | 'auto_topic' | 'scheduler' | 'cron';
-
-export interface PipelineInput {
-  workspaceId?: string;
-  day?: string;
-  topicId?: string;
-  documentIds?: string[];
-  limit?: number;
-  goal?: string;
-  enableCategorization?: boolean;
-  minQualityResults?: number;
-  minRelevanceScore?: number;
-  maxIterations?: number;
-  maxQueries?: number;
-  runMode?: PipelineRunMode;
-  trigger?: PipelineTrigger;
-  idempotencyKey?: string;
-  enableAutoDistill?: boolean;
-  skipPublish?: boolean;
-}
-
-export interface PipelineCounts {
-  docsTargeted: number;
-  docsCurated: number;
-  docsCurateFailed: number;
-  webProposals: number;
-  analyzedEvidence: number;
-  docsProcessed: number;
-  conceptsProposed: number;
-  flashcardsProposed: number;
-  topicLinksCreated: number;
-}
-
-export interface PipelineError {
-  stage: PipelineStage;
-  message: string;
-  documentId?: string;
-}
-
-export interface PipelineResult {
-  runId: string;
-  status: RunStatus;
-  mode: PipelineRunMode;
-  trigger: PipelineTrigger;
-  counts: PipelineCounts;
-  artifacts: {
-    webProposalIds: string[];
-    analysisArtifactIds: string[];
-    conceptIds: string[];
-    flashcardIds: string[];
-  };
-  reportId: string | null;
-  notionPageId: string | null;
-  errors: PipelineError[];
-}
-
-export interface PipelineExecutionOptions {
-  runId?: string;
-  skipIdempotencyLookup?: boolean;
-}
-
-interface ResolvedTargets {
-  day: string;
-  documentIds: string[];
-  focusTags: string[];
-  goal: string;
-  goalSource:
-    | 'input'
-    | 'topic'
-    | 'document_tags'
-    | 'vault_top_tags'
-    | 'document_titles'
-    | 'default';
-  topic: SavedTopicRow | null;
-  mode: 'explicit-query' | 'derive-from-vault';
-  minQualityResults: number;
-  minRelevanceScore: number;
-  maxIterations: number;
-  maxQueries: number;
-  limit: number;
-  workflowSettings: TopicWorkflowSettings;
-}
-
-interface ExistingRunRow {
-  id: string;
-  status: RunStatus;
-  metadata: Record<string, unknown>;
-}
-
-async function resolvePipelineWorkspaceId(input: PipelineInput): Promise<string> {
-  if (typeof input.workspaceId === 'string' && input.workspaceId.trim()) {
-    return input.workspaceId.trim();
-  }
-
-  const membershipRows = await sql<Array<{ workspace_id: string }>>`
-    SELECT workspace_id
-    FROM memberships
-    ORDER BY is_default DESC, created_at ASC
-    LIMIT 1
-  `;
-
-  if (membershipRows[0]?.workspace_id) {
-    return membershipRows[0].workspace_id;
-  }
-
-  const workspaceRows = await sql<Array<{ id: string }>>`
-    SELECT id
-    FROM workspaces
-    ORDER BY created_at ASC
-    LIMIT 1
-  `;
-
-  if (workspaceRows[0]?.id) {
-    return workspaceRows[0].id;
-  }
-
-  throw new Error('No workspace available for pipeline execution');
-}
-
-function todayISODate(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function clampInt(value: unknown, fallback: number, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(min, Math.min(Math.floor(value), max));
-}
-
-function clampScore(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(0, Math.min(value, 1));
-}
-
-function normalizeTag(tag: string): string | null {
-  const clean = tag.toLowerCase().trim().replace(/\s+/g, ' ');
-  if (!clean) return null;
-  if (clean.length < 2 || clean.length > 40) return null;
-  return clean;
-}
-
-function uniqueTags(tags: string[]): string[] {
-  const seen = new Set<string>();
-  const normalized: string[] = [];
-  for (const tag of tags) {
-    const clean = normalizeTag(tag);
-    if (!clean || seen.has(clean)) continue;
-    seen.add(clean);
-    normalized.push(clean);
-  }
-  return normalized;
-}
-
-function defaultCounts(): PipelineCounts {
-  return {
-    docsTargeted: 0,
-    docsCurated: 0,
-    docsCurateFailed: 0,
-    webProposals: 0,
-    analyzedEvidence: 0,
-    docsProcessed: 0,
-    conceptsProposed: 0,
-    flashcardsProposed: 0,
-    topicLinksCreated: 0,
-  };
-}
-
-function defaultArtifacts() {
-  return {
-    webProposalIds: [] as string[],
-    analysisArtifactIds: [] as string[],
-    conceptIds: [] as string[],
-    flashcardIds: [] as string[],
-  };
-}
-
-function buildPipelineResult(params: {
-  runId: string;
-  status: RunStatus;
-  mode: PipelineRunMode;
-  trigger: PipelineTrigger;
-  counts: PipelineCounts;
-  artifacts: PipelineResult['artifacts'];
-  reportId: string | null;
-  notionPageId: string | null;
-  errors: PipelineError[];
-}): PipelineResult {
-  return {
-    runId: params.runId,
-    status: params.status,
-    mode: params.mode,
-    trigger: params.trigger,
-    counts: params.counts,
-    artifacts: params.artifacts,
-    reportId: params.reportId,
-    notionPageId: params.notionPageId,
-    errors: params.errors,
-  };
-}
-
-async function completePipelineRun(result: PipelineResult): Promise<PipelineResult> {
-  await appendFlowStep(result.runId, {
-    name: 'pipeline',
-    status: 'ok',
-    output: result,
-  });
-  await finishRun(result.runId, result.status);
-  return result;
-}
-
-function shouldRunCurate(mode: PipelineRunMode): boolean {
-  return mode !== 'topic_setup' && mode !== 'skip';
-}
-
-function shouldRunWebScout(mode: PipelineRunMode): boolean {
-  return mode === 'full_report' || mode === 'incremental_update' || mode === 'scout_only';
-}
-
-function shouldRunDistill(mode: PipelineRunMode, enableAutoDistill: boolean): boolean {
-  if (mode === 'full_report' || mode === 'incremental_update' || mode === 'concept_only') {
-    return true;
-  }
-  if (mode === 'lightweight_enrichment') {
-    return enableAutoDistill;
-  }
-  return false;
-}
-
-function shouldSynthesize(mode: PipelineRunMode): boolean {
-  return mode === 'full_report' || mode === 'incremental_update';
-}
-
-function resolveRequestedMode(
-  input: PipelineInput,
-  profiles: AgentProfileSettingsMap,
-  topicWorkflowSettings?: TopicWorkflowSettings | null,
-): PipelineRunMode {
-  if (input.runMode) {
-    return input.runMode;
-  }
-
-  if (input.trigger === 'auto_document') {
-    return 'lightweight_enrichment';
-  }
-  if (input.trigger === 'auto_topic') {
-    return 'topic_setup';
-  }
-
-  return topicWorkflowSettings?.defaultRunMode ?? profiles.pipeline.defaultRunMode;
-}
-
-async function appendFlowStep(runId: string, step: Omit<RunStep, 'timestamp' | 'type'>) {
-  await appendStep(runId, {
-    timestamp: new Date().toISOString(),
-    type: 'flow',
-    ...step,
-  });
-}
-
-async function resolveTargets(
-  input: PipelineInput,
-  workspaceId: string,
-  profiles: AgentProfileSettingsMap,
-  providedTopic: SavedTopicRow | null = null,
-): Promise<ResolvedTargets> {
-  const day = typeof input.day === 'string' && input.day.trim() ? input.day.trim() : todayISODate();
-  const explicitDocumentIds = Array.isArray(input.documentIds)
-    ? input.documentIds.filter((id): id is string => typeof id === 'string').slice(0, 100)
-    : [];
-
-  let topic: SavedTopicRow | null = providedTopic;
-  if (!topic && typeof input.topicId === 'string' && input.topicId.trim()) {
-    const topics = await getSavedTopicsByIds({ workspaceId }, [input.topicId.trim()]);
-    topic = topics[0] ?? null;
-    if (!topic) {
-      throw new Error(`Topic ${input.topicId.trim()} not found`);
-    }
-  }
-
-  const workflowSettings = resolveTopicWorkflowSettings({
-    maxDocsPerRun: topic?.max_docs_per_run ?? profiles.distiller.maxDocsPerRun,
-    minQualityResults: topic?.min_quality_results ?? profiles.webScout.minQualityResults,
-    minRelevanceScore: topic?.min_relevance_score ?? profiles.webScout.minRelevanceScore,
-    maxIterations: topic?.max_iterations ?? profiles.webScout.maxIterations,
-    maxQueries: topic?.max_queries ?? profiles.webScout.maxQueries,
-    metadata: topic?.metadata ?? null,
-    profiles,
-  });
-  const limit = clampInt(input.limit ?? workflowSettings.maxDocsPerRun, workflowSettings.maxDocsPerRun, 1, 20);
-
-  let targetDocumentIds: string[] = [];
-  let seedTags: string[] = topic?.focus_tags ?? [];
-  let seedTitles: string[] = [];
-
-  if (explicitDocumentIds.length > 0) {
-    const docs = await getDocumentsByIds({ workspaceId }, explicitDocumentIds, limit);
-    targetDocumentIds = docs.map((doc) => doc.id);
-    seedTags = [...seedTags, ...docs.flatMap((doc) => doc.tags ?? [])];
-    seedTitles = docs.map((doc) => doc.title);
-  } else if (topic) {
-    const linkedDocs = await getTopicLinkedDocuments({ workspaceId }, topic.id, limit);
-    if (linkedDocs.length > 0) {
-      targetDocumentIds = linkedDocs.map((doc) => doc.id);
-      seedTags = [...seedTags, ...linkedDocs.flatMap((doc) => doc.tags ?? [])];
-      seedTitles = linkedDocs.map((doc) => doc.title);
-    } else {
-      const docs = await getTopicDocuments({ workspaceId }, topic.focus_tags ?? [], limit);
-      targetDocumentIds = docs.map((doc) => doc.id);
-      seedTags = [...seedTags, ...docs.flatMap((doc) => doc.tags ?? [])];
-      seedTitles = docs.map((doc) => doc.title);
-    }
-  } else {
-    const docs = await getRecentDocuments({ workspaceId }, limit);
-    targetDocumentIds = docs.map((doc) => doc.id);
-    seedTags = [...seedTags, ...docs.flatMap((doc) => doc.tags ?? [])];
-    seedTitles = docs.map((doc) => doc.title);
-  }
-
-  let goal = typeof input.goal === 'string' ? input.goal.trim().slice(0, 500) : '';
-  let goalSource: ResolvedTargets['goalSource'] = 'default';
-  if (goal) {
-    goalSource = 'input';
-  }
-
-  if (!goal && topic?.goal) {
-    goal = topic.goal.trim().slice(0, 500);
-    goalSource = goal ? 'topic' : goalSource;
-  }
-
-  const focusTags = uniqueTags(seedTags).slice(0, 20);
-  if (!goal && focusTags.length > 0) {
-    goal = `Find high-quality learning resources about: ${focusTags.slice(0, 5).join(', ')}`;
-    goalSource = 'document_tags';
-  }
-
-  if (!goal) {
-    const topTags = await getTopTags({ workspaceId }, 5);
-    if (topTags.length > 0) {
-      const derived = topTags.map((item) => item.tag);
-      goal = `Find high-quality learning resources about: ${derived.join(', ')}`;
-      seedTags = [...seedTags, ...derived];
-      goalSource = 'vault_top_tags';
-    }
-  }
-
-  if (!goal && seedTitles.length > 0) {
-    const titleSubjects = seedTitles
-      .map((title) => title.trim())
-      .filter(Boolean)
-      .slice(0, 3);
-    if (titleSubjects.length > 0) {
-      goal = `Find high-quality learning resources related to these documents: ${titleSubjects.join('; ')}`;
-      goalSource = 'document_titles';
-    }
-  }
-
-  if (!goal) {
-    goal = 'Find high-quality learning resources that complement my vault and support practical learning.';
-    goalSource = 'default';
-  }
-
-  const minQualityResults = clampInt(
-    input.minQualityResults ?? workflowSettings.minQualityResults,
-    workflowSettings.minQualityResults,
-    1,
-    10,
-  );
-  const minRelevanceScore = clampScore(
-    input.minRelevanceScore ?? workflowSettings.minRelevanceScore,
-    workflowSettings.minRelevanceScore,
-  );
-  const maxIterations = clampInt(
-    input.maxIterations ?? workflowSettings.maxIterations,
-    workflowSettings.maxIterations,
-    1,
-    10,
-  );
-  const maxQueries = clampInt(
-    input.maxQueries ?? workflowSettings.maxQueries,
-    workflowSettings.maxQueries,
-    1,
-    25,
-  );
-
-  return {
-    day,
-    documentIds: targetDocumentIds,
-    focusTags: uniqueTags(seedTags).slice(0, 20),
-    goal,
-    goalSource,
-    topic,
-    mode: input.goal ? 'explicit-query' : 'derive-from-vault',
-    minQualityResults,
-    minRelevanceScore,
-    maxIterations,
-    maxQueries,
-    limit,
-    workflowSettings,
-  };
-}
-
-async function splitDistillerArtifactIds(
-  workspaceId: string,
-  artifactIds: string[],
-): Promise<{
-  conceptIds: string[];
-  flashcardIds: string[];
-}> {
-  if (artifactIds.length === 0) {
-    return { conceptIds: [], flashcardIds: [] };
-  }
-
-  const rows = await sql<Array<{ id: string; kind: string }>>`
-    SELECT id, kind
-    FROM artifacts
-    WHERE workspace_id = ${workspaceId}
-      AND id = ANY(${artifactIds})
-  `;
-
-  return {
-    conceptIds: rows.filter((row) => row.kind === 'concept').map((row) => row.id),
-    flashcardIds: rows.filter((row) => row.kind === 'flashcard').map((row) => row.id),
-  };
-}
-
-async function findExistingRunByIdempotencyKey(
-  workspaceId: string,
-  idempotencyKey: string,
-): Promise<ExistingRunRow | null> {
-  const rows = await sql<Array<ExistingRunRow>>`
-    SELECT id, status, metadata
-    FROM runs
-    WHERE workspace_id = ${workspaceId}
-      AND kind = 'pipeline'
-      AND metadata->>'idempotencyKey' = ${idempotencyKey}
-    ORDER BY started_at DESC
-    LIMIT 1
-  `;
-
-  return rows[0] ?? null;
-}
-
-async function hydratePipelineResultFromRun(
-  workspaceId: string,
-  runId: string,
-): Promise<PipelineResult | null> {
-  const rows = await sql<Array<{ output: Record<string, unknown> | null }>>`
-    SELECT output
-    FROM run_steps rs
-    INNER JOIN runs r ON r.id = rs.run_id
-    WHERE r.workspace_id = ${workspaceId}
-      AND rs.run_id = ${runId}
-      AND rs.step_name = 'pipeline'
-      AND rs.status = 'ok'
-      AND rs.output IS NOT NULL
-    ORDER BY rs.started_at DESC
-    LIMIT 1
-  `;
-
-  const output = rows[0]?.output;
-  if (!output || typeof output !== 'object') {
-    return null;
-  }
-
-  const mode =
-    typeof output.mode === 'string'
-      ? (output.mode as PipelineRunMode)
-      : ('full_report' as PipelineRunMode);
-  const trigger =
-    typeof output.trigger === 'string'
-      ? (output.trigger as PipelineTrigger)
-      : ('manual' as PipelineTrigger);
-
-  return {
-    runId,
-    status: (output.status as RunStatus) ?? 'partial',
-    mode,
-    trigger,
-    counts: (output.counts as PipelineCounts) ?? defaultCounts(),
-    artifacts: (output.artifacts as PipelineResult['artifacts']) ?? defaultArtifacts(),
-    reportId: typeof output.reportId === 'string' ? output.reportId : null,
-    notionPageId: typeof output.notionPageId === 'string' ? output.notionPageId : null,
-    errors: Array.isArray(output.errors) ? (output.errors as PipelineError[]) : [],
-  };
-}
-
-function finalizeStatus(
-  mode: PipelineRunMode,
-  errors: PipelineError[],
-  analyzed: AnalyzeFindingsOutput | null,
-  reportId: string | null,
-): RunStatus {
-  if (errors.length > 0) {
-    return 'partial';
-  }
-
-  if (mode === 'skip' || mode === 'topic_setup' || mode === 'concept_only' || mode === 'lightweight_enrichment') {
-    return 'ok';
-  }
-
-  if ((mode === 'full_report' || mode === 'incremental_update') && !reportId) {
-    return 'partial';
-  }
-
-  if ((mode === 'full_report' || mode === 'incremental_update' || mode === 'scout_only') && !analyzed) {
-    return 'partial';
-  }
-
-  return 'ok';
-}
+export type {
+  PipelineCounts,
+  PipelineError,
+  PipelineExecutionOptions,
+  PipelineInput,
+  PipelineResult,
+  PipelineRunMode,
+  PipelineStage,
+  PipelineTrigger,
+} from '@/server/flows/pipeline.types';
 
 export async function pipelineFlow(
   input: PipelineInput = {},
@@ -586,16 +84,18 @@ export async function pipelineFlow(
         profiles,
       })
     : null;
-  const mode = resolveRequestedMode(input, profiles, preselectedTopicWorkflowSettings);
+  const mode = resolveRequestedPipelineMode(input, profiles, preselectedTopicWorkflowSettings);
   const idempotencyKey =
     typeof input.idempotencyKey === 'string' && input.idempotencyKey.trim()
       ? input.idempotencyKey.trim()
       : null;
 
   if (!options.skipIdempotencyLookup && idempotencyKey) {
-    const existing = await findExistingRunByIdempotencyKey(workspaceId, idempotencyKey);
+    const existing = await findExistingPipelineRunByIdempotencyKey(workspaceId, idempotencyKey);
+
     if (existing && existing.status !== 'error') {
       const hydrated = await hydratePipelineResultFromRun(workspaceId, existing.id);
+
       if (hydrated) {
         return hydrated;
       }
@@ -606,8 +106,8 @@ export async function pipelineFlow(
           status: 'running',
           mode,
           trigger,
-          counts: defaultCounts(),
-          artifacts: defaultArtifacts(),
+          counts: createDefaultPipelineCounts(),
+          artifacts: createDefaultPipelineArtifacts(),
           reportId: null,
           notionPageId: null,
           errors: [],
@@ -627,14 +127,14 @@ export async function pipelineFlow(
     }));
 
   const errors: PipelineError[] = [];
-  const counts = defaultCounts();
-  const artifacts = defaultArtifacts();
+  const counts = createDefaultPipelineCounts();
+  const artifacts = createDefaultPipelineArtifacts();
 
   let reportId: string | null = null;
   let notionPageId: string | null = null;
 
   try {
-    await appendFlowStep(runId, {
+    await appendPipelineFlowStep(runId, {
       name: 'pipeline',
       status: 'running',
       input: {
@@ -644,7 +144,7 @@ export async function pipelineFlow(
       },
     });
 
-    await appendFlowStep(runId, {
+    await appendPipelineFlowStep(runId, {
       name: 'pipeline_resolve_targets',
       status: 'running',
       input: {
@@ -656,13 +156,13 @@ export async function pipelineFlow(
       },
     });
 
-    const resolved = await resolveTargets(input, workspaceId, profiles, preselectedTopic);
+    const resolved = await resolvePipelineTargets(input, workspaceId, profiles, preselectedTopic);
     counts.docsTargeted = resolved.documentIds.length;
     const enableCategorization =
       input.enableCategorization ?? resolved.workflowSettings.enableCategorizationByDefault;
     const skipPublish = input.skipPublish ?? resolved.workflowSettings.skipPublishByDefault;
 
-    await appendFlowStep(runId, {
+    await appendPipelineFlowStep(runId, {
       name: 'pipeline_resolve_targets',
       status: 'ok',
       output: {
@@ -698,7 +198,7 @@ export async function pipelineFlow(
     }
 
     if (mode === 'topic_setup') {
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_topic_setup',
         status: 'running',
         input: { topicId: resolved.topic?.id ?? null },
@@ -713,7 +213,7 @@ export async function pipelineFlow(
         try {
           const setupResult = await setupTopicContext({ workspaceId }, resolved.topic.id);
           counts.topicLinksCreated = setupResult.linkedCount;
-          await appendFlowStep(runId, {
+          await appendPipelineFlowStep(runId, {
             name: 'pipeline_topic_setup',
             status: 'ok',
             output: setupResult,
@@ -723,7 +223,7 @@ export async function pipelineFlow(
             stage: 'topic_setup',
             message: error instanceof Error ? error.message : String(error),
           });
-          await appendFlowStep(runId, {
+          await appendPipelineFlowStep(runId, {
             name: 'pipeline_topic_setup',
             status: 'error',
             error: {
@@ -750,8 +250,9 @@ export async function pipelineFlow(
     }
 
     const curateTags: string[] = [...resolved.focusTags];
+
     if (shouldRunCurate(mode) && resolved.documentIds.length > 0) {
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_curate',
         status: 'running',
         input: {
@@ -783,6 +284,7 @@ export async function pipelineFlow(
             documentId,
             curateResult.tags,
           );
+
           for (const topicId of linkedTopics.topicIds) {
             topicLinkSet.add(topicId);
           }
@@ -798,7 +300,7 @@ export async function pipelineFlow(
 
       counts.topicLinksCreated += topicLinkSet.size;
 
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_curate',
         status: counts.docsCurateFailed > 0 ? 'error' : 'ok',
         output: {
@@ -808,20 +310,22 @@ export async function pipelineFlow(
         },
       });
     } else {
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_curate',
         status: 'skipped',
-        output: { reason: resolved.documentIds.length === 0 ? 'No target documents resolved' : 'Mode does not include curate' },
+        output: {
+          reason: resolved.documentIds.length === 0 ? 'No target documents resolved' : 'Mode does not include curate',
+        },
       });
     }
 
-    const webScoutFocusTags = uniqueTags(curateTags).slice(0, 20);
+    const webScoutFocusTags = normalizePipelineTags(curateTags).slice(0, 20);
 
     let webScoutResult: Awaited<ReturnType<typeof webScoutGraph>> | null = null;
     let analyzedFindings: AnalyzeFindingsOutput | null = null;
 
     if (shouldRunWebScout(mode)) {
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_webscout',
         status: 'running',
         input: {
@@ -854,7 +358,7 @@ export async function pipelineFlow(
         counts.webProposals = webScoutResult.counts.proposalsCreated;
         artifacts.webProposalIds = webScoutResult.artifactIds;
 
-        await appendFlowStep(runId, {
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_webscout',
           status: 'ok',
           output: {
@@ -867,7 +371,7 @@ export async function pipelineFlow(
           stage: 'webscout',
           message: error instanceof Error ? error.message : String(error),
         });
-        await appendFlowStep(runId, {
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_webscout',
           status: 'error',
           error: {
@@ -877,7 +381,7 @@ export async function pipelineFlow(
       }
 
       if (webScoutResult && webScoutResult.proposals.length > 0) {
-        await appendFlowStep(runId, {
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_analyze_findings',
           status: 'running',
           input: {
@@ -888,7 +392,7 @@ export async function pipelineFlow(
         analyzedFindings = analyzeFindings(webScoutResult.proposals);
         counts.analyzedEvidence = analyzedFindings.summary.uniqueEvidence;
 
-        await appendFlowStep(runId, {
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_analyze_findings',
           status: 'ok',
           output: analyzedFindings.summary,
@@ -918,34 +422,35 @@ export async function pipelineFlow(
         } catch (analysisError) {
           errors.push({
             stage: 'analyze_findings',
-            message:
-              analysisError instanceof Error ? analysisError.message : String(analysisError),
+            message: analysisError instanceof Error ? analysisError.message : String(analysisError),
           });
         }
       } else {
         const noProposalReason = webScoutResult
           ? `WebScout produced no proposals meeting relevance >= ${resolved.minRelevanceScore} (termination: ${webScoutResult.terminationReason ?? 'unknown'})`
           : 'No WebScout proposals available for analysis';
+
         if (webScoutResult) {
           errors.push({
             stage: 'webscout',
             message: noProposalReason,
           });
         }
-        await appendFlowStep(runId, {
+
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_analyze_findings',
           status: 'skipped',
           output: { reason: noProposalReason },
         });
       }
     } else {
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_webscout',
         status: 'skipped',
         output: { reason: 'Mode does not include web scouting' },
       });
 
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_analyze_findings',
         status: 'skipped',
         output: { reason: 'Mode does not include web scouting' },
@@ -953,7 +458,7 @@ export async function pipelineFlow(
     }
 
     if (shouldRunDistill(mode, input.enableAutoDistill === true) && resolved.documentIds.length > 0) {
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_distill',
         status: 'running',
         input: {
@@ -985,7 +490,7 @@ export async function pipelineFlow(
         artifacts.conceptIds = splitArtifacts.conceptIds;
         artifacts.flashcardIds = splitArtifacts.flashcardIds;
 
-        await appendFlowStep(runId, {
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_distill',
           status: 'ok',
           output: distillResult.counts,
@@ -995,7 +500,7 @@ export async function pipelineFlow(
           stage: 'distill',
           message: error instanceof Error ? error.message : String(error),
         });
-        await appendFlowStep(runId, {
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_distill',
           status: 'error',
           error: {
@@ -1008,7 +513,7 @@ export async function pipelineFlow(
         resolved.documentIds.length === 0
           ? 'No target documents resolved'
           : 'Mode does not include distillation';
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_distill',
         status: 'skipped',
         output: { reason },
@@ -1016,8 +521,9 @@ export async function pipelineFlow(
     }
 
     let reportContent: Awaited<ReturnType<typeof synthesizeReport>> | null = null;
+
     if (shouldSynthesize(mode) && analyzedFindings && analyzedFindings.evidence.length > 0) {
-      await appendFlowStep(runId, {
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_synthesize',
         status: 'running',
       });
@@ -1029,7 +535,7 @@ export async function pipelineFlow(
           webScoutFocusTags,
           runId,
         );
-        await appendFlowStep(runId, {
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_synthesize',
           status: 'ok',
           output: {
@@ -1042,7 +548,7 @@ export async function pipelineFlow(
           stage: 'synthesize',
           message: error instanceof Error ? error.message : String(error),
         });
-        await appendFlowStep(runId, {
+        await appendPipelineFlowStep(runId, {
           name: 'pipeline_synthesize',
           status: 'error',
           error: {
@@ -1063,7 +569,8 @@ export async function pipelineFlow(
           });
         }
       }
-      await appendFlowStep(runId, {
+
+      await appendPipelineFlowStep(runId, {
         name: 'pipeline_synthesize',
         status: 'skipped',
         output: {
@@ -1074,7 +581,7 @@ export async function pipelineFlow(
       });
     }
 
-    await appendFlowStep(runId, {
+    await appendPipelineFlowStep(runId, {
       name: 'pipeline_persist_publish',
       status: 'running',
       input: {
@@ -1133,7 +640,7 @@ export async function pipelineFlow(
       }
     }
 
-    await appendFlowStep(runId, {
+    await appendPipelineFlowStep(runId, {
       name: 'pipeline_persist_publish',
       status: 'ok',
       output: {
@@ -1147,7 +654,7 @@ export async function pipelineFlow(
       await markTopicRunCompleted({ workspaceId }, resolved.topic.id, mode);
     }
 
-    const status = finalizeStatus(mode, errors, analyzedFindings, reportId);
+    const status = finalizePipelineStatus(mode, errors, analyzedFindings, reportId);
     const result = buildPipelineResult({
       runId,
       status,
@@ -1162,14 +669,14 @@ export async function pipelineFlow(
 
     return completePipelineRun(result);
   } catch (error) {
-    await appendFlowStep(runId, {
+    await appendPipelineFlowStep(runId, {
       name: 'pipeline_error',
       status: 'error',
       error: {
         message: error instanceof Error ? error.message : String(error),
       },
     });
-    await finishRun(runId, 'error');
+    await finishPipelineRunAsError(runId);
     throw error;
   }
 }
