@@ -1,9 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resetRateLimitState } from '@/server/security/rateLimit';
+import type proxyHandler from '@/proxy';
 
 vi.mock('@/auth', () => ({
   auth: (handler: unknown) => handler,
 }));
+
+async function callProxy(
+  proxy: typeof proxyHandler,
+  request: unknown,
+): Promise<Response> {
+  const response = await proxy(request as never, undefined as never);
+
+  if (!(response instanceof Response)) {
+    throw new Error('Expected proxy to return a response');
+  }
+
+  return response;
+}
 
 describe('proxy path helpers', () => {
   it('rate limits high-cost owner API requests after the configured threshold', async () => {
@@ -26,11 +40,11 @@ describe('proxy path helpers', () => {
     };
 
     for (let count = 0; count < 8; count += 1) {
-      const response = proxy(request as never);
+      const response = await callProxy(proxy, request);
       expect(response.status).toBe(200);
     }
 
-    const blocked = proxy(request as never);
+    const blocked = await callProxy(proxy, request);
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get('Retry-After')).toBeTruthy();
   });

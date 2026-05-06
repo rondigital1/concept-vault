@@ -96,7 +96,9 @@ export function useChatSession(): UseChatSessionResult {
   }, [sessionIdFromUrl, router]);
 
   useEffect(() => {
-    if (sessionIdFromUrl) return;
+    if (sessionIdFromUrl) {
+      return;
+    }
 
     const loadSuggestions = async () => {
       try {

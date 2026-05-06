@@ -148,11 +148,11 @@ describe('Schema Migrations', () => {
     expect(result.ok).toBe(true);
 
     await migrationSql.begin(async (tx) => {
-      await tx`
+      await tx.unsafe(`
         UPDATE schema_migrations
         SET checksum = 'drifted'
         WHERE version = '0002'
-      `;
+      `);
 
       await expect(assertSchemaReady(tx)).rejects.toThrow(/drift detected/i);
 
