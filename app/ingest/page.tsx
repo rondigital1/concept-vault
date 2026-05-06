@@ -2,7 +2,8 @@ import { auth } from '@/auth';
 import { getDocumentTitleIssue } from '@/app/library/documentPresentation';
 import { requireSessionWorkspace } from '@/server/auth/workspaceContext';
 import { getAllDocumentsForLibrary } from '@/server/services/document.service';
-import { IngestWorkspace, type IngestWorkspaceDocument, type IngestWorkspaceStats } from './IngestWorkspace';
+import { IngestWorkspace } from './IngestWorkspace';
+import type { IngestWorkspaceDocument, IngestWorkspaceStats } from './types';
 
 async function getCurrentUserName(): Promise<string> {
   const session = await auth().catch(() => null);

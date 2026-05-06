@@ -1,15 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import type { Artifact, WorkflowPrimaryAction } from './types';
+import type { Artifact, QueueFilter, WorkflowPrimaryAction } from './types';
 import { readString } from './utils';
 import { secondaryButtonClass, sectionLabelClass, textLinkClass } from './WorkspaceHeaderPrimitives';
 import { FindSourcesButton } from './FindSourcesButton';
 
 // Mirrors MIN_LINKED_DOCUMENTS_FOR_REPORT in server/services/topicWorkflow.service.ts
 const MIN_SOURCES_FOR_REPORT = 3;
-
-type QueueFilter = 'pending' | 'saved';
 
 type Props = {
   queueFilter: QueueFilter;
@@ -27,19 +25,37 @@ type Props = {
 };
 
 function agentLabel(agent: string): string {
-  if (agent === 'web-scout' || agent === 'webScout') return 'via Web Agent';
-  if (agent === 'distiller') return 'via Distiller';
-  if (agent === 'curator') return 'via Curator';
+  if (agent === 'web-scout' || agent === 'webScout') {
+    return 'via Web Agent';
+  }
+
+  if (agent === 'distiller') {
+    return 'via Distiller';
+  }
+
+  if (agent === 'curator') {
+    return 'via Curator';
+  }
+
   return `via ${agent}`;
 }
 
 function formatRelativeTime(isoTimestamp: string): string {
   const diffMs = Date.now() - new Date(isoTimestamp).getTime();
   const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  if (minutes < 1) {
+    return 'just now';
+  }
+
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  }
+
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+
   const days = Math.floor(hours / 24);
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }

@@ -51,7 +51,10 @@ function extractLanguage(className?: string) {
 }
 
 function normalizeMarkdownForDisplay(raw: string | undefined | null) {
-  if (!raw) return '';
+  if (!raw) {
+    return '';
+  }
+
   let text = raw;
 
   text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');

@@ -97,6 +97,8 @@ export type DrawerState = {
   key: DrawerKey | null;
 };
 
+export type QueueFilter = 'pending' | 'saved';
+
 export type SurfaceTone = 'default' | 'ready' | 'pending' | 'live';
 
 export type WorkflowPrimaryAction = 'find_sources' | 'generate_report' | 'run_details' | null;

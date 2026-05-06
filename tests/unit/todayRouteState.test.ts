@@ -5,15 +5,31 @@ import {
   readDrawerKey,
   readQueueFilter,
 } from '@/app/today/routeState';
+import type { WorkbenchTopic } from '@/app/today/types';
+
+function makeTopic(id: string): WorkbenchTopic {
+  return {
+    id,
+    name: id,
+    goal: '',
+    focusTags: [],
+    linkedDocumentCount: 0,
+    lastReportAt: null,
+    lastRunAt: null,
+    lastRunMode: null,
+    isReady: false,
+    latestReport: null,
+  };
+}
 
 describe('today route state helpers', () => {
   it('keeps the requested topic when it exists', () => {
     expect(
       getTopicForSelection(
         [
-          { id: 'topic-a' },
-          { id: 'topic-b' },
-        ] as Array<{ id: string }>,
+          makeTopic('topic-a'),
+          makeTopic('topic-b'),
+        ],
         'topic-b',
       ),
     ).toBe('topic-b');
@@ -23,9 +39,9 @@ describe('today route state helpers', () => {
     expect(
       getTopicForSelection(
         [
-          { id: 'topic-a' },
-          { id: 'topic-b' },
-        ] as Array<{ id: string }>,
+          makeTopic('topic-a'),
+          makeTopic('topic-b'),
+        ],
         'missing',
       ),
     ).toBe('topic-a');

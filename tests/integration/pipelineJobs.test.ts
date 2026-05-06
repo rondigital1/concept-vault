@@ -182,7 +182,9 @@ describe('pipeline jobs', () => {
       },
     });
 
-    let releaseAttempt: (() => void) | null = null;
+    let releaseAttempt: () => void = () => {
+      throw new Error('releaseAttempt was not initialized');
+    };
     mockPipelineFlow.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -227,7 +229,7 @@ describe('pipeline jobs', () => {
       failed: 0,
     });
 
-    releaseAttempt?.();
+    releaseAttempt();
     const firstDrain = await firstDrainPromise;
     expect(firstDrain.processed).toBe(1);
     expect(mockPipelineFlow).toHaveBeenCalledTimes(1);
