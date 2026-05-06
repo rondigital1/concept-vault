@@ -1,281 +1,79 @@
-import { createHash } from 'node:crypto';
-import OpenAI from 'openai';
-import { zodResponsesFunction, zodTextFormat } from 'openai/helpers/zod';
 import type {
-  EasyInputMessage,
   ParsedResponse,
   Response,
-  ResponseCreateParams,
-  ResponseUsage,
 } from 'openai/resources/responses/responses';
-import { z } from 'zod';
-import { appConfig } from '@/server/config/appConfig';
+import type { z } from 'zod';
 import {
   estimateActualSpendUsd,
   estimateRequestSpendUsd,
-  getProjectedJobSpendUsd,
-  resolveJobBudget,
-  resolveRequestBudget,
 } from '@/server/ai/cost-estimator';
 import { canEscalateTask, getModelTier, getTaskPolicy, isPremiumModel } from '@/server/ai/model-policy';
-import type { BuiltPrompt } from '@/server/ai/prompt-builder';
-import { validateStructuredOutput, validateTextOutput, type QualityGateFailure } from '@/server/ai/quality-gates';
-import type {
-  AIExecutionAttribution,
-  AIExecutionBudget,
-  AIModelName,
-  AIModelTier,
-  AITaskType,
-} from '@/server/ai/tasks';
+import type { AIModelName, AITaskType } from '@/server/ai/tasks';
 import { logger } from '@/server/observability/logger';
-import { reportTelemetryError } from '@/server/observability/telemetry';
-import { createLlmCall } from '@/server/repos/llmCalls.repo';
+import {
+  buildOpenAIRequestBody,
+  buildOpenAIStructuredTextFormat,
+  buildOpenAITools,
+  createOpenAIClient,
+} from '@/server/ai/openai-provider';
+import {
+  extractOpenAIToolCalls,
+  isTransientOpenAIError,
+  stringifyOpenAIInput,
+  toUsageSummary,
+  validateOpenAIStructuredOutput,
+  validateOpenAITextOutput,
+} from '@/server/ai/openai-output-parsing';
+import { ensureOpenAIExecutionBudgetAllowed } from '@/server/ai/openai-execution-budget';
+import {
+  incrementAIExecutionCounter,
+  logAIExecutionAttempt,
+  logAIExecutionFailure,
+  persistAIExecutionAuditRecord,
+  resolveAIExecutionRunId,
+} from '@/server/ai/openai-execution-telemetry';
+import {
+  AIExecutionError,
+  AIValidationError,
+} from '@/server/ai/openai-execution.errors';
+import type {
+  AIExecutionResult,
+  AIToolRoundResult,
+  AttemptState,
+  ExecuteRequestBase,
+  ExecuteStructuredRequest,
+  ExecuteToolRoundRequest,
+  ExecutionMode,
+  OpenAIClientLike,
+  OpenAIExecutionServiceOptions,
+  OpenAIInputValue,
+  StructuredSchema,
+} from '@/server/ai/openai-execution.types';
 
-type StructuredSchema = z.ZodType<unknown>;
+export {
+  AIBudgetExceededError,
+  AIExecutionError,
+  AIValidationError,
+} from '@/server/ai/openai-execution.errors';
+export { getAIExecutionCounters } from '@/server/ai/openai-execution-telemetry';
+export type {
+  AIFunctionToolOutputInput,
+  AIExecutionResult,
+  AIToolCall,
+  AIToolDefinition,
+  AIToolRoundResult,
+  AIUsageSummary,
+  ExecuteStructuredRequest,
+  ExecuteToolRoundRequest,
+  OpenAIClientLike,
+} from '@/server/ai/openai-execution.types';
 
-export interface OpenAIClientLike {
-  responses: {
-    create(body: ResponseCreateParams, options?: { timeout?: number }): Promise<Response>;
-    parse<ParsedT = unknown>(
-      body: ResponseCreateParams,
-      options?: { timeout?: number },
-    ): Promise<ParsedResponse<ParsedT>>;
-  };
-}
-
-interface DailyBudgetState {
-  maxUsd: number;
-  spentUsd: number;
-}
-
-interface OpenAIExecutionServiceOptions {
-  client?: OpenAIClientLike;
-  getDailyBudgetState?: (attribution: AIExecutionAttribution) => Promise<DailyBudgetState | null>;
-}
-
-interface ExecuteRequestBase {
-  allowEscalationOnValidationFailure?: boolean;
-  attribution?: AIExecutionAttribution;
-  budget?: AIExecutionBudget;
-  prompt: BuiltPrompt;
-  task: AITaskType;
-  temperature?: number;
-}
-
-export interface AIFunctionToolOutputInput {
-  call_id: string;
-  id?: string | null;
-  output: string;
-  status?: 'completed' | 'in_progress' | 'incomplete';
-  type: 'function_call_output';
-}
-
-export interface AIUsageSummary {
-  cachedInputTokens: number;
-  inputTokens: number;
-  outputTokens: number;
-  reasoningTokens: number;
-  totalTokens: number;
-}
-
-export interface AIExecutionResult<TValue> {
+type AttemptResponse<TOutput> = {
   actualCostUsd: number;
   estimatedCostUsd: number;
-  model: AIModelName;
-  output: TValue;
-  responseId: string;
-  retryCount: number;
-  tier: AIModelTier;
-  usage: AIUsageSummary;
-  wasEscalated: boolean;
-}
-
-export interface AIToolDefinition<TSchema extends StructuredSchema = StructuredSchema> {
-  description: string;
-  name: string;
-  schema: TSchema;
-}
-
-export interface AIToolCall {
-  arguments: unknown;
-  callId: string;
-  name: string;
-}
-
-export interface AIToolRoundResult {
-  actualCostUsd: number;
-  estimatedCostUsd: number;
-  model: AIModelName;
-  outputText: string;
-  responseId: string;
-  retryCount: number;
-  tier: AIModelTier;
-  toolCalls: AIToolCall[];
-  usage: AIUsageSummary;
-  wasEscalated: boolean;
-}
-
-export interface ExecuteStructuredRequest<TSchema extends StructuredSchema> extends ExecuteRequestBase {
-  schema: TSchema;
-  schemaName: string;
-}
-
-export interface ExecuteToolRoundRequest extends ExecuteRequestBase {
-  input: string | EasyInputMessage[] | AIFunctionToolOutputInput[];
-  previousResponseId?: string | null;
-  tools: readonly AIToolDefinition[];
-}
-
-type ExecutionMode = 'default' | 'escalated';
-
-interface AttemptState {
-  accumulatedCostUsd: number;
-  escalationReason?: string;
-  model: AIModelName;
-  retryCount: number;
-  wasEscalated: boolean;
-}
-
-interface AttemptTelemetry {
-  actualCostUsd: number;
-  estimatedCostUsd: number;
-  latencyMs: number;
-  responseId?: string;
-  usage?: ResponseUsage;
-}
-
-function sha256(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function toUsageSummary(usage: ResponseUsage | undefined): AIUsageSummary {
-  return {
-    cachedInputTokens: usage?.input_tokens_details.cached_tokens ?? 0,
-    inputTokens: usage?.input_tokens ?? 0,
-    outputTokens: usage?.output_tokens ?? 0,
-    reasoningTokens: usage?.output_tokens_details.reasoning_tokens ?? 0,
-    totalTokens: usage?.total_tokens ?? 0,
-  };
-}
-
-function stringifyInput(value: string | EasyInputMessage[] | AIFunctionToolOutputInput[]): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  return JSON.stringify(value);
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
-}
-
-function isTransientApiError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
-    return false;
-  }
-
-  const status = 'status' in error ? error.status : undefined;
-  if (typeof status === 'number') {
-    return status === 408 || status === 409 || status === 429 || status >= 500;
-  }
-
-  const message = errorMessage(error).toLowerCase();
-  return (
-    message.includes('timeout') ||
-    message.includes('temporarily unavailable') ||
-    message.includes('connection') ||
-    message.includes('rate limit')
-  );
-}
-
-function buildMetadata(
-  task: AITaskType,
-  model: AIModelName,
-  executionMode: ExecutionMode,
-  attribution: AIExecutionAttribution | undefined,
-  escalationReason: string | undefined,
-): Record<string, string> {
-  const metadata: Record<string, string> = {
-    task,
-    model,
-    execution_mode: executionMode,
-  };
-
-  if (attribution?.requestId) {
-    metadata.request_id = attribution.requestId;
-  }
-  if (attribution?.jobId) {
-    metadata.job_id = attribution.jobId;
-  }
-  if (attribution?.runId) {
-    metadata.run_id = attribution.runId;
-  }
-  if (attribution?.stepId) {
-    metadata.step_id = attribution.stepId;
-  }
-  if (attribution?.userId) {
-    metadata.user_id = attribution.userId;
-  }
-  if (attribution?.workspaceId) {
-    metadata.workspace_id = attribution.workspaceId;
-  }
-  if (escalationReason) {
-    metadata.escalation_reason = escalationReason.slice(0, 200);
-  }
-
-  return metadata;
-}
-
-function resolveRunId(attribution: AIExecutionAttribution | undefined): string | undefined {
-  return attribution?.runId ?? attribution?.jobId ?? undefined;
-}
-
-function buildAuditInputHash(params: {
-  inputValue: string | EasyInputMessage[] | AIFunctionToolOutputInput[];
-  prompt: BuiltPrompt;
-}): string {
-  return sha256(`${params.prompt.instructions}\n\n${stringifyInput(params.inputValue)}`);
-}
-
-const aiExecutionCounters = new Map<string, number>();
-
-function incrementCounter(task: AITaskType, model: AIModelName, executionMode: ExecutionMode): void {
-  const key = `${task}:${model}:${executionMode}`;
-  aiExecutionCounters.set(key, (aiExecutionCounters.get(key) ?? 0) + 1);
-}
-
-export function getAIExecutionCounters(): Record<string, number> {
-  return Object.fromEntries(aiExecutionCounters.entries());
-}
-
-export class AIExecutionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AIExecutionError';
-  }
-}
-
-export class AIBudgetExceededError extends AIExecutionError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AIBudgetExceededError';
-  }
-}
-
-export class AIValidationError extends AIExecutionError {
-  readonly failure: QualityGateFailure;
-
-  constructor(failure: QualityGateFailure) {
-    super(failure.message);
-    this.failure = failure;
-    this.name = 'AIValidationError';
-  }
-}
+  output: TOutput;
+  response: Response | ParsedResponse<unknown>;
+};
 
 export class OpenAIExecutionService {
   private client?: OpenAIClientLike;
@@ -293,7 +91,7 @@ export class OpenAIExecutionService {
       request,
       performAttempt: async (state, requestOptions) => {
         const response = await this.getClient().responses.create(
-          this.buildRequestBody({
+          buildOpenAIRequestBody({
             task: request.task,
             prompt: request.prompt,
             input: request.prompt.input,
@@ -304,24 +102,17 @@ export class OpenAIExecutionService {
           }),
           requestOptions,
         );
-
-        const textValidation = validateTextOutput(request.task, response.output_text);
-        if (!textValidation.ok) {
-          throw new AIValidationError(textValidation.failure);
-        }
+        const output = validateOpenAITextOutput(request.task, response.output_text);
 
         return {
           actualCostUsd: estimateActualSpendUsd(state.model, response.usage),
-          estimatedCostUsd: estimateRequestSpendUsd({
-            inputText: `${request.prompt.instructions}\n\n${stringifyInput(request.prompt.input)}`,
-            maxOutputTokens: getTaskPolicy(request.task).maxOutputTokens,
-            model: state.model,
-          }).estimatedTotalUsd,
-          output: textValidation.value,
+          estimatedCostUsd: this.estimateAttemptSpendUsd(request.task, state.model, request.prompt.input, request),
+          output,
           response,
         };
       },
     });
+
     return result as AIExecutionResult<string>;
   }
 
@@ -335,7 +126,7 @@ export class OpenAIExecutionService {
       performAttempt: async (state, requestOptions) => {
         const response = await this.getClient().responses.parse<z.infer<TSchema>>(
           {
-            ...this.buildRequestBody({
+            ...buildOpenAIRequestBody({
               task: request.task,
               prompt: request.prompt,
               input: request.prompt.input,
@@ -345,29 +136,22 @@ export class OpenAIExecutionService {
               attribution: request.attribution,
             }),
             text: {
-              format: zodTextFormat(request.schema, request.schemaName),
+              format: buildOpenAIStructuredTextFormat(request.schema, request.schemaName),
             },
           },
           requestOptions,
         );
-
-        const structuredValidation = validateStructuredOutput(request.schema, response.output_parsed);
-        if (!structuredValidation.ok) {
-          throw new AIValidationError(structuredValidation.failure);
-        }
+        const output = validateOpenAIStructuredOutput(request.schema, response.output_parsed);
 
         return {
           actualCostUsd: estimateActualSpendUsd(state.model, response.usage),
-          estimatedCostUsd: estimateRequestSpendUsd({
-            inputText: `${request.prompt.instructions}\n\n${stringifyInput(request.prompt.input)}`,
-            maxOutputTokens: getTaskPolicy(request.task).maxOutputTokens,
-            model: state.model,
-          }).estimatedTotalUsd,
-          output: structuredValidation.value,
+          estimatedCostUsd: this.estimateAttemptSpendUsd(request.task, state.model, request.prompt.input, request),
+          output,
           response,
         };
       },
     });
+
     return result as AIExecutionResult<z.infer<TSchema>>;
   }
 
@@ -379,7 +163,7 @@ export class OpenAIExecutionService {
       performAttempt: async (state, requestOptions) => {
         const response = await this.getClient().responses.parse(
           {
-            ...this.buildRequestBody({
+            ...buildOpenAIRequestBody({
               task: request.task,
               prompt: request.prompt,
               input: request.input,
@@ -390,45 +174,17 @@ export class OpenAIExecutionService {
               previousResponseId: request.previousResponseId,
             }),
             parallel_tool_calls: false,
-            tools: request.tools.map((tool) =>
-              zodResponsesFunction({
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.schema,
-              }),
-            ),
+            tools: buildOpenAITools(request.tools),
           },
           requestOptions,
         );
-
-        const toolCalls = response.output.reduce<AIToolCall[]>((calls, item) => {
-          if (item.type !== 'function_call') {
-            return calls;
-          }
-
-          const parsedItem = item as {
-            arguments: unknown;
-            call_id: string;
-            name: string;
-            parsed_arguments?: unknown;
-          };
-
-          calls.push({
-            name: parsedItem.name,
-            callId: parsedItem.call_id,
-            arguments:
-              'parsed_arguments' in parsedItem
-                ? parsedItem.parsed_arguments
-                : parsedItem.arguments,
-          });
-          return calls;
-        }, []);
-
-        const estimatedCostUsd = estimateRequestSpendUsd({
-          inputText: `${request.prompt.instructions}\n\n${stringifyInput(request.input)}`,
-          maxOutputTokens: getTaskPolicy(request.task).maxOutputTokens,
-          model: state.model,
-        }).estimatedTotalUsd;
+        const toolCalls = extractOpenAIToolCalls(response.output);
+        const estimatedCostUsd = this.estimateAttemptSpendUsd(
+          request.task,
+          state.model,
+          request.input,
+          request,
+        );
         const actualCostUsd = estimateActualSpendUsd(state.model, response.usage);
 
         return {
@@ -450,114 +206,8 @@ export class OpenAIExecutionService {
         };
       },
     });
+
     return result as AIToolRoundResult;
-  }
-
-  private buildRequestBody(params: {
-    attribution?: AIExecutionAttribution;
-    escalationReason?: string;
-    input: string | EasyInputMessage[] | AIFunctionToolOutputInput[];
-    model: AIModelName;
-    previousResponseId?: string | null;
-    prompt: BuiltPrompt;
-    task: AITaskType;
-    temperature?: number;
-  }): ResponseCreateParams {
-    const policy = getTaskPolicy(params.task);
-    const executionMode: ExecutionMode = params.escalationReason ? 'escalated' : 'default';
-
-    return {
-      model: params.model,
-      instructions: params.prompt.instructions,
-      input: params.input,
-      max_output_tokens: policy.maxOutputTokens,
-      metadata: buildMetadata(
-        params.task,
-        params.model,
-        executionMode,
-        params.attribution,
-        params.escalationReason,
-      ),
-      previous_response_id: params.previousResponseId ?? undefined,
-      prompt_cache_key: params.prompt.promptCacheKey,
-      prompt_cache_retention: '24h',
-      reasoning: {
-        effort: policy.reasoningEffort,
-      },
-      temperature: params.temperature,
-    };
-  }
-
-  private async ensureBudgetAllowed(
-    request: ExecuteRequestBase,
-    state: AttemptState,
-    inputValue: string | EasyInputMessage[] | AIFunctionToolOutputInput[],
-  ): Promise<number> {
-    const policy = getTaskPolicy(request.task);
-    const requestEstimate = estimateRequestSpendUsd({
-      inputText: `${request.prompt.instructions}\n\n${stringifyInput(inputValue)}`,
-      maxOutputTokens: policy.maxOutputTokens,
-      model: state.model,
-    });
-    const maxRequestUsd = resolveRequestBudget(request.budget?.maxRequestUsd);
-    const projectedJobSpendUsd = getProjectedJobSpendUsd(
-      request.budget,
-      requestEstimate.estimatedTotalUsd,
-      state.accumulatedCostUsd,
-    );
-    const maxJobUsd = resolveJobBudget(request.budget?.maxJobUsd);
-    const budgetMeta = {
-      attribution: request.attribution,
-      model: state.model,
-      task: request.task,
-      retryCount: state.retryCount,
-      estimatedRequestUsd: requestEstimate.estimatedTotalUsd,
-      projectedJobSpendUsd,
-      maxRequestUsd,
-      maxJobUsd,
-      spentJobUsd: request.budget?.spentJobUsd ?? 0,
-    };
-
-    if (request.budget?.allowOverBudget !== true && requestEstimate.estimatedTotalUsd > maxRequestUsd) {
-      logger.warn('ai.budget.exceeded', {
-        ...budgetMeta,
-        budgetScope: 'request',
-      });
-      throw new AIBudgetExceededError(
-        `Projected request spend $${requestEstimate.estimatedTotalUsd} exceeds max request budget $${maxRequestUsd}.`,
-      );
-    }
-
-    if (request.budget?.allowOverBudget !== true && projectedJobSpendUsd > maxJobUsd) {
-      logger.warn('ai.budget.exceeded', {
-        ...budgetMeta,
-        budgetScope: 'job',
-      });
-      throw new AIBudgetExceededError(
-        `Projected job spend $${projectedJobSpendUsd} exceeds max job budget $${maxJobUsd}.`,
-      );
-    }
-
-    if (this.getDailyBudgetState && request.budget?.allowOverBudget !== true) {
-      const dailyBudgetState = await this.getDailyBudgetState(request.attribution ?? {});
-      if (dailyBudgetState) {
-        const projectedDailySpend = dailyBudgetState.spentUsd + requestEstimate.estimatedTotalUsd;
-        if (projectedDailySpend > dailyBudgetState.maxUsd) {
-          logger.warn('ai.budget.exceeded', {
-            ...budgetMeta,
-            budgetScope: 'daily',
-            dailyBudgetUsd: dailyBudgetState.maxUsd,
-            projectedDailySpendUsd: projectedDailySpend,
-            spentDailyUsd: dailyBudgetState.spentUsd,
-          });
-          throw new AIBudgetExceededError(
-            `Projected daily spend $${projectedDailySpend.toFixed(6)} exceeds daily budget $${dailyBudgetState.maxUsd}.`,
-          );
-        }
-      }
-    }
-
-    return requestEstimate.estimatedTotalUsd;
   }
 
   private getClient(): OpenAIClientLike {
@@ -565,41 +215,39 @@ export class OpenAIExecutionService {
       return this.client;
     }
 
-    if (!appConfig.openaiApiKey) {
-      throw new AIExecutionError('OPENAI_API_KEY is not configured');
-    }
-
-    const nativeFetch =
-      typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined;
-
-    this.client = new OpenAI({
-      apiKey: appConfig.openaiApiKey,
-      fetch: nativeFetch,
-    });
-
+    this.client = createOpenAIClient();
     return this.client;
+  }
+
+  private estimateAttemptSpendUsd(
+    task: AITaskType,
+    model: AIModelName,
+    inputValue: OpenAIInputValue,
+    request: ExecuteRequestBase,
+  ): number {
+    return estimateRequestSpendUsd({
+      inputText: `${request.prompt.instructions}\n\n${stringifyOpenAIInput(inputValue)}`,
+      maxOutputTokens: getTaskPolicy(task).maxOutputTokens,
+      model,
+    }).estimatedTotalUsd;
   }
 
   private async runExecution<TOutput>(params: {
     auditSchemaName: string;
-    inputValue: string | EasyInputMessage[] | AIFunctionToolOutputInput[];
+    inputValue: OpenAIInputValue;
     performAttempt: (
       state: AttemptState,
       requestOptions: { timeout: number },
-    ) => Promise<{
-      actualCostUsd: number;
-      estimatedCostUsd: number;
-      output: TOutput;
-      response: Response | ParsedResponse<unknown>;
-    }>;
+    ) => Promise<AttemptResponse<TOutput>>;
     request: ExecuteRequestBase;
   }): Promise<AIExecutionResult<TOutput> | AIToolRoundResult> {
     const policy = getTaskPolicy(params.request.task);
+
     return logger.withContext(
       {
         jobId: params.request.attribution?.jobId,
         requestId: params.request.attribution?.requestId,
-        runId: resolveRunId(params.request.attribution),
+        runId: resolveAIExecutionRunId(params.request.attribution),
         stepId: params.request.attribution?.stepId,
         userId: params.request.attribution?.userId,
         workspaceId: params.request.attribution?.workspaceId,
@@ -614,11 +262,12 @@ export class OpenAIExecutionService {
 
         while (true) {
           const executionMode: ExecutionMode = state.wasEscalated ? 'escalated' : 'default';
-          const estimatedCostUsd = await this.ensureBudgetAllowed(
-            params.request,
+          const estimatedCostUsd = await ensureOpenAIExecutionBudgetAllowed({
+            getDailyBudgetState: this.getDailyBudgetState,
+            inputValue: params.inputValue,
+            request: params.request,
             state,
-            params.inputValue,
-          );
+          });
           const startedAt = Date.now();
 
           try {
@@ -627,7 +276,7 @@ export class OpenAIExecutionService {
             const usage = attempt.response.usage;
             state.accumulatedCostUsd += attempt.actualCostUsd;
 
-            await this.persistAuditRecord({
+            await persistAIExecutionAuditRecord({
               request: params.request,
               inputValue: params.inputValue,
               schemaName: params.auditSchemaName,
@@ -643,7 +292,7 @@ export class OpenAIExecutionService {
               outputText: attempt.response.output_text,
             });
 
-            this.logAttempt({
+            logAIExecutionAttempt({
               task: params.request.task,
               model: state.model,
               executionMode,
@@ -657,7 +306,7 @@ export class OpenAIExecutionService {
               attribution: params.request.attribution,
             });
 
-            incrementCounter(params.request.task, state.model, executionMode);
+            incrementAIExecutionCounter(params.request.task, state.model, executionMode);
 
             if (
               typeof attempt.output === 'object' &&
@@ -682,10 +331,10 @@ export class OpenAIExecutionService {
             const latencyMs = Date.now() - startedAt;
             const validationFailure = error instanceof AIValidationError ? error.failure : undefined;
             const retryableFailure =
-              validationFailure?.retryable === true || isTransientApiError(error);
+              validationFailure?.retryable === true || isTransientOpenAIError(error);
             const canRetry = retryableFailure && state.retryCount < policy.retryCount;
 
-            await this.persistAuditRecord({
+            await persistAIExecutionAuditRecord({
               request: params.request,
               inputValue: params.inputValue,
               schemaName: params.auditSchemaName,
@@ -699,7 +348,7 @@ export class OpenAIExecutionService {
               error,
             });
 
-            this.logFailure({
+            logAIExecutionFailure({
               task: params.request.task,
               model: state.model,
               executionMode,
@@ -727,6 +376,7 @@ export class OpenAIExecutionService {
               )
             ) {
               const escalationModel = getTaskPolicy(params.request.task).allowedEscalationModel;
+
               if (!escalationModel) {
                 throw error;
               }
@@ -747,136 +397,13 @@ export class OpenAIExecutionService {
       },
     );
   }
-
-  private async persistAuditRecord(params: {
-    error?: unknown;
-    inputValue: string | EasyInputMessage[] | AIFunctionToolOutputInput[];
-    outputText?: string;
-    request: ExecuteRequestBase;
-    schemaName: string;
-    state: AttemptState;
-    status: 'ok' | 'error';
-    telemetry: AttemptTelemetry;
-  }): Promise<void> {
-    const usage = params.telemetry.usage;
-
-    try {
-      await createLlmCall({
-        runId: resolveRunId(params.request.attribution),
-        stepId: params.request.attribution?.stepId ?? null,
-        provider: 'openai',
-        purpose: params.request.task,
-        schemaName: params.schemaName,
-        privacyMode: 'redact_basic',
-        inputHash: buildAuditInputHash({
-          prompt: params.request.prompt,
-          inputValue: params.inputValue,
-        }),
-        outputHash: params.outputText ? sha256(params.outputText) : null,
-        inputTokens: usage?.input_tokens ?? null,
-        outputTokens: usage?.output_tokens ?? null,
-        costUsd: params.telemetry.actualCostUsd ?? null,
-        status: params.status,
-        error: params.error
-          ? {
-              message: errorMessage(params.error),
-              name: params.error instanceof Error ? params.error.name : 'UnknownError',
-              retryCount: params.state.retryCount,
-            }
-          : null,
-      });
-    } catch (error) {
-      logger.error('ai.audit.write_failed', {
-        taskType: params.request.task,
-        schemaName: params.schemaName,
-        errorMessage: errorMessage(error),
-        runId: resolveRunId(params.request.attribution),
-      });
-      await reportTelemetryError({
-        timestamp: new Date().toISOString(),
-        source: 'openai-execution-service',
-        event: 'ai.audit.write_failed',
-        taskType: params.request.task,
-        schemaName: params.schemaName,
-        errorMessage: errorMessage(error),
-        runId: resolveRunId(params.request.attribution),
-      });
-    }
-  }
-
-  private logAttempt(params: {
-    actualCostUsd: number;
-    attribution?: AIExecutionAttribution;
-    escalationReason?: string;
-    estimatedCostUsd: number;
-    executionMode: ExecutionMode;
-    latencyMs: number;
-    model: AIModelName;
-    responseId?: string;
-    retryCount: number;
-    task: AITaskType;
-    usage?: ResponseUsage;
-  }): void {
-    logger.info('ai.execution.completed', {
-      taskType: params.task,
-      selectedModel: params.model,
-      modelTier: getModelTier(params.model),
-      executionMode: params.executionMode,
-      escalationReason: params.escalationReason,
-      retryCount: params.retryCount,
-      latencyMs: params.latencyMs,
-      inputTokens: params.usage?.input_tokens ?? 0,
-      outputTokens: params.usage?.output_tokens ?? 0,
-      cachedInputTokens: params.usage?.input_tokens_details.cached_tokens ?? 0,
-      reasoningTokens: params.usage?.output_tokens_details.reasoning_tokens ?? 0,
-      estimatedCostUsd: params.estimatedCostUsd,
-      actualCostUsd: params.actualCostUsd,
-      responseId: params.responseId,
-      requestId: params.attribution?.requestId,
-      jobId: params.attribution?.jobId,
-      runId: resolveRunId(params.attribution),
-      stepId: params.attribution?.stepId,
-      userId: params.attribution?.userId,
-      workspaceId: params.attribution?.workspaceId,
-    });
-  }
-
-  private logFailure(params: {
-    attribution?: AIExecutionAttribution;
-    error: unknown;
-    escalationReason?: string;
-    estimatedCostUsd: number;
-    executionMode: ExecutionMode;
-    latencyMs: number;
-    model: AIModelName;
-    retryCount: number;
-    task: AITaskType;
-  }): void {
-    logger.warn('ai.execution.failed', {
-      taskType: params.task,
-      selectedModel: params.model,
-      modelTier: getModelTier(params.model),
-      executionMode: params.executionMode,
-      escalationReason: params.escalationReason,
-      retryCount: params.retryCount,
-      latencyMs: params.latencyMs,
-      estimatedCostUsd: params.estimatedCostUsd,
-      errorMessage: errorMessage(params.error),
-      errorName: params.error instanceof Error ? params.error.name : 'UnknownError',
-      requestId: params.attribution?.requestId,
-      jobId: params.attribution?.jobId,
-      runId: resolveRunId(params.attribution),
-      stepId: params.attribution?.stepId,
-      userId: params.attribution?.userId,
-      workspaceId: params.attribution?.workspaceId,
-    });
-  }
 }
 
 export const openAIExecutionService = new OpenAIExecutionService();
 
 export function assertPremiumAllowed(task: AITaskType, model: AIModelName): void {
   const policy = getTaskPolicy(task);
+
   if (!isPremiumModel(model)) {
     return;
   }
