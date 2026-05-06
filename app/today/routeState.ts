@@ -1,6 +1,6 @@
-import type { DrawerKey, WorkbenchTopic } from './types';
+import type { DrawerKey, QueueFilter, WorkbenchTopic } from './types';
 
-export type QueueFilter = 'pending' | 'saved';
+export type { QueueFilter } from './types';
 
 export function getTopicForSelection(
   topics: WorkbenchTopic[],
