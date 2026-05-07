@@ -4,10 +4,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { chatAction } from '../../actions/chatAction';
-import { generateSuggestedPrompts } from '../../actions/suggestedPromptsAction';
-import { getSessionAction } from '../../actions/chatHistoryActions';
+import {
+  createAssistantMessage,
+  createChatMessageId,
+  createFailedAssistantMessage,
+  createUserMessage,
+  findFailedRetryMatch,
+  removeWelcomeMessage,
+} from '../chatSessionMessages';
 import { WELCOME_MESSAGE } from '../types';
 import type { Message } from '../types';
+import { resetTextareaHeight, useAutosizedTextarea } from './useAutosizedTextarea';
+import { useChatSessionLoader } from './useChatSessionLoader';
+import { useChatSuggestions } from './useChatSuggestions';
 
 type SubmitOptions = {
   failedMessageId?: string;
@@ -31,14 +40,6 @@ type UseChatSessionResult = {
   handleNewChat: () => void;
 };
 
-function createMessageId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  return Date.now().toString();
-}
-
 export function useChatSession(): UseChatSessionResult {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -49,77 +50,27 @@ export function useChatSession(): UseChatSessionResult {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [isLoadingSession, setIsLoadingSession] = useState(false);
-  const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleMissingSession = useCallback(() => {
+    router.replace('/chat');
+  }, [router]);
+
+  const isLoadingSession = useChatSessionLoader({
+    sessionIdFromUrl,
+    setSessionId,
+    setMessages,
+    onMissingSession: handleMissingSession,
+  });
+  const { isRefreshingSuggestions, refreshSuggestions } = useChatSuggestions({
+    shouldLoadInitialSuggestions: !sessionIdFromUrl,
+    setMessages,
+  });
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
-
-  useEffect(() => {
-    const loadSession = async () => {
-      if (!sessionIdFromUrl) {
-        setSessionId(null);
-        setMessages([WELCOME_MESSAGE]);
-        return;
-      }
-
-      setIsLoadingSession(true);
-      try {
-        const data = await getSessionAction(sessionIdFromUrl);
-        if (data && data.messages.length > 0) {
-          setSessionId(sessionIdFromUrl);
-          const loadedMessages: Message[] = data.messages.map((m, idx) => ({
-            id: `loaded-${idx}`,
-            role: m.role,
-            content: m.content,
-            timestamp: new Date(),
-          }));
-          setMessages(loadedMessages);
-        } else {
-          setSessionId(null);
-          setMessages([WELCOME_MESSAGE]);
-          router.replace('/chat');
-        }
-      } catch (error) {
-        console.error('Failed to load session:', error);
-        setSessionId(null);
-        setMessages([WELCOME_MESSAGE]);
-      } finally {
-        setIsLoadingSession(false);
-      }
-    };
-
-    loadSession();
-  }, [sessionIdFromUrl, router]);
-
-  useEffect(() => {
-    if (sessionIdFromUrl) {
-      return;
-    }
-
-    const loadSuggestions = async () => {
-      try {
-        const suggestions = await generateSuggestedPrompts();
-        if (suggestions && suggestions.length > 0) {
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.role === 'assistant' && msg.id === 'welcome') {
-                return { ...msg, suggestedReplies: suggestions };
-              }
-              return msg;
-            }),
-          );
-        }
-      } catch (error) {
-        console.error('Failed to load dynamic suggestions:', error);
-      }
-    };
-
-    loadSuggestions();
-  }, [sessionIdFromUrl]);
 
   const handleNewChat = useCallback(() => {
     setSessionId(null);
@@ -127,38 +78,11 @@ export function useChatSession(): UseChatSessionResult {
     router.push('/chat');
   }, [router]);
 
-  const refreshSuggestions = useCallback(async () => {
-    setIsRefreshingSuggestions(true);
-    try {
-      const suggestions = await generateSuggestedPrompts();
-      if (suggestions && suggestions.length > 0) {
-        setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.role === 'assistant' && msg.suggestedReplies) {
-              return { ...msg, suggestedReplies: suggestions };
-            }
-            return msg;
-          }),
-        );
-      }
-    } catch (error) {
-      console.error('Failed to refresh suggestions:', error);
-    } finally {
-      setIsRefreshingSuggestions(false);
-    }
-  }, []);
-
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping, scrollToBottom]);
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      const newHeight = Math.min(textareaRef.current.scrollHeight, 200);
-      textareaRef.current.style.height = `${newHeight}px`;
-    }
-  }, [message]);
+  useAutosizedTextarea(textareaRef, message);
 
   const handleSubmit = useCallback(
     async (e?: FormEvent, overrideMessage?: string, options?: SubmitOptions) => {
@@ -174,27 +98,11 @@ export function useChatSession(): UseChatSessionResult {
       let userMessageId: string | null = null;
 
       if (options?.failedMessageId) {
-        const failedIndex = messages.findIndex(
-          (msg) => msg.id === options.failedMessageId && msg.status === 'failed',
-        );
-
-        if (failedIndex >= 0) {
-          const failedMessage = messages[failedIndex];
-          const userMessageById =
-            failedMessage.failedUserMessageId != null
-              ? messages.find(
-                (msg) => msg.id === failedMessage.failedUserMessageId && msg.role === 'user',
-              )
-              : null;
-          const userMessageBeforeFailure =
-            failedIndex > 0 && messages[failedIndex - 1]?.role === 'user'
-              ? messages[failedIndex - 1]
-              : null;
-          const associatedUserMessage = userMessageById ?? userMessageBeforeFailure;
-
-          if (associatedUserMessage && associatedUserMessage.content === normalizedMessage) {
+        const retryMatch = findFailedRetryMatch(messages, options.failedMessageId, normalizedMessage);
+        if (retryMatch.foundFailedMessage) {
+          if (retryMatch.reusableUserMessageId) {
             shouldAppendUserMessage = false;
-            userMessageId = associatedUserMessage.id;
+            userMessageId = retryMatch.reusableUserMessageId;
           }
 
           setMessages((prev) => prev.filter((msg) => msg.id !== options.failedMessageId));
@@ -202,29 +110,21 @@ export function useChatSession(): UseChatSessionResult {
       }
 
       if (shouldAppendUserMessage) {
-        userMessageId = createMessageId();
-        const userMessage: Message = {
-          id: userMessageId,
-          role: 'user',
-          content: normalizedMessage,
-          timestamp: new Date(),
-        };
+        userMessageId = createChatMessageId();
+        const userMessage = createUserMessage(normalizedMessage, userMessageId);
 
         setMessages((prev) => {
-          const filtered = prev.filter((m) => m.id !== 'welcome');
-          return [...filtered, userMessage];
+          return [...removeWelcomeMessage(prev), userMessage];
         });
       } else if (!userMessageId) {
-        userMessageId = createMessageId();
+        userMessageId = createChatMessageId();
       }
 
       setMessage('');
       setIsLoading(true);
       setIsTyping(true);
 
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
+      resetTextareaHeight(textareaRef);
 
       try {
         const response = await chatAction({
@@ -239,29 +139,19 @@ export function useChatSession(): UseChatSessionResult {
           router.push(`/chat?session=${response.sessionId}`, { scroll: false });
         }
 
-        const assistantMessage: Message = {
-          id: createMessageId(),
-          role: 'assistant',
-          content: response.content,
-          suggestedReplies: response.suggestedReplies,
-          timestamp: new Date(),
-        };
+        const assistantMessage = createAssistantMessage(
+          response.content,
+          response.suggestedReplies,
+        );
         setMessages((prev) => [...prev, assistantMessage]);
       } catch (error) {
         console.error('Chat error:', error);
         setIsTyping(false);
 
-        const errorMessage: Message = {
-          id: createMessageId(),
-          role: 'assistant',
-          content: 'Sorry, I encountered an error processing your request. Please try again.',
-          status: 'failed',
-          failedRequestContent: normalizedMessage,
-          failedUserMessageId: userMessageId,
-          timestamp: new Date(),
-        };
-
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages((prev) => [
+          ...prev,
+          createFailedAssistantMessage(normalizedMessage, userMessageId),
+        ]);
       } finally {
         setIsLoading(false);
         setIsTyping(false);

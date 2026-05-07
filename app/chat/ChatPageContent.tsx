@@ -1,40 +1,23 @@
 'use client';
 
-import { useCallback, useMemo, useState, type MouseEvent } from 'react';
-import { saveToLibraryAction } from '../actions/saveToLibraryAction';
+import { useCallback, useState } from 'react';
 import { ContextMenu } from '../components/ContextMenu';
 import { SaveToLibraryModal } from '../components/SaveToLibraryModal';
-import { toast, ToastContainer } from '../components/Toast';
-import {
-  formatOutlineLabel,
-  formatTimelineMeta,
-  getLastUserPrompt,
-  type TimelineLink,
-} from './chatPresentation';
+import { ToastContainer } from '../components/Toast';
 import { ChatBackdrop } from './components/ChatBackdrop';
 import { ChatComposer } from './components/ChatComposer';
+import { ChatConversationViewport } from './components/ChatConversationViewport';
 import { ChatDesktopRails } from './components/ChatDesktopRails';
 import { ChatDrawers } from './components/ChatDrawers';
 import { ChatHeader } from './components/ChatHeader';
-import { ChatMessageList } from './components/ChatMessageList';
+import { useChatPageState } from './hooks/useChatPageState';
+import { useChatSaveToLibrary } from './hooks/useChatSaveToLibrary';
 import { useChatSession } from './hooks/useChatSession';
 import { usePromptTimelineNavigation } from './hooks/usePromptTimelineNavigation';
-import { WELCOME_MESSAGE, type Message } from './types';
-
-type ContextMenuState = {
-  x: number;
-  y: number;
-  text: string;
-  messageId: string;
-};
 
 export function ChatPageContent() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [isOutlineDrawerOpen, setIsOutlineDrawerOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [textToSave, setTextToSave] = useState('');
-  const [defaultTitle, setDefaultTitle] = useState('');
 
   const {
     sessionId,
@@ -53,15 +36,17 @@ export function ChatPageContent() {
     refreshSuggestions,
     handleNewChat,
   } = useChatSession();
-
-  const visibleMessages = useMemo(
-    () => messages.filter((msg) => msg.id !== WELCOME_MESSAGE.id),
-    [messages],
-  );
-  const userMessages = useMemo(
-    () => visibleMessages.filter((msg) => msg.role === 'user'),
-    [visibleMessages],
-  );
+  const {
+    visibleMessages,
+    userMessages,
+    messageOutlineLinks,
+    showIntroState,
+    composerSuggestions,
+  } = useChatPageState({
+    messages,
+    sessionId,
+    isLoadingSession,
+  });
   const {
     highlightedMessageId,
     messageScrollContainerRef,
@@ -69,107 +54,18 @@ export function ChatPageContent() {
     jumpToMessage,
     resetTimelineState,
   } = usePromptTimelineNavigation(userMessages);
-  const starterSuggestions = useMemo(() => {
-    const welcomeMessage = messages.find((msg) => msg.id === WELCOME_MESSAGE.id);
-    return welcomeMessage?.suggestedReplies ?? [];
-  }, [messages]);
-  const messageOutlineLinks = useMemo<TimelineLink[]>(
-    () =>
-      userMessages.map((msg, index) => ({
-        id: msg.id,
-        label: formatOutlineLabel(msg.content, index + 1),
-        meta: formatTimelineMeta(msg.timestamp, index),
-      })),
-    [userMessages],
-  );
-  const showIntroState =
-    !isLoadingSession && !sessionId && messages.length === 1 && messages[0]?.id === WELCOME_MESSAGE.id;
-  const composerSuggestions = useMemo(() => {
-    if (showIntroState) {
-      return starterSuggestions;
-    }
-
-    const latestReplySet = [...visibleMessages]
-      .reverse()
-      .find((msg) => msg.role === 'assistant' && (msg.suggestedReplies?.length ?? 0) > 0);
-
-    return latestReplySet?.suggestedReplies ?? [];
-  }, [showIntroState, starterSuggestions, visibleMessages]);
-
-  const handleContextMenu = useCallback((event: MouseEvent, msg: Message) => {
-    event.preventDefault();
-
-    if (msg.role !== 'assistant') {
-      return;
-    }
-
-    const selectedText = window.getSelection()?.toString().trim();
-    const textSelection = selectedText || msg.content;
-
-    if (!textSelection) {
-      return;
-    }
-
-    setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
-      text: textSelection,
-      messageId: msg.id,
-    });
-  }, []);
-
-  const openSaveModal = useCallback(
-    (messageId: string, explicitText?: string) => {
-      const assistantMessage = messages.find(
-        (msg) => msg.id === messageId && msg.role === 'assistant',
-      );
-      const contentToSave = explicitText?.trim() || assistantMessage?.content.trim();
-
-      if (!contentToSave) {
-        toast.error('No content to save');
-        return;
-      }
-
-      setTextToSave(contentToSave);
-      setDefaultTitle(getLastUserPrompt(messages, messageId) || 'Saved from chat');
-      setShowSaveModal(true);
-      setContextMenu(null);
-    },
-    [messages],
-  );
-
-  const handleSaveToLibrary = useCallback(() => {
-    if (!contextMenu) {
-      return;
-    }
-
-    openSaveModal(contextMenu.messageId, contextMenu.text);
-  }, [contextMenu, openSaveModal]);
-
-  const handleSaveWithTitle = useCallback(async (title: string, content: string) => {
-    if (!content || !content.trim()) {
-      toast.error('No content to save');
-      return;
-    }
-
-    try {
-      const result = await saveToLibraryAction(content, title);
-
-      if (result.success) {
-        toast.success(
-          result.created
-            ? `Saved "${title}" to library`
-            : `"${title}" already exists in library`,
-        );
-      } else {
-        toast.error(result.error || 'Failed to save to library');
-        console.error('Failed to save:', result.error);
-      }
-    } catch (error) {
-      toast.error('Error saving to library');
-      console.error('Error saving to library:', error);
-    }
-  }, []);
+  const {
+    contextMenu,
+    showSaveModal,
+    textToSave,
+    defaultTitle,
+    closeContextMenu,
+    closeSaveModal,
+    handleContextMenu,
+    openSaveModal,
+    handleSaveToLibrary,
+    handleSaveWithTitle,
+  } = useChatSaveToLibrary(messages);
 
   const handleNewChatClick = useCallback(() => {
     resetTimelineState();
@@ -221,25 +117,19 @@ export function ChatPageContent() {
         onJumpToMessage={jumpToMessage}
       />
 
-      <div
-        ref={messageScrollContainerRef}
-        className="relative h-screen overflow-y-auto pt-16 lg:pl-[18.75rem] xl:pr-[20rem]"
-      >
-        <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-[1020px] flex-col px-4 pb-[14rem] pt-5 sm:px-6 lg:px-8">
-          <ChatMessageList
-            visibleMessages={visibleMessages}
-            isLoadingSession={isLoadingSession}
-            showIntroState={showIntroState}
-            isTyping={isTyping}
-            isLoading={isLoading}
-            userMessageRefs={userMessageRefs}
-            messagesEndRef={messagesEndRef}
-            onContextMenu={handleContextMenu}
-            onSaveMessage={openSaveModal}
-            onRetryFailedMessage={retryMessage}
-          />
-        </div>
-      </div>
+      <ChatConversationViewport
+        visibleMessages={visibleMessages}
+        isLoadingSession={isLoadingSession}
+        showIntroState={showIntroState}
+        isTyping={isTyping}
+        isLoading={isLoading}
+        messageScrollContainerRef={messageScrollContainerRef}
+        userMessageRefs={userMessageRefs}
+        messagesEndRef={messagesEndRef}
+        onContextMenu={handleContextMenu}
+        onSaveMessage={openSaveModal}
+        onRetryFailedMessage={retryMessage}
+      />
 
       <ChatComposer
         suggestions={composerSuggestions}
@@ -258,14 +148,14 @@ export function ChatPageContent() {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
           onSaveToLibrary={handleSaveToLibrary}
         />
       ) : null}
 
       <SaveToLibraryModal
         isOpen={showSaveModal}
-        onClose={() => setShowSaveModal(false)}
+        onClose={closeSaveModal}
         onSave={handleSaveWithTitle}
         defaultText={textToSave}
         defaultTitle={defaultTitle}
