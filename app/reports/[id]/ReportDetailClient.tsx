@@ -6,14 +6,18 @@ import Link from 'next/link';
 import type { ReportCitation } from '../reportsViewModel';
 import { formatDisplayDate, trimIdentifier } from '../reportsViewModel';
 import {
+  ResultsContainer,
+  ResultsRouteShell,
+  ResultsStickyToolbar,
+} from '../ResultsRouteShell';
+import {
   ResultsActionButton,
   ResultsActionLink,
-  ResultsContainer,
+} from '../resultsActions';
+import {
   ResultsMetadataRow,
   ResultsPill,
-  ResultsRouteShell,
   ResultsSidePanel,
-  ResultsStickyToolbar,
   ResultsTopicChip,
 } from '../resultsUi';
 
