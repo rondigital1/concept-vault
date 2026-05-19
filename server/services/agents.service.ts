@@ -39,7 +39,7 @@ type StepRow = {
   id: string;
   run_id: string;
   step_name: string;
-  status: 'running' | 'ok' | 'error' | 'skipped';
+  status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
   started_at: string;
   ended_at: string | null;
   output: Record<string, unknown> | null;

@@ -6,7 +6,7 @@ export interface RunStep {
   timestamp: string;
   type: 'agent' | 'tool' | 'llm' | 'flow';
   name: string;
-  status: 'running' | 'ok' | 'error' | 'skipped';
+  status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
   duration?: number;
   input?: unknown;
   output?: unknown;

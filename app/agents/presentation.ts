@@ -28,7 +28,7 @@ export function resolveAgentStateStatus(
 
 export function resolveStageProgressStatus(
   status: RecentRunSummary['stageProgress'][number]['status'],
-): 'running' | 'error' | 'pending' | 'ok' {
+): 'running' | 'error' | 'partial' | 'pending' | 'ok' {
   if (status === 'done') {
     return 'ok';
   }

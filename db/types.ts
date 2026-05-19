@@ -106,7 +106,7 @@ export interface SchemaMigration {
 /**
  * Run step record from database (append-only timeline)
  */
-export type RunStepStatus = 'running' | 'ok' | 'error' | 'skipped';
+export type RunStepStatus = 'running' | 'ok' | 'error' | 'partial' | 'skipped';
 
 export interface RunStep {
   id: string;

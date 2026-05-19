@@ -47,6 +47,19 @@ function shouldProcessNextDocument(state: DistillerStateType): string {
   return END;
 }
 
+function resolveCompletionStatus(result: DistillerStateType): RunStep['status'] {
+  if (result.errors.length === 0) {
+    return 'ok';
+  }
+
+  const hasPartialOutput =
+    result.counts.conceptsProposed > 0 ||
+    result.counts.flashcardsProposed > 0 ||
+    result.artifactIds.length > 0;
+
+  return hasPartialOutput ? 'partial' : 'error';
+}
+
 // ---------- Graph ----------
 
 function createDistillerGraph() {
@@ -119,10 +132,12 @@ export async function distillerGraph(
       allFlashcards: [],
       artifactIds: [],
       counts: { docsProcessed: 0, conceptsProposed: 0, flashcardsProposed: 0 },
-      error: null,
+      errors: [],
     },
     { callbacks }
   );
+
+  const completionStatus = resolveCompletionStatus(result);
 
   // Emit completion step
   if (onStep) {
@@ -130,9 +145,16 @@ export async function distillerGraph(
       timestamp: new Date().toISOString(),
       type: 'agent',
       name: 'distiller_complete',
-      status: 'ok',
+      status: completionStatus,
       endedAt: new Date().toISOString(),
-      output: result.counts,
+      output: {
+        counts: result.counts,
+        errors: result.errors,
+      },
+      error:
+        completionStatus === 'error'
+          ? { message: result.errors.map((entry) => entry.message).join('; ') }
+          : undefined,
     });
   }
 
@@ -140,5 +162,6 @@ export async function distillerGraph(
     runId,
     artifactIds: result.artifactIds,
     counts: result.counts,
+    errors: result.errors,
   };
 }

@@ -326,6 +326,131 @@ describe('Distiller Agent', () => {
     });
   });
 
+  describe('error reporting', () => {
+    it('records structured extraction errors and emits an error completion when no output is produced', async () => {
+      const docId = await insertTestDocument({
+        title: 'Broken extraction document',
+        content: SAMPLE_DOCUMENTS.spacedRepetition.content,
+      });
+      mockExecuteStructured.mockImplementation(async ({ task }: { task: string }) => {
+        if (task === AI_TASKS.distillDocument) {
+          throw new Error('Concept extraction failed');
+        }
+
+        return {
+          output: MOCK_LLM_RESPONSES.flashcardGeneration,
+        };
+      });
+      const observedSteps: Array<{ name: string; status: string; output?: unknown; error?: unknown }> = [];
+
+      const { distillerGraph } = await import('@/server/agents/distiller.graph');
+
+      const result = await distillerGraph(
+        {
+          workspaceId: scope.workspaceId,
+          day: TEST_DAY,
+          documentIds: [docId],
+          limit: 1,
+        },
+        (step) => {
+          observedSteps.push({
+            name: step.name,
+            status: step.status,
+            output: step.output,
+            error: step.error,
+          });
+        },
+      );
+
+      expect(result.errors).toEqual([
+        {
+          stage: 'extractConcepts',
+          documentId: docId,
+          message: 'Concept extraction failed',
+        },
+      ]);
+      expect(result.counts.conceptsProposed).toBe(0);
+      expect(result.counts.flashcardsProposed).toBe(0);
+      expect(observedSteps.find((step) => step.name === 'distiller_complete')?.status).toBe('error');
+    });
+
+    it('continues after flashcard generation errors and emits a partial completion', async () => {
+      const docId = await insertTestDocument({
+        title: 'Partial distillation document',
+        content: SAMPLE_DOCUMENTS.spacedRepetition.content,
+      });
+      mockExecuteStructured.mockImplementation(async ({ task }: { task: string }) => {
+        if (task === AI_TASKS.distillDocument) {
+          return {
+            output: MOCK_LLM_RESPONSES.conceptExtraction,
+          };
+        }
+
+        if (task === AI_TASKS.generateFlashcards) {
+          throw new Error('Flashcard generation failed');
+        }
+
+        throw new Error(`Unexpected task ${task}`);
+      });
+      const observedSteps: Array<{ name: string; status: string }> = [];
+
+      const { distillerGraph } = await import('@/server/agents/distiller.graph');
+
+      const result = await distillerGraph(
+        {
+          workspaceId: scope.workspaceId,
+          day: TEST_DAY,
+          documentIds: [docId],
+          limit: 1,
+        },
+        (step) => {
+          observedSteps.push({ name: step.name, status: step.status });
+        },
+      );
+
+      expect(result.errors).toEqual([
+        {
+          stage: 'generateFlashcards',
+          documentId: docId,
+          message: 'Flashcard generation failed',
+        },
+      ]);
+      expect(result.counts.conceptsProposed).toBeGreaterThan(0);
+      expect(result.counts.flashcardsProposed).toBe(0);
+      expect(observedSteps.find((step) => step.name === 'distiller_complete')?.status).toBe('partial');
+    });
+
+    it('records concept and flashcard save failures with document-scoped errors', async () => {
+      const docId = await insertTestDocument({
+        title: 'Persistence failure document',
+        content: SAMPLE_DOCUMENTS.spacedRepetition.content,
+      });
+
+      const { distillerGraph } = await import('@/server/agents/distiller.graph');
+
+      const result = await distillerGraph({
+        workspaceId: scope.workspaceId,
+        day: TEST_DAY,
+        documentIds: [docId],
+        limit: 1,
+      }, undefined, 'not-a-valid-run-id');
+
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stage: 'saveConcepts',
+            documentId: docId,
+          }),
+          expect.objectContaining({
+            stage: 'saveFlashcards',
+            documentId: docId,
+          }),
+        ]),
+      );
+      expect(result.errors.every((error) => typeof error.message === 'string' && error.message.length > 0)).toBe(true);
+    });
+  });
+
   describe('empty vault handling', () => {
     it('should handle empty vault gracefully', async () => {
       // No documents in vault

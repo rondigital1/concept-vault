@@ -22,6 +22,19 @@ export interface DistillerOutput {
     conceptsProposed: number;
     flashcardsProposed: number;
   };
+  errors: DistillerError[];
+}
+
+export type DistillerErrorStage =
+  | 'extractConcepts'
+  | 'saveConcepts'
+  | 'generateFlashcards'
+  | 'saveFlashcards';
+
+export interface DistillerError {
+  stage: DistillerErrorStage;
+  documentId: string;
+  message: string;
 }
 
 export interface ExtractedConcept {
@@ -66,7 +79,7 @@ export const DistillerState = Annotation.Root({
     conceptsProposed: number;
     flashcardsProposed: number;
   }>,
-  error: Annotation<string | null>,
+  errors: Annotation<DistillerError[]>,
 });
 
 export type DistillerStateType = typeof DistillerState.State;

@@ -12,7 +12,7 @@ export type Run = {
   };
   steps?: Array<{
     name: string;
-    status: 'running' | 'ok' | 'error' | 'skipped';
+    status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
     startedAt?: string;
     endedAt?: string;
     error?: string;
@@ -140,7 +140,7 @@ export type StageId =
 export type StageProgress = {
   id: StageId;
   label: string;
-  status: 'pending' | 'running' | 'done' | 'error';
+  status: 'pending' | 'running' | 'done' | 'partial' | 'error';
 };
 
 export type RunTracePayload = {
@@ -151,7 +151,7 @@ export type RunTracePayload = {
   completedAt?: string;
   steps: Array<{
     name: string;
-    status: 'running' | 'ok' | 'error' | 'skipped';
+    status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
     startedAt?: string;
     endedAt?: string;
     error?: unknown;

@@ -28,7 +28,7 @@ export type TodayView = {
 
 export type ResearchStep = {
   name: string;
-  status: 'running' | 'ok' | 'error' | 'skipped';
+  status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
   startedAt?: string;
   endedAt?: string;
   error?: string;
@@ -814,7 +814,7 @@ export async function getResearchView(scope: WorkspaceScope): Promise<ResearchVi
         Array<{
           run_id: string;
           step_name: string;
-          status: 'running' | 'ok' | 'error' | 'skipped';
+          status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
           started_at: string;
           ended_at: string | null;
           error: unknown;

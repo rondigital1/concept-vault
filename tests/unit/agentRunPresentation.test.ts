@@ -18,13 +18,13 @@ describe('agent run presentation helpers', () => {
       { name: 'pipeline_resolve_targets', status: 'ok' },
       { name: 'pipeline_curate', status: 'ok' },
       { name: 'pipeline_webscout', status: 'running' },
-      { name: 'pipeline_distill', status: 'error' },
+      { name: 'pipeline_distill', status: 'partial' },
     ]);
 
     expect(stages.find((stage) => stage.id === 'resolve_targets')?.status).toBe('done');
     expect(stages.find((stage) => stage.id === 'curate')?.status).toBe('done');
     expect(stages.find((stage) => stage.id === 'webscout')?.status).toBe('running');
-    expect(stages.find((stage) => stage.id === 'distill')?.status).toBe('error');
+    expect(stages.find((stage) => stage.id === 'distill')?.status).toBe('partial');
     expect(stages.find((stage) => stage.id === 'synthesize')?.status).toBe('pending');
   });
 });

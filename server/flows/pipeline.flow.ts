@@ -490,10 +490,21 @@ export async function pipelineFlow(
         artifacts.conceptIds = splitArtifacts.conceptIds;
         artifacts.flashcardIds = splitArtifacts.flashcardIds;
 
+        for (const distillerError of distillResult.errors) {
+          errors.push({
+            stage: 'distill',
+            documentId: distillerError.documentId,
+            message: `${distillerError.stage}: ${distillerError.message}`,
+          });
+        }
+
         await appendPipelineFlowStep(runId, {
           name: 'pipeline_distill',
-          status: 'ok',
-          output: distillResult.counts,
+          status: distillResult.errors.length > 0 ? 'partial' : 'ok',
+          output: {
+            counts: distillResult.counts,
+            errors: distillResult.errors,
+          },
         });
       } catch (error) {
         errors.push({

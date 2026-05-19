@@ -59,7 +59,7 @@ export type RunStageDetail = {
   id: string;
   label: string;
   agentKey: AgentKey | null;
-  status: 'running' | 'ok' | 'error' | 'skipped';
+  status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
   startedAt: string | null;
   endedAt: string | null;
   durationMs: number | null;

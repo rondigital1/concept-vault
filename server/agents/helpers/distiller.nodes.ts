@@ -20,8 +20,18 @@ import {
 } from '@/server/repos/distiller.repo';
 import {
   ExtractedConcept,
+  DistillerError,
+  DistillerErrorStage,
   DistillerStateType,
 } from './distiller.types';
+
+function toDistillerError(stage: DistillerErrorStage, documentId: string, error: unknown): DistillerError {
+  return {
+    stage,
+    documentId,
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
 
 export async function fetchDocuments(state: DistillerStateType): Promise<Partial<DistillerStateType>> {
   const limit = state.limit ?? 5;
@@ -43,6 +53,7 @@ export async function fetchDocuments(state: DistillerStateType): Promise<Partial
     allFlashcards: [],
     artifactIds: [],
     counts: { docsProcessed: 0, conceptsProposed: 0, flashcardsProposed: 0 },
+    errors: [],
   };
 }
 
@@ -109,11 +120,15 @@ export async function extractConcepts(state: DistillerStateType): Promise<Partia
         { doc, concepts, conceptIdMap: new Map() },
       ],
     };
-  } catch {
+  } catch (error) {
     return {
       processedDocs: [
         ...state.processedDocs,
         { doc, concepts: [], conceptIdMap: new Map() },
+      ],
+      errors: [
+        ...state.errors,
+        toDistillerError('extractConcepts', doc.id, error),
       ],
     };
   }
@@ -128,6 +143,7 @@ export async function saveConcepts(state: DistillerStateType): Promise<Partial<D
   const { doc, concepts } = currentProcessed;
   const conceptIdMap = new Map<string, string>();
   const newArtifactIds: string[] = [];
+  const newErrors: DistillerError[] = [];
   let conceptsProposed = 0;
 
   for (const concept of concepts) {
@@ -140,7 +156,6 @@ export async function saveConcepts(state: DistillerStateType): Promise<Partial<D
       };
       const conceptId = await insertConcept({ workspaceId: state.workspaceId }, doc.id, conceptInput);
       conceptIdMap.set(concept.label, conceptId);
-      conceptsProposed++;
 
       const artifactId = await insertArtifact({
         workspaceId: state.workspaceId,
@@ -158,8 +173,9 @@ export async function saveConcepts(state: DistillerStateType): Promise<Partial<D
         sourceRefs: { documentId: doc.id, conceptId },
       });
       newArtifactIds.push(artifactId);
-    } catch {
-      // Continue on error
+      conceptsProposed++;
+    } catch (error) {
+      newErrors.push(toDistillerError('saveConcepts', doc.id, error));
     }
   }
 
@@ -177,6 +193,7 @@ export async function saveConcepts(state: DistillerStateType): Promise<Partial<D
       ...state.counts,
       conceptsProposed: state.counts.conceptsProposed + conceptsProposed,
     },
+    errors: [...state.errors, ...newErrors],
   };
 }
 
@@ -245,8 +262,13 @@ export async function generateFlashcards(state: DistillerStateType): Promise<Par
     return {
       allFlashcards: [...state.allFlashcards, ...flashcards],
     };
-  } catch {
-    return {};
+  } catch (error) {
+    return {
+      errors: [
+        ...state.errors,
+        toDistillerError('generateFlashcards', doc.id, error),
+      ],
+    };
   }
 }
 
@@ -260,6 +282,7 @@ export async function saveFlashcards(state: DistillerStateType): Promise<Partial
   const docFlashcards = state.allFlashcards.filter((f) => f.documentId === doc.id);
 
   const newArtifactIds: string[] = [];
+  const newErrors: DistillerError[] = [];
   let flashcardsProposed = 0;
 
   for (const flashcard of docFlashcards) {
@@ -275,7 +298,6 @@ export async function saveFlashcards(state: DistillerStateType): Promise<Partial
         flashcard.conceptId,
         flashcardInput,
       );
-      flashcardsProposed++;
 
       const artifactId = await insertArtifact({
         workspaceId: state.workspaceId,
@@ -293,8 +315,9 @@ export async function saveFlashcards(state: DistillerStateType): Promise<Partial
         sourceRefs: { documentId: doc.id, flashcardId, conceptId: flashcard.conceptId },
       });
       newArtifactIds.push(artifactId);
-    } catch {
-      // Continue on error
+      flashcardsProposed++;
+    } catch (error) {
+      newErrors.push(toDistillerError('saveFlashcards', doc.id, error));
     }
   }
 
@@ -306,5 +329,6 @@ export async function saveFlashcards(state: DistillerStateType): Promise<Partial
       flashcardsProposed: state.counts.flashcardsProposed + flashcardsProposed,
     },
     currentDocIndex: state.currentDocIndex + 1,
+    errors: [...state.errors, ...newErrors],
   };
 }

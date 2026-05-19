@@ -16,12 +16,12 @@ export type PipelineStageId =
 export type StageProgress = {
   id: PipelineStageId;
   label: string;
-  status: 'pending' | 'running' | 'done' | 'error';
+  status: 'pending' | 'running' | 'done' | 'partial' | 'error';
 };
 
 export type PresentableRunStep = {
   name: string;
-  status: 'running' | 'ok' | 'error' | 'skipped';
+  status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
   startedAt?: string;
   endedAt?: string;
 };
@@ -115,6 +115,10 @@ export function summarizeStageProgress(steps: PresentableRunStep[]): StageProgre
 
     if (stageSteps.some((step) => step.status === 'error')) {
       return { id: stage.id, label: stage.label, status: 'error' };
+    }
+
+    if (stageSteps.some((step) => step.status === 'partial')) {
+      return { id: stage.id, label: stage.label, status: 'partial' };
     }
 
     if (stageSteps.some((step) => step.status === 'ok' || step.status === 'skipped')) {

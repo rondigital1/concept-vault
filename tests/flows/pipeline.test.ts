@@ -138,6 +138,7 @@ describe('Pipeline Flow', () => {
         conceptsProposed: 2,
         flashcardsProposed: 3,
       },
+      errors: [],
     });
 
     mockSynthesizeReport.mockResolvedValue({
@@ -280,6 +281,53 @@ describe('Pipeline Flow', () => {
     expect(result.errors.some((error) => error.stage === 'synthesize')).toBe(false);
     expect(mockSynthesizeReport).not.toHaveBeenCalled();
     expect(mockInsertReport).not.toHaveBeenCalled();
+  });
+
+  it('returns partial when Distiller reports structured document errors', async () => {
+    const documentId = 'doc-distill-partial';
+
+    mockDistillerGraph.mockResolvedValueOnce({
+      artifactIds: [],
+      counts: {
+        docsProcessed: 1,
+        conceptsProposed: 1,
+        flashcardsProposed: 0,
+      },
+      errors: [
+        {
+          stage: 'generateFlashcards',
+          documentId,
+          message: 'Flashcard generation failed',
+        },
+      ],
+    });
+
+    const { pipelineFlow } = await import('@/server/flows/pipeline.flow');
+
+    const result = await pipelineFlow({
+      workspaceId,
+      day: TEST_DAY,
+      documentIds: [documentId],
+      goal: 'learning systems',
+    });
+
+    expect(result.status).toBe('partial');
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        {
+          stage: 'distill',
+          documentId,
+          message: 'generateFlashcards: Flashcard generation failed',
+        },
+      ]),
+    );
+    expect(mockAppendStep).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        name: 'pipeline_distill',
+        status: 'partial',
+      }),
+    );
   });
 
   it('runs lightweight enrichment without WebScout/report by default', async () => {

@@ -17,6 +17,7 @@ describe('agents workspace presentation helpers', () => {
     expect(resolveAgentStateStatus('live')).toBe('running');
     expect(resolveAgentStateStatus('idle')).toBe('pending');
     expect(resolveStageProgressStatus('done')).toBe('ok');
+    expect(resolveStageProgressStatus('partial')).toBe('partial');
     expect(resolveStageProgressStatus('error')).toBe('error');
   });
 

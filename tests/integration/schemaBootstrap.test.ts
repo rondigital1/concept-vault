@@ -3,6 +3,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 const DEFAULT_TEST_DATABASE_URL =
   'postgresql://knowledge:knowledge@localhost:5432/concept_vault_test';
+const EXPECTED_MIGRATION_VERSIONS = ['0001', '0002', '0003', '0004', '0005', '0006'];
+const EXPECTED_CURRENT_VERSION = '0006';
 
 let adminSql: ReturnType<typeof postgres>;
 let migrationSql: ReturnType<typeof postgres>;
@@ -63,12 +65,12 @@ describe('Schema Migrations', () => {
 
     const before = await getSchemaStatus(migrationSql);
     expect(before.ok).toBe(false);
-    expect(before.pendingVersions).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(before.pendingVersions).toEqual(EXPECTED_MIGRATION_VERSIONS);
 
     const result = await runMigrations(migrationSql);
     expect(result.ok).toBe(true);
-    expect(result.appliedVersions).toEqual(['0001', '0002', '0003', '0004', '0005']);
-    expect(result.currentVersion).toBe('0005');
+    expect(result.appliedVersions).toEqual(EXPECTED_MIGRATION_VERSIONS);
+    expect(result.currentVersion).toBe(EXPECTED_CURRENT_VERSION);
 
     const tables = await migrationSql<Array<{
       schema_migrations: string | null;
@@ -99,8 +101,8 @@ describe('Schema Migrations', () => {
       ORDER BY version ASC
     `;
 
-    expect(migrationRows).toHaveLength(5);
-    expect(migrationRows.at(-1)?.version).toBe('0005');
+    expect(migrationRows).toHaveLength(EXPECTED_MIGRATION_VERSIONS.length);
+    expect(migrationRows.at(-1)?.version).toBe(EXPECTED_CURRENT_VERSION);
     expect(migrationRows[0]?.checksum).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -112,15 +114,15 @@ describe('Schema Migrations', () => {
 
     const before = await getSchemaStatus(migrationSql);
     expect(before.ok).toBe(false);
-    expect(before.pendingVersions).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(before.pendingVersions).toEqual(EXPECTED_MIGRATION_VERSIONS);
 
     const result = await runMigrations(migrationSql);
     expect(result.ok).toBe(true);
-    expect(result.appliedVersions).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(result.appliedVersions).toEqual(EXPECTED_MIGRATION_VERSIONS);
 
     const after = await getSchemaStatus(migrationSql);
     expect(after.ok).toBe(true);
-    expect(after.currentVersion).toBe('0005');
+    expect(after.currentVersion).toBe(EXPECTED_CURRENT_VERSION);
   });
 
   it('treats repeated migration runs as a no-op', async () => {
@@ -132,13 +134,13 @@ describe('Schema Migrations', () => {
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
     expect(second.appliedVersions).toEqual([]);
-    expect(second.currentVersion).toBe('0005');
+    expect(second.currentVersion).toBe(EXPECTED_CURRENT_VERSION);
 
     const rows = await migrationSql<Array<{ count: number }>>`
       SELECT COUNT(*)::integer AS count
       FROM schema_migrations
     `;
-    expect(rows[0]?.count).toBe(5);
+    expect(rows[0]?.count).toBe(EXPECTED_MIGRATION_VERSIONS.length);
   });
 
   it('fails loudly when the tracked schema drifts from migration files', async () => {

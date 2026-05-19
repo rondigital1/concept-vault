@@ -2,7 +2,7 @@ export type RunStatus = 'running' | 'ok' | 'error' | 'partial';
 
 export type RunStepPayload = {
   name: string;
-  status: 'running' | 'ok' | 'error' | 'skipped';
+  status: 'running' | 'ok' | 'error' | 'partial' | 'skipped';
   startedAt?: string;
   endedAt?: string;
   input?: unknown;
