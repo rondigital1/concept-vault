@@ -18,6 +18,7 @@ export function ChatMessageList({
   visibleMessages,
   isLoadingSession,
   showIntroState,
+  introSuggestions,
   isTyping,
   isLoading,
   userMessageRefs,
@@ -25,10 +26,12 @@ export function ChatMessageList({
   onContextMenu,
   onSaveMessage,
   onRetryFailedMessage,
+  onSubmitPrompt,
 }: {
   visibleMessages: Message[];
   isLoadingSession: boolean;
   showIntroState: boolean;
+  introSuggestions: string[];
   isTyping: boolean;
   isLoading: boolean;
   userMessageRefs: MutableRefObject<Record<string, HTMLDivElement | null>>;
@@ -36,13 +39,19 @@ export function ChatMessageList({
   onContextMenu: (event: MouseEvent, message: Message) => void;
   onSaveMessage: (messageId: string) => void;
   onRetryFailedMessage: (messageId: string) => void;
+  onSubmitPrompt: (prompt?: string) => void;
 }) {
   if (isLoadingSession) {
     return <LoadingConversationState />;
   }
 
   if (showIntroState) {
-    return <IntroConversationState />;
+    return (
+      <IntroConversationState
+        suggestions={introSuggestions}
+        onSubmitPrompt={onSubmitPrompt}
+      />
+    );
   }
 
   return (
@@ -88,23 +97,43 @@ function LoadingConversationState() {
   );
 }
 
-function IntroConversationState() {
+function IntroConversationState({
+  suggestions,
+  onSubmitPrompt,
+}: {
+  suggestions: string[];
+  onSubmitPrompt: (prompt?: string) => void;
+}) {
   return (
-    <div className="flex min-h-[calc(100vh-15rem)] flex-1 items-center justify-center py-10">
-      <section className="relative flex min-h-[34rem] w-full flex-col items-center justify-center overflow-hidden rounded-[2.2rem] bg-[#151515] px-8 py-16 text-center shadow-[0_24px_90px_rgba(0,0,0,0.44)]">
+    <div className="flex min-h-[calc(100vh-16rem)] flex-1 items-center justify-center py-6 sm:min-h-[calc(100vh-15rem)] sm:py-10">
+      <section className="relative flex min-h-[calc(100vh-22rem)] w-full flex-col items-center justify-center overflow-hidden rounded-[2rem] bg-[#151515] px-5 py-8 text-center shadow-[0_24px_90px_rgba(0,0,0,0.44)] sm:min-h-[34rem] sm:rounded-[2.2rem] sm:px-8 sm:py-16">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.045),transparent_38%)]" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(to_top,rgba(255,255,255,0.02),transparent)]" />
         <div className="relative z-10">
-          <div className="mx-auto mb-9">
+          <div className="mx-auto mb-6 sm:mb-9">
             <AgentOrb />
           </div>
-          <h1 className="mx-auto max-w-[14ch] text-[clamp(3rem,6vw,4.75rem)] font-black tracking-[-0.085em] text-[#d0cbcb]">
+          <h1 className="mx-auto max-w-[12ch] text-[clamp(2.35rem,12vw,3.15rem)] font-black leading-[1.08] tracking-normal text-[#d0cbcb] sm:max-w-[14ch] sm:text-[clamp(3rem,6vw,4.75rem)]">
             How can I assist your research?
           </h1>
-          <p className="mx-auto mt-6 max-w-[32rem] text-[clamp(1.1rem,2vw,1.3rem)] leading-9 text-[#b1abab]">
+          <p className="mx-auto mt-4 max-w-[32rem] text-[1rem] leading-7 text-[#b1abab] sm:mt-6 sm:text-[clamp(1.1rem,2vw,1.3rem)] sm:leading-9">
             Access your saved materials, query the knowledge base, or synthesize new
             insights.
           </p>
+          {suggestions.length > 0 ? (
+            <div className="mt-6 flex flex-col items-stretch gap-2 sm:hidden">
+              {suggestions.slice(0, 2).map((reply) => (
+                <button
+                  key={reply}
+                  type="button"
+                  onClick={() => onSubmitPrompt(reply)}
+                  className="rounded-full bg-[#202020] px-4 py-2.5 text-[0.9rem] tracking-normal text-[#d7d1d1] transition hover:bg-[#282828] hover:text-white"
+                >
+                  {reply}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
     </div>

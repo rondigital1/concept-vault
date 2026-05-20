@@ -127,14 +127,14 @@ export default async function WebScoutPage({
 
   return (
     <>
-      <main className="today-screen relative min-h-screen pb-16 text-[color:var(--today-text)]">
-        <div className="pointer-events-none absolute left-1/2 top-0 h-[260px] w-[640px] -translate-x-1/2 rounded-full bg-[rgba(255,255,255,0.06)] blur-[120px]" />
+      <main className="today-screen relative min-h-screen overflow-x-clip pb-16 text-[color:var(--today-text)]">
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[260px] w-[640px] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full bg-[rgba(255,255,255,0.06)] blur-[120px]" />
         <div className="relative z-10 mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-10">
           <header className="today-panel today-panel-low mb-6 overflow-hidden rounded-[32px] p-6 sm:p-8">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl">
                 <p className="today-label">Research workflow</p>
-                <h1 className="mt-4 text-[clamp(2.4rem,5vw,4.8rem)] font-black tracking-[-0.08em] text-[color:var(--today-accent-strong)]">
+                <h1 className="mt-4 text-[clamp(2.4rem,5vw,4.8rem)] font-black tracking-normal text-[color:var(--today-accent-strong)]">
                   {pageTitle}
                 </h1>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-[color:var(--today-muted)]">

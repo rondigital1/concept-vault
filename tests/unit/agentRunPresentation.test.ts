@@ -27,4 +27,16 @@ describe('agent run presentation helpers', () => {
     expect(stages.find((stage) => stage.id === 'distill')?.status).toBe('partial');
     expect(stages.find((stage) => stage.id === 'synthesize')?.status).toBe('pending');
   });
+
+  it('uses the latest event for append-only trace stage progress', () => {
+    const stages = summarizeStageProgress([
+      { name: 'pipeline_resolve_targets', status: 'running' },
+      { name: 'pipeline_resolve_targets', status: 'ok' },
+      { name: 'pipeline_distill', status: 'running' },
+      { name: 'pipeline_distill', status: 'skipped' },
+    ]);
+
+    expect(stages.find((stage) => stage.id === 'resolve_targets')?.status).toBe('done');
+    expect(stages.find((stage) => stage.id === 'distill')?.status).toBe('skipped');
+  });
 });

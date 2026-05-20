@@ -142,10 +142,10 @@ export function AgentsChrome({
               {APP_BRAND.monogram}
             </div>
             <div className="leading-tight">
-              <span className="font-editorial block text-xl tracking-[-0.04em] text-white">
+              <span className="font-editorial block text-xl tracking-normal text-white">
                 {APP_BRAND.name}
               </span>
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--surface-text-muted)]">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-white/64">
                 Agents Workspace
               </span>
             </div>
@@ -191,19 +191,19 @@ export function AgentsChrome({
       </header>
 
       <aside
-        className="fixed top-[6.5rem] hidden h-[calc(100vh-7.75rem)] w-60 flex-col gap-5 xl:flex"
+        className="fixed top-[6.5rem] hidden h-[calc(100vh-7.75rem)] w-60 flex-col gap-5 2xl:flex"
         style={{ left: 'max(1rem, calc((100vw - 1600px) / 2 + 1rem))' }}
       >
         <section className={`${workspaceShellPanelClassName} px-5 py-5`}>
           <p className={workspaceEyebrowClassName}>Workspace Status</p>
           <div className="mt-4 space-y-3">
             <div>
-              <div className="text-2xl font-semibold tracking-[-0.04em] text-white">
+              <div className="text-2xl font-semibold tracking-normal text-white">
                 {activeAgentCount}
               </div>
-              <p className="text-sm text-[color:var(--surface-text-muted)]">Live profiles now</p>
+              <p className="text-sm text-white/64">Live profiles now</p>
             </div>
-            <div className="grid gap-3 text-sm text-[color:var(--surface-text-muted)] sm:grid-cols-2 xl:grid-cols-1">
+            <div className="grid gap-3 text-sm text-white/64 sm:grid-cols-2 2xl:grid-cols-1">
               <div>
                 <div className={workspaceLabelClassName}>Topics</div>
                 <div className="mt-1 text-base font-medium text-white">{topicCount}</div>
@@ -245,8 +245,8 @@ export function AgentsChrome({
         </div>
       </aside>
 
-      <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 xl:pl-[17.5rem]">
-        <div className="mb-6 space-y-4 xl:hidden">
+      <main className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 2xl:pl-[17.5rem]">
+        <div className="mb-6 space-y-4 2xl:hidden">
           <section className={`${workspaceShellPanelClassName} px-5 py-5`}>
             <p className={workspaceEyebrowClassName}>Workspace Status</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-3">
@@ -265,8 +265,8 @@ export function AgentsChrome({
             </div>
           </section>
 
-          <nav aria-label="Agents workspace sections" className="overflow-x-auto pb-1">
-            <div className="flex min-w-max gap-2">
+          <nav aria-label="Agents workspace sections" className="pb-1">
+            <div className="flex flex-wrap gap-2">
               {WORKSPACE_SECTIONS.map((section) => (
                 <a
                   key={section.href}

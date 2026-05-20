@@ -6,10 +6,10 @@ export type TopNavKey =
   | 'ingest'
   | 'chat';
 
-export type TopNavPlacement = 'primary' | 'utility';
+type TopNavPlacement = 'primary' | 'utility';
 export type AppShellMode = 'default' | 'immersive' | 'utility-detail';
 
-export type TopNavItem = {
+type TopNavItem = {
   key: TopNavKey;
   href: string;
   label: string;
@@ -24,7 +24,7 @@ export const APP_BRAND = {
     'Shared shell for utility routes, run details, and recovery states while immersive workspaces own their local chrome.',
 } as const;
 
-export const TOP_NAV_ITEMS: TopNavItem[] = [
+const TOP_NAV_ITEMS: TopNavItem[] = [
   { key: 'today', href: '/today', label: 'Research', placement: 'primary' },
   { key: 'agents', href: '/agents', label: 'Agents', placement: 'primary' },
   { key: 'library', href: '/library', label: 'Library', placement: 'primary' },
@@ -44,7 +44,7 @@ export const PRIMARY_TOP_NAV_KEYS: TopNavKey[] = TOP_NAV_ITEMS.filter(
 export const UTILITY_TOP_NAV_KEYS: TopNavKey[] = TOP_NAV_ITEMS.filter(
   (item) => item.placement === 'utility',
 ).map((item) => item.key);
-export const DEFAULT_TOP_NAV_KEYS: TopNavKey[] = TOP_NAV_ITEMS.map((item) => item.key);
+const DEFAULT_TOP_NAV_KEYS: TopNavKey[] = TOP_NAV_ITEMS.map((item) => item.key);
 
 const TOP_NAV_ITEMS_BY_KEY = new Map(TOP_NAV_ITEMS.map((item) => [item.key, item]));
 const APP_SHELL_ROUTE_PREFIXES: Array<{ mode: AppShellMode; prefixes: string[] }> = [

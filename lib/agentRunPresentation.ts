@@ -16,7 +16,7 @@ export type PipelineStageId =
 export type StageProgress = {
   id: PipelineStageId;
   label: string;
-  status: 'pending' | 'running' | 'done' | 'partial' | 'error';
+  status: 'pending' | 'running' | 'done' | 'partial' | 'error' | 'skipped';
 };
 
 export type PresentableRunStep = {
@@ -106,22 +106,42 @@ export function parseObservedAgentKey(stepName: string, runKind?: string): Agent
 }
 
 export function summarizeStageProgress(steps: PresentableRunStep[]): StageProgress[] {
-  return PIPELINE_STAGE_ORDER.map((stage) => {
-    const stageSteps = steps.filter((step) => parsePipelineStageId(step.name) === stage.id);
+  const latestByStage = new Map<PipelineStageId, PresentableRunStep>();
 
-    if (stageSteps.some((step) => step.status === 'running')) {
+  for (const step of steps) {
+    const stageId = parsePipelineStageId(step.name);
+
+    if (stageId === 'unknown') {
+      continue;
+    }
+
+    latestByStage.set(stageId, step);
+  }
+
+  return PIPELINE_STAGE_ORDER.map((stage) => {
+    const latestStep = latestByStage.get(stage.id);
+
+    if (!latestStep) {
+      return { id: stage.id, label: stage.label, status: 'pending' };
+    }
+
+    if (latestStep.status === 'running') {
       return { id: stage.id, label: stage.label, status: 'running' };
     }
 
-    if (stageSteps.some((step) => step.status === 'error')) {
+    if (latestStep.status === 'error') {
       return { id: stage.id, label: stage.label, status: 'error' };
     }
 
-    if (stageSteps.some((step) => step.status === 'partial')) {
+    if (latestStep.status === 'partial') {
       return { id: stage.id, label: stage.label, status: 'partial' };
     }
 
-    if (stageSteps.some((step) => step.status === 'ok' || step.status === 'skipped')) {
+    if (latestStep.status === 'skipped') {
+      return { id: stage.id, label: stage.label, status: 'skipped' };
+    }
+
+    if (latestStep.status === 'ok') {
       return { id: stage.id, label: stage.label, status: 'done' };
     }
 
@@ -139,12 +159,12 @@ export function formatObservedStepLabel(stepName: string): string {
 }
 
 export function readDurationMs(startedAt?: string, endedAt?: string): number | null {
-  if (!startedAt) {
+  if (!startedAt || !endedAt) {
     return null;
   }
 
   const start = Date.parse(startedAt);
-  const end = endedAt ? Date.parse(endedAt) : Date.now();
+  const end = Date.parse(endedAt);
   if (Number.isNaN(start) || Number.isNaN(end)) {
     return null;
   }

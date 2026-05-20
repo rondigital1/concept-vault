@@ -115,10 +115,10 @@ export default function ReportDetailClient({
 
         <header className="max-w-5xl">
           <div className="mb-4 flex flex-wrap items-center gap-3 text-[0.65rem] font-bold uppercase tracking-[0.26em] text-[#8c8787]">
-            <span className="rounded-sm bg-[#2a2a2a] px-3 py-1.5 text-[#ddd8d8]">REPORT_DETAIL: DOSSIER</span>
-            <span>COMPLETED: {formatDisplayDate(createdAt, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="rounded-sm bg-[#2a2a2a] px-3 py-1.5 text-[#ddd8d8]">Report detail</span>
+            <span>Completed: {formatDisplayDate(createdAt, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
-          <h1 className="max-w-5xl text-[clamp(2.7rem,7vw,5.2rem)] font-black leading-[0.96] tracking-[-0.085em] text-white">
+          <h1 className="max-w-5xl text-[clamp(2.7rem,7vw,5.2rem)] font-black leading-[0.96] tracking-normal text-white">
             {title}
           </h1>
           <div className="mt-6 space-y-4">
@@ -154,11 +154,11 @@ export default function ReportDetailClient({
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-[22px] bg-[#111111] px-6 py-6">
                   <span className="text-[0.65rem] font-bold uppercase tracking-[0.24em] text-[#7e7777]">Source coverage</span>
-                  <div className="mt-3 text-[clamp(2.4rem,4vw,3.8rem)] font-black tracking-[-0.06em] text-white">{sourcesCount}</div>
+                  <div className="mt-3 text-[clamp(2.4rem,4vw,3.8rem)] font-black tracking-normal text-white">{sourcesCount}</div>
                 </div>
                 <div className="rounded-[22px] bg-[#111111] px-6 py-6">
                   <span className="text-[0.65rem] font-bold uppercase tracking-[0.24em] text-[#7e7777]">Citation preview</span>
-                  <div className="mt-3 text-[clamp(2.4rem,4vw,3.8rem)] font-black tracking-[-0.06em] text-white">{citations.length || '—'}</div>
+                  <div className="mt-3 text-[clamp(2.4rem,4vw,3.8rem)] font-black tracking-normal text-white">{citations.length || '—'}</div>
                 </div>
               </div>
 
@@ -171,7 +171,7 @@ export default function ReportDetailClient({
               <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="text-[0.68rem] font-bold uppercase tracking-[0.28em] text-[#8f8888]">Full dossier</p>
-                  <h2 className="mt-2 text-[2rem] font-black tracking-[-0.06em] text-white">Report body</h2>
+                  <h2 className="mt-2 text-[2rem] font-black tracking-normal text-white">Report body</h2>
                 </div>
                 <div className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#8f8888]">Markdown preserved for long-form review</div>
               </div>
@@ -217,8 +217,8 @@ export default function ReportDetailClient({
             <ResultsSidePanel title="Process metadata" className="bg-[#111111] shadow-[0_20px_60px_rgba(0,0,0,0.22)]">
               <div className="mt-6 space-y-1">
                 <ResultsMetadataRow label="Generated" value={formatDisplayDate(createdAt)} />
-                <ResultsMetadataRow label="Read status" value={isRead ? 'READ' : 'UNREAD'} accent />
-                <ResultsMetadataRow label="Run id" value={trimIdentifier(runId) ?? 'MANUAL'} />
+                <ResultsMetadataRow label="Read status" value={isRead ? 'Read' : 'Unread'} accent />
+                <ResultsMetadataRow label="Run id" value={trimIdentifier(runId) ?? 'Manual'} />
                 <ResultsMetadataRow label="Artifact id" value={trimIdentifier(id) ?? id} />
                 <ResultsMetadataRow label="Topics indexed" value={`${topicsCovered.length || 0}`} />
               </div>

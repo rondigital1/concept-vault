@@ -83,21 +83,3 @@ export async function deleteSessionAction(
     };
   }
 }
-
-export async function renameSessionAction(
-  sessionId: string,
-  title: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const scope = await requireSessionWorkspace();
-    await chatHistoryService.renameSession(scope, sessionId, title);
-    revalidatePath('/chat');
-    return { success: true };
-  } catch (error) {
-    console.error('Failed to rename session:', error);
-    return {
-      success: false,
-      error: publicErrorMessage(error, 'Failed to rename session'),
-    };
-  }
-}

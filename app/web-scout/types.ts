@@ -75,7 +75,7 @@ export type BatchTopicOption = {
   linkedDocumentCount: number;
 };
 
-export type BatchRunResult = {
+type BatchRunResult = {
   topicId: string;
   topicName: string;
   runId: string | null;

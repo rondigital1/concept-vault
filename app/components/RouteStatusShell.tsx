@@ -82,7 +82,7 @@ export function RouteStatusShell({
         </p>
         <h1
           id={titleId}
-          className="mt-4 text-[clamp(2.3rem,5vw,4rem)] font-black tracking-[-0.07em] text-white"
+          className="mt-4 text-[clamp(2.3rem,5vw,4rem)] font-black tracking-normal text-white"
         >
           {title}
         </h1>

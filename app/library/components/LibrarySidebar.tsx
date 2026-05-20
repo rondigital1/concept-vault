@@ -50,9 +50,9 @@ export function LibrarySidebar({
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[0.6rem] font-semibold uppercase tracking-[0.24em] text-[#7f7979]">
-              Research_Unit_01
+              Research unit 01
             </p>
-            <h2 className="mt-3 text-[1.08rem] font-bold tracking-[-0.045em] text-white">
+            <h2 className="mt-3 text-[1.08rem] font-bold tracking-normal text-white">
               Repository index
             </h2>
             <p className="mt-2 text-[0.76rem] leading-6 text-[#8e8787]">
@@ -203,7 +203,7 @@ export function LibrarySidebar({
           onClick={onNavigate}
           className="flex w-full items-center justify-center rounded-full bg-[#f1eeee] px-4 py-3 text-[0.68rem] font-bold uppercase tracking-[0.28em] text-[#171717] transition hover:bg-white"
         >
-          Add_Content
+          Add content
         </Link>
 
         <div className="mt-4 space-y-1">

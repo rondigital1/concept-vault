@@ -57,7 +57,7 @@ export default async function CollectionPage(props: PageProps) {
               {cleanupCount > 0 ? <LibraryPill tone="danger">{cleanupCount} need cleanup</LibraryPill> : null}
             </div>
 
-            <h1 className="mt-6 text-[clamp(2.5rem,5vw,4.2rem)] font-black leading-[0.96] tracking-[-0.08em] text-white">
+            <h1 className="mt-6 text-[clamp(2.5rem,5vw,4.2rem)] font-black leading-[0.96] tracking-normal text-white">
               {collection.name}
             </h1>
 
@@ -84,7 +84,7 @@ export default async function CollectionPage(props: PageProps) {
                 <p className="text-[0.58rem] font-bold uppercase tracking-[0.2em] text-[#7d7777]">
                   Saved records
                 </p>
-                <p className="mt-2 text-[1.9rem] font-black tracking-[-0.05em] text-white">
+                <p className="mt-2 text-[1.9rem] font-black tracking-normal text-white">
                   {validDocs.length}
                 </p>
               </div>
@@ -92,7 +92,7 @@ export default async function CollectionPage(props: PageProps) {
                 <p className="text-[0.58rem] font-bold uppercase tracking-[0.2em] text-[#7d7777]">
                   Favorites
                 </p>
-                <p className="mt-2 text-[1.9rem] font-black tracking-[-0.05em] text-white">
+                <p className="mt-2 text-[1.9rem] font-black tracking-normal text-white">
                   {favoriteCount}
                 </p>
               </div>

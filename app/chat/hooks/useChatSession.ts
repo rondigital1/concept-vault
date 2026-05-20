@@ -8,6 +8,13 @@ import { generateSuggestedPrompts } from '../../actions/suggestedPromptsAction';
 import { getSessionAction } from '../../actions/chatHistoryActions';
 import { WELCOME_MESSAGE } from '../types';
 import type { Message } from '../types';
+import {
+  applyWelcomeSuggestions,
+  buildLoadedMessages,
+  createMessageId,
+  findRetryUserMessageId,
+  refreshExistingSuggestions,
+} from './chatSessionState';
 
 type SubmitOptions = {
   failedMessageId?: string;
@@ -30,14 +37,6 @@ type UseChatSessionResult = {
   refreshSuggestions: () => Promise<void>;
   handleNewChat: () => void;
 };
-
-function createMessageId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  return Date.now().toString();
-}
 
 export function useChatSession(): UseChatSessionResult {
   const router = useRouter();
@@ -71,13 +70,7 @@ export function useChatSession(): UseChatSessionResult {
         const data = await getSessionAction(sessionIdFromUrl);
         if (data && data.messages.length > 0) {
           setSessionId(sessionIdFromUrl);
-          const loadedMessages: Message[] = data.messages.map((m, idx) => ({
-            id: `loaded-${idx}`,
-            role: m.role,
-            content: m.content,
-            timestamp: new Date(),
-          }));
-          setMessages(loadedMessages);
+          setMessages(buildLoadedMessages(data.messages));
         } else {
           setSessionId(null);
           setMessages([WELCOME_MESSAGE]);
@@ -104,14 +97,7 @@ export function useChatSession(): UseChatSessionResult {
       try {
         const suggestions = await generateSuggestedPrompts();
         if (suggestions && suggestions.length > 0) {
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.role === 'assistant' && msg.id === 'welcome') {
-                return { ...msg, suggestedReplies: suggestions };
-              }
-              return msg;
-            }),
-          );
+          setMessages((prev) => applyWelcomeSuggestions(prev, suggestions));
         }
       } catch (error) {
         console.error('Failed to load dynamic suggestions:', error);
@@ -132,14 +118,7 @@ export function useChatSession(): UseChatSessionResult {
     try {
       const suggestions = await generateSuggestedPrompts();
       if (suggestions && suggestions.length > 0) {
-        setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.role === 'assistant' && msg.suggestedReplies) {
-              return { ...msg, suggestedReplies: suggestions };
-            }
-            return msg;
-          }),
-        );
+        setMessages((prev) => refreshExistingSuggestions(prev, suggestions));
       }
     } catch (error) {
       console.error('Failed to refresh suggestions:', error);
@@ -174,31 +153,16 @@ export function useChatSession(): UseChatSessionResult {
       let userMessageId: string | null = null;
 
       if (options?.failedMessageId) {
-        const failedIndex = messages.findIndex(
-          (msg) => msg.id === options.failedMessageId && msg.status === 'failed',
-        );
-
-        if (failedIndex >= 0) {
-          const failedMessage = messages[failedIndex];
-          const userMessageById =
-            failedMessage.failedUserMessageId != null
-              ? messages.find(
-                (msg) => msg.id === failedMessage.failedUserMessageId && msg.role === 'user',
-              )
-              : null;
-          const userMessageBeforeFailure =
-            failedIndex > 0 && messages[failedIndex - 1]?.role === 'user'
-              ? messages[failedIndex - 1]
-              : null;
-          const associatedUserMessage = userMessageById ?? userMessageBeforeFailure;
-
-          if (associatedUserMessage && associatedUserMessage.content === normalizedMessage) {
-            shouldAppendUserMessage = false;
-            userMessageId = associatedUserMessage.id;
-          }
-
-          setMessages((prev) => prev.filter((msg) => msg.id !== options.failedMessageId));
+        userMessageId = findRetryUserMessageId({
+          failedMessageId: options.failedMessageId,
+          messages,
+          normalizedMessage,
+        });
+        if (userMessageId) {
+          shouldAppendUserMessage = false;
         }
+
+        setMessages((prev) => prev.filter((msg) => msg.id !== options.failedMessageId));
       }
 
       if (shouldAppendUserMessage) {

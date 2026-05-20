@@ -45,7 +45,7 @@ export function LibraryDocumentCard({
   return (
     <Link
       href={`/library/${document.id}`}
-      className="group flex h-full min-h-[18rem] flex-col rounded-[24px] bg-[#101010] p-5 transition duration-300 hover:bg-[#171717] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+      className="group flex h-full min-h-[18rem] min-w-0 max-w-full flex-col overflow-hidden rounded-[24px] bg-[#101010] p-5 transition duration-300 hover:bg-[#171717] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex h-14 w-14 items-center justify-center rounded-[16px] bg-[#242424] text-[#d0cccc]">
@@ -68,7 +68,7 @@ export function LibraryDocumentCard({
           </div>
         ) : null}
 
-        <h2 className="line-clamp-3 text-[1.18rem] font-bold tracking-[-0.05em] text-white">
+        <h2 className="line-clamp-3 break-words text-[1.18rem] font-bold tracking-normal text-white">
           {document.title}
         </h2>
 
@@ -83,12 +83,12 @@ export function LibraryDocumentCard({
         ))}
       </div>
 
-      <div className="mt-6 flex items-center justify-between gap-3 text-[0.62rem] font-semibold uppercase tracking-[0.22em] text-[#797373]">
+      <div className="mt-6 flex min-w-0 items-center justify-between gap-3 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[#797373] sm:tracking-[0.22em]">
         <div className="min-w-0">
-          <div className="truncate">{getSourceDisplay(document.source)}</div>
+          <div className="truncate break-all">{getSourceDisplay(document.source)}</div>
           <div className="mt-1">{formatLibraryRelativeDate(document.imported_at)}</div>
         </div>
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           <div>{DOCUMENT_FORMAT_LABELS[format]}</div>
           <LibraryIcon name="arrow-up-right" className="ml-auto mt-1 h-4 w-4 opacity-0 transition group-hover:opacity-100" />
         </div>

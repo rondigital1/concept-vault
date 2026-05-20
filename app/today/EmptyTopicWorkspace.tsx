@@ -10,8 +10,8 @@ export function EmptyTopicWorkspace() {
           <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[color:var(--today-muted-strong)]">
             CONCEPT VAULT RESEARCH CORE
           </p>
-          <h1 className="mt-6 text-[clamp(2.75rem,6vw,5.75rem)] font-black tracking-[-0.08em] text-[color:var(--today-accent-strong)]">
-            EVIDENCE_REVIEW
+          <h1 className="mt-6 text-[clamp(2.75rem,6vw,5.75rem)] font-black tracking-normal text-[color:var(--today-accent-strong)]">
+            Evidence review
           </h1>
           <div className={`${elevatedPanelClass} mt-10 w-full max-w-[860px] rounded-[32px] px-6 py-7 sm:px-8`}>
             <p className={sectionLabelClass}>Initialize workspace</p>

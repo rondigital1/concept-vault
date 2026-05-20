@@ -9,14 +9,14 @@ function cx(...parts: Array<string | false | null | undefined>) {
 
 export function getLibraryActionClassName(tone: LibraryActionTone = 'secondary') {
   if (tone === 'danger') {
-    return 'inline-flex items-center justify-center rounded-full bg-[#3a2221] px-4 py-2.5 text-[0.66rem] font-bold uppercase tracking-[0.22em] text-[#f2c7bc] transition hover:bg-[#4a2928] hover:text-white disabled:cursor-not-allowed disabled:bg-[#262626] disabled:text-[#6f6a6a]';
+    return 'inline-flex min-w-0 max-w-full items-center justify-center rounded-full bg-[#3a2221] px-3 py-2.5 text-center text-[0.62rem] font-bold uppercase leading-4 tracking-[0.14em] text-[#f2c7bc] transition hover:bg-[#4a2928] hover:text-white disabled:cursor-not-allowed disabled:bg-[#262626] disabled:text-[#6f6a6a] sm:px-4 sm:text-[0.66rem] sm:tracking-[0.22em]';
   }
 
   if (tone === 'primary') {
-    return 'inline-flex items-center justify-center rounded-full bg-[#efeded] px-4 py-2.5 text-[0.66rem] font-bold uppercase tracking-[0.22em] text-[#171717] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-[#2b2b2b] disabled:text-[#7a7474]';
+    return 'inline-flex min-w-0 max-w-full items-center justify-center rounded-full bg-[#efeded] px-3 py-2.5 text-center text-[0.62rem] font-bold uppercase leading-4 tracking-[0.14em] text-[#171717] transition hover:bg-white disabled:cursor-not-allowed disabled:bg-[#2b2b2b] disabled:text-[#7a7474] sm:px-4 sm:text-[0.66rem] sm:tracking-[0.22em]';
   }
 
-  return 'inline-flex items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-[0.66rem] font-bold uppercase tracking-[0.22em] text-[#ddd7d7] transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:border-white/[0.05] disabled:bg-white/[0.02] disabled:text-[#6f6a6a]';
+  return 'inline-flex min-w-0 max-w-full items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-center text-[0.62rem] font-bold uppercase leading-4 tracking-[0.14em] text-[#ddd7d7] transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:border-white/[0.05] disabled:bg-white/[0.02] disabled:text-[#6f6a6a] sm:px-4 sm:text-[0.66rem] sm:tracking-[0.22em]';
 }
 
 export function LibraryPanel({
@@ -77,7 +77,7 @@ export function LibraryTag({
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-full bg-[#202020] px-3 py-1.5 text-[0.68rem] font-semibold text-[#d0c9c9]',
+        'inline-flex max-w-full items-center break-words rounded-full bg-[#202020] px-3 py-1.5 text-[0.68rem] font-semibold text-[#d0c9c9]',
         className,
       )}
     >
@@ -103,7 +103,7 @@ export function LibraryEmptyState({
         <p className="text-[0.64rem] font-bold uppercase tracking-[0.26em] text-[#8f8888]">
           Repository standby
         </p>
-        <h2 className="mt-4 text-[clamp(2rem,4vw,3rem)] font-black leading-[0.98] tracking-[-0.07em] text-white">
+        <h2 className="mt-4 text-[clamp(2rem,4vw,3rem)] font-black leading-[0.98] tracking-normal text-white">
           {title}
         </h2>
         <p className="mt-4 text-[0.98rem] leading-8 text-[#b7b0b0]">{description}</p>

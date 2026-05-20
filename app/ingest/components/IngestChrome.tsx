@@ -39,8 +39,8 @@ function TopNav({ userName, pathname }: { userName: string; pathname: string }) 
       <div className="mx-auto flex h-full max-w-[1560px] items-center justify-between px-4 sm:px-6 lg:px-10">
         <div className="flex items-center gap-4">
           <Link href="/ingest" className="leading-none transition-opacity hover:opacity-85">
-            <div className="text-[1.18rem] font-black tracking-[-0.07em] text-white sm:text-[1.3rem]">
-              CONCEPT_VAULT
+            <div className="text-[1.18rem] font-black tracking-normal text-white sm:text-[1.3rem]">
+              Concept Vault
             </div>
             <div className="mt-1 hidden text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-[#8f8a8a] sm:block">
               Add Content
@@ -56,7 +56,7 @@ function TopNav({ userName, pathname }: { userName: string; pathname: string }) 
             <Link
               key={item.href}
               href={item.href}
-              className={`relative text-[1rem] font-medium tracking-[-0.035em] transition-colors lg:text-[1.08rem] ${
+              className={`relative text-[1rem] font-medium tracking-normal transition-colors lg:text-[1.08rem] ${
                 item.active ? 'text-white' : 'text-[#8f8a8a] hover:text-white'
               }`}
               aria-current={item.active ? 'page' : undefined}
@@ -151,7 +151,8 @@ function SideNav({ pathname }: { pathname: string }) {
         </div>
       </aside>
 
-      <div className="mb-10 flex gap-3 overflow-x-auto pb-2 lg:hidden">
+      <div className="fixed inset-x-0 top-16 z-40 border-y border-white/[0.06] bg-[#141414]/92 px-4 py-3 backdrop-blur-2xl lg:hidden">
+        <div className="flex flex-wrap gap-2">
         {SIDE_NAV_ITEMS.map((item) => {
           const active = isTopNavItemActive(pathname, item.href);
 
@@ -159,7 +160,7 @@ function SideNav({ pathname }: { pathname: string }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.22em] ${
+              className={`inline-flex min-h-10 items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.18em] ${
                 active ? 'bg-[#f3f0f0] text-[#141414]' : 'bg-[#1f1f1f] text-[#b3adad]'
               }`}
               aria-current={active ? 'page' : undefined}
@@ -169,6 +170,7 @@ function SideNav({ pathname }: { pathname: string }) {
             </Link>
           );
         })}
+        </div>
       </div>
     </>
   );

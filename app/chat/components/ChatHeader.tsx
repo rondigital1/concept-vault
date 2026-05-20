@@ -12,8 +12,8 @@ export function ChatHeader({
 }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-16 bg-[#151515]/66 backdrop-blur-2xl">
-      <div className="mx-auto flex h-full max-w-[1800px] items-center justify-between px-5 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-3">
+      <div className="mx-auto flex h-full max-w-[1800px] items-center justify-between px-3 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={onOpenHistory}
@@ -24,7 +24,7 @@ export function ChatHeader({
           </button>
 
           <Link href="/chat" className="transition-opacity hover:opacity-80">
-            <div className="text-[1.85rem] font-black tracking-[-0.075em] text-[#c7c2c2]">
+            <div className="whitespace-nowrap text-[1.05rem] font-black tracking-normal text-[#c7c2c2] min-[360px]:text-[1.35rem] sm:text-[1.85rem]">
               Ask Vault
             </div>
           </Link>
@@ -41,14 +41,14 @@ export function ChatHeader({
           </button>
           <Link
             href="/today"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04] text-[#b9b3b3] transition hover:bg-white/[0.08] hover:text-white"
+            className="hidden h-10 w-10 items-center justify-center rounded-full bg-white/[0.04] text-[#b9b3b3] transition hover:bg-white/[0.08] hover:text-white min-[360px]:flex"
             aria-label="Open Research"
           >
             <AskVaultIcon name="research" className="h-4 w-4" />
           </Link>
           <Link
             href="/ingest"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04] text-[#b9b3b3] transition hover:bg-white/[0.08] hover:text-white"
+            className="hidden h-10 w-10 items-center justify-center rounded-full bg-white/[0.04] text-[#b9b3b3] transition hover:bg-white/[0.08] hover:text-white sm:flex"
             aria-label="Add content"
           >
             <AskVaultIcon name="ingest" className="h-4 w-4" />

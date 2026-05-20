@@ -43,7 +43,7 @@ export function PromptTimeline({
               />
               <span
                 className={cx(
-                  'block text-[1.08rem] leading-7 tracking-[-0.035em] transition',
+                  'block text-[1.08rem] leading-7 tracking-normal transition',
                   active ? 'text-white' : 'text-[#d5d0d0] group-hover:text-white',
                 )}
               >

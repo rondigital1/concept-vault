@@ -86,6 +86,8 @@ export type ExecutionEvent = {
   status: 'running' | 'ok' | 'error' | 'partial';
 };
 
+type AgentLaunchRunMode = AgentDefaultRunMode | 'skip';
+
 export type AgentsView = {
   globalProfiles: AgentProfileSettingsMap;
   topicOptions: AgentTopicOption[];
@@ -97,7 +99,7 @@ export type AgentsView = {
 };
 
 export type RunComposerState = {
-  runMode: AgentDefaultRunMode;
+  runMode: AgentLaunchRunMode;
   goal: string;
   enableCategorization: boolean;
   skipPublish: boolean;

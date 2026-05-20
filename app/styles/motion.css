@@ -1,0 +1,103 @@
+/* Slide-in animation for toasts */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+/* Pulse animation for running status */
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-status-pulse {
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes workbench-enter {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes panel-fade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes stage-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(77, 147, 161, 0.18);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(77, 147, 161, 0);
+    transform: scale(1.08);
+  }
+}
+
+.animate-workbench-enter {
+  animation: workbench-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.animate-panel-fade {
+  animation: panel-fade 0.35s ease-out;
+}
+
+.animate-stage-pulse {
+  animation: stage-pulse 1.8s ease-in-out infinite;
+}
+
+/* 3D Roman Numerals Background Canvas */
+@media (prefers-reduced-motion: no-preference) {
+  .roman-numerals-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+}
+
+/* Smooth transitions for interactive elements */
+@layer utilities {
+  .transition-default {
+    transition-property: color, background-color, border-color, opacity, transform;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-workbench-enter,
+  .animate-panel-fade,
+  .animate-stage-pulse,
+  .animate-status-pulse,
+  .animate-slide-in-right {
+    animation: none !important;
+  }
+}

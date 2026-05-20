@@ -24,7 +24,7 @@ export interface ConceptInput {
   label: string;
   type: 'definition' | 'principle' | 'framework' | 'procedure' | 'fact';
   summary: string;
-  evidence: Array<{ quote: string; location?: { startChar: number; endChar: number } }>;
+  evidence: Array<{ quote: string; location: { startChar: number | null; endChar: number | null } | null }>;
 }
 
 export interface FlashcardInput {

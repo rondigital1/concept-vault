@@ -33,7 +33,12 @@ export function ChatComposer({
       <div className="bg-[linear-gradient(to_top,rgba(19,19,19,0.98),rgba(19,19,19,0.96),transparent)] px-4 pb-5 pt-14 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-[1020px] pointer-events-auto">
           {suggestions.length > 0 ? (
-            <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+            <div
+              className={cx(
+                'mb-4 flex-wrap items-center justify-center gap-2',
+                showIntroState ? 'hidden sm:flex' : 'flex',
+              )}
+            >
               {suggestions.map((reply) => (
                 <button
                   key={reply}
@@ -41,7 +46,7 @@ export function ChatComposer({
                   onClick={() => {
                     onSubmitPrompt(reply);
                   }}
-                  className="rounded-full bg-[#1a1a1a] px-4 py-2.5 text-[0.88rem] tracking-[-0.02em] text-[#d7d1d1] transition hover:bg-[#232323] hover:text-white"
+                  className="rounded-full bg-[#1a1a1a] px-4 py-2.5 text-[0.88rem] tracking-normal text-[#d7d1d1] transition hover:bg-[#232323] hover:text-white"
                 >
                   {reply}
                 </button>
@@ -64,7 +69,8 @@ export function ChatComposer({
             <div className="flex items-end gap-3">
               <button
                 type="button"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#c8c2c2] transition hover:bg-white/[0.05] hover:text-white"
+                disabled
+                className="flex h-11 w-11 shrink-0 cursor-not-allowed items-center justify-center rounded-full text-[#706a6a]"
                 aria-label="Attachments are not available in Ask Vault"
                 title="Ask Vault currently uses saved material already in the vault"
               >

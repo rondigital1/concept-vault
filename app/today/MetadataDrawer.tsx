@@ -60,7 +60,7 @@ export function MetadataDrawer({ title, description, isOpen, onClose, children }
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className={sectionLabelClass}>Secondary context</p>
-              <h2 id={titleId} className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[color:var(--today-text)]">
+              <h2 id={titleId} className="mt-2 text-2xl font-semibold tracking-normal text-[color:var(--today-text)]">
                 {title}
               </h2>
               <p id={descriptionId} className="mt-2 text-sm leading-7 text-[color:var(--today-muted)]">

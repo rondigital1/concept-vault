@@ -72,8 +72,8 @@ export function AgentActivitySection({
     <section>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-3xl font-black tracking-[-0.05em] text-[color:var(--today-accent-strong)]">
-            AGENT_ACTIVITY
+          <h2 className="text-3xl font-black tracking-normal text-[color:var(--today-accent-strong)]">
+            Agent activity
           </h2>
           <p className="mt-2 text-sm text-[color:var(--today-muted)]">
             Real-time review state, agent traces, and report readiness for the selected topic.
@@ -135,7 +135,7 @@ export function AgentActivitySection({
             <div className="absolute inset-0 rounded-full border-[10px] border-white/18 animate-ping" />
             <WorkspaceIcon name="sparkles" className="h-8 w-8" />
           </div>
-          <h3 className="mt-8 text-[1.65rem] font-semibold tracking-[-0.04em] text-[color:var(--today-accent-strong)]">
+          <h3 className="mt-8 text-[1.65rem] font-semibold tracking-normal text-[color:var(--today-accent-strong)]">
             {workflowSummary.stageLabel.replace(/\s+/g, '_').toUpperCase()}
           </h3>
           <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-[color:var(--today-muted)]">
@@ -165,7 +165,7 @@ export function AgentActivitySection({
           </div>
 
           <div className="mt-8">
-            <h3 className="text-2xl font-semibold tracking-[-0.04em] text-[color:var(--today-accent-strong)]">
+            <h3 className="text-2xl font-semibold tracking-normal text-[color:var(--today-accent-strong)]">
               {selectedTopic?.latestReport?.title ?? 'Report buffer'}
             </h3>
             <p className="mt-3 text-sm leading-6 text-[color:var(--today-muted)]">

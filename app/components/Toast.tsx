@@ -89,7 +89,7 @@ function emitToasts() {
   toastListeners.forEach((listener) => listener());
 }
 
-export function subscribeToasts(listener: () => void) {
+function subscribeToasts(listener: () => void) {
   toastListeners.add(listener);
   return () => {
     toastListeners.delete(listener);
@@ -117,7 +117,7 @@ export const toast = {
   clear: () => clearToasts(),
 };
 
-export function dismissToast(id: string) {
+function dismissToast(id: string) {
   const timer = toastTimers.get(id);
   if (timer) {
     clearTimeout(timer);
@@ -128,7 +128,7 @@ export function dismissToast(id: string) {
   emitToasts();
 }
 
-export function clearToasts() {
+function clearToasts() {
   toastTimers.forEach((timer) => clearTimeout(timer));
   toastTimers.clear();
   currentToasts = [];

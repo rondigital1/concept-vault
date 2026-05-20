@@ -134,7 +134,7 @@ export function CollectionSection({
                       <LibraryIcon name="folder" className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium tracking-[-0.02em]">{collection.name}</div>
+                      <div className="truncate font-medium tracking-normal">{collection.name}</div>
                       <div className={`${isActive ? 'text-[#4d4949]' : 'text-[#726b6b]'} mt-1 text-[0.58rem] font-semibold uppercase tracking-[0.22em]`}>
                         {collection.document_count} {collection.document_count === 1 ? 'document' : 'documents'}
                       </div>

@@ -230,6 +230,7 @@ export function ChatPageContent() {
             visibleMessages={visibleMessages}
             isLoadingSession={isLoadingSession}
             showIntroState={showIntroState}
+            introSuggestions={starterSuggestions}
             isTyping={isTyping}
             isLoading={isLoading}
             userMessageRefs={userMessageRefs}
@@ -237,6 +238,7 @@ export function ChatPageContent() {
             onContextMenu={handleContextMenu}
             onSaveMessage={openSaveModal}
             onRetryFailedMessage={retryMessage}
+            onSubmitPrompt={submitPrompt}
           />
         </div>
       </div>

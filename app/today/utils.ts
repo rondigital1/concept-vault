@@ -1,5 +1,4 @@
-import type { SavedTopicRow } from '@/server/repos/savedTopics.repo';
-import type { Artifact, ReportReadyTopic } from './types';
+import type { Artifact } from './types';
 
 export function firstQueryParam(value: string | string[] | undefined): string | undefined {
   if (typeof value === 'string') {
@@ -82,38 +81,6 @@ export function artifactDetailHref(item: Artifact): string {
     return `/reports/${item.id}`;
   }
   return `/artifacts/${item.id}`;
-}
-
-export function artifactPrimaryHref(item: Artifact): string {
-  if (item.kind === 'research-report') {
-    return `/reports/${item.id}`;
-  }
-  if (item.kind === 'web-proposal' && item.sourceDocumentId) {
-    return `/library/${item.sourceDocumentId}`;
-  }
-  return `/artifacts/${item.id}`;
-}
-
-export function artifactPrimaryLabel(item: Artifact): string {
-  if (item.kind === 'research-report') {
-    return 'Open report';
-  }
-  if (item.kind === 'web-proposal' && item.sourceDocumentId) {
-    return 'Open in Library';
-  }
-  return 'View technical details';
-}
-
-export function readTopicIdFromArtifact(item: Artifact): string | null {
-  return readString(item.sourceRefs?.topicId);
-}
-
-export function readLinkedDocumentCount(topic: SavedTopicRow, reportReadyTopic?: ReportReadyTopic): number {
-  if (reportReadyTopic) {
-    return reportReadyTopic.linkedDocumentCount;
-  }
-  const metadata = asObject(topic.metadata);
-  return readNumber(metadata?.linkedDocumentCount) ?? 0;
 }
 
 export function formatRelativeTime(dateStr: string | null | undefined): string | null {

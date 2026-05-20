@@ -12,7 +12,9 @@ import { listArtifactsByRunId } from '@/server/repos/artifacts.repo';
 import {
   formatObservedStepLabel,
   formatObservedAgentLabel,
+  parsePipelineStageId,
   parseObservedAgentKey,
+  PIPELINE_STAGE_ORDER,
   readDurationMs,
   summarizeStageProgress,
 } from '@/lib/agentRunPresentation';
@@ -127,17 +129,63 @@ function extractLastError(rows: StepRow[]): string | null {
 function buildSelectedRunStages(
   runKind: string,
   steps: NonNullable<Awaited<ReturnType<typeof getRunTrace>>>['steps'],
+  runCompletedAt?: string,
 ): RunStageDetail[] {
-  return steps.map((step) => ({
-    id: step.name,
-    label: formatObservedStepLabel(step.name),
-    agentKey: parseObservedAgentKey(step.name, runKind),
-    status: step.status,
-    startedAt: step.startedAt ?? null,
-    endedAt: step.endedAt ?? null,
-    durationMs: readDurationMs(step.startedAt, step.endedAt),
-    error: readString(readObject(step.error)?.message),
-  }));
+  const grouped = new Map<
+    string,
+    {
+      step: (typeof steps)[number];
+      firstSeenIndex: number;
+      startedAt: string | null;
+      error: string | null;
+    }
+  >();
+
+  steps.forEach((step, index) => {
+    const stageId = parsePipelineStageId(step.name);
+    const groupKey = stageId === 'unknown' ? `step:${step.name}` : `stage:${stageId}`;
+    const current = grouped.get(groupKey);
+
+    grouped.set(groupKey, {
+      step,
+      firstSeenIndex: current?.firstSeenIndex ?? index,
+      startedAt: current?.startedAt ?? step.startedAt ?? null,
+      error: readString(readObject(step.error)?.message) ?? current?.error ?? null,
+    });
+  });
+
+  return Array.from(grouped.entries())
+    .sort((a, b) => {
+      const getSortIndex = (groupKey: string, firstSeenIndex: number) => {
+        const stageId = groupKey.startsWith('stage:')
+          ? groupKey.slice('stage:'.length)
+          : null;
+        const stageIndex = stageId
+          ? PIPELINE_STAGE_ORDER.findIndex((stage) => stage.id === stageId)
+          : -1;
+
+        return stageIndex >= 0 ? stageIndex + 1 : firstSeenIndex === 0 ? 0 : PIPELINE_STAGE_ORDER.length + firstSeenIndex;
+      };
+
+      return getSortIndex(a[0], a[1].firstSeenIndex) - getSortIndex(b[0], b[1].firstSeenIndex);
+    })
+    .map(([, entry]) => {
+      const stageId = parsePipelineStageId(entry.step.name);
+      const endedAt =
+        entry.step.endedAt ??
+        (entry.step.status === 'running' ? undefined : runCompletedAt ?? entry.step.startedAt);
+
+      return {
+        id: stageId === 'unknown' ? `step:${entry.step.name}` : `stage:${stageId}`,
+        label: formatObservedStepLabel(entry.step.name),
+        agentKey: parseObservedAgentKey(entry.step.name, runKind),
+        status: entry.step.status,
+        startedAt: entry.startedAt,
+        endedAt: endedAt ?? null,
+        durationMs: readDurationMs(entry.startedAt ?? undefined, endedAt),
+        error: entry.error,
+      };
+    });
 }
 
 function buildRunSummary(
@@ -322,11 +370,14 @@ function buildStageRegistryEntry(
   agentKey: Exclude<AgentKey, 'pipeline'>,
   rows: StepRow[],
 ): AgentRegistryEntry {
-  const latestRow = rows[0] ?? null;
-  const latestEndedRow = rows.find((row) => Boolean(row.ended_at)) ?? null;
-  const liveRow = rows.find((row) => row.status === 'running') ?? null;
-  const completedRows = rows.filter((row) => row.status === 'ok' || row.status === 'error').slice(0, 30);
-  const rows30d = rows.filter(
+  const executedRows = rows.filter((row) => row.status !== 'skipped');
+  const latestRow = executedRows[0] ?? null;
+  const latestEndedRow = executedRows.find((row) => Boolean(row.ended_at)) ?? null;
+  const liveRow = executedRows.find((row) => row.status === 'running') ?? null;
+  const completedRows = executedRows
+    .filter((row) => row.status === 'ok' || row.status === 'error' || row.status === 'partial')
+    .slice(0, 30);
+  const rows30d = executedRows.filter(
     (row) => Date.now() - Date.parse(row.started_at) <= 30 * 24 * 60 * 60 * 1000,
   );
 
@@ -465,7 +516,7 @@ async function buildSelectedRun(
         .map((step) => readString(readObject(step.error)?.message))
         .filter((message): message is string => Boolean(message)),
     },
-    stages: buildSelectedRunStages(trace.kind, trace.steps),
+    stages: buildSelectedRunStages(trace.kind, trace.steps, trace.completedAt),
   };
 }
 

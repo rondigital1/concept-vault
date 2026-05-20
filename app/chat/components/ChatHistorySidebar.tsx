@@ -103,11 +103,11 @@ export function ChatHistorySidebar({
               <AskVaultIcon name="robot" className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-[1.05rem] font-bold tracking-[-0.04em] text-[#c7c2c2]">
+              <h2 className="text-[1.05rem] font-bold tracking-normal text-[#c7c2c2]">
                 Research Agent
               </h2>
               <p className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.24em] text-[#a29b9b]">
-                V2_0_ACTIVE
+                Version 2 active
               </p>
             </div>
           </div>
@@ -117,7 +117,7 @@ export function ChatHistorySidebar({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex w-full items-center gap-3 rounded-2xl bg-[#979494] px-4 py-3.5 text-left text-[1.02rem] font-semibold tracking-[-0.03em] text-[#171717] transition hover:bg-[#afacac]"
+            className="flex w-full items-center gap-3 rounded-2xl bg-[#979494] px-4 py-3.5 text-left text-[1.02rem] font-semibold tracking-normal text-[#171717] transition hover:bg-[#afacac]"
           >
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/20 text-[#171717]">
               <AskVaultIcon name="plus" className="h-4 w-4" />
@@ -135,7 +135,7 @@ export function ChatHistorySidebar({
                 key={item.href}
                 href={item.href}
                 className={cx(
-                  'flex items-center gap-3 rounded-2xl px-4 py-3 text-[1rem] tracking-[-0.03em] transition',
+                  'flex items-center gap-3 rounded-2xl px-4 py-3 text-[1rem] tracking-normal transition',
                   active
                     ? 'bg-white/[0.05] text-white'
                     : 'text-[#d0cbcb] hover:bg-white/[0.04] hover:text-white',
@@ -168,7 +168,7 @@ export function ChatHistorySidebar({
         <div className="px-5 pb-5 pt-3">
           <Link
             href="/ingest"
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#8d8a8a] to-[#d2cece] px-4 py-3 text-[0.98rem] font-semibold tracking-[-0.03em] text-[#151515] shadow-[0_18px_34px_rgba(0,0,0,0.22)] transition hover:from-[#a39f9f] hover:to-[#e2dddd]"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#8d8a8a] to-[#d2cece] px-4 py-3 text-[0.98rem] font-semibold tracking-normal text-[#151515] shadow-[0_18px_34px_rgba(0,0,0,0.22)] transition hover:from-[#a39f9f] hover:to-[#e2dddd]"
           >
             <AskVaultIcon name="ingest" className="h-4 w-4" />
             <span>Add Content</span>
@@ -179,7 +179,7 @@ export function ChatHistorySidebar({
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-3 rounded-2xl px-4 py-3 text-[0.96rem] tracking-[-0.03em] text-[#d0cbcb] transition hover:bg-white/[0.04] hover:text-white"
+                className="flex items-center gap-3 rounded-2xl px-4 py-3 text-[0.96rem] tracking-normal text-[#d0cbcb] transition hover:bg-white/[0.04] hover:text-white"
               >
                 <AskVaultIcon name={item.icon} className="h-[18px] w-[18px] text-[#b8b1b1]" />
                 <span>{item.label}</span>

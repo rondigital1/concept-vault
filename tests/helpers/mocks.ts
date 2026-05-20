@@ -102,7 +102,10 @@ export const MOCK_LLM_RESPONSES = {
         type: 'principle' as const,
         summary: 'A learning technique that involves reviewing material at increasing intervals to improve long-term retention.',
         evidence: [
-          { quote: 'Spaced repetition is a learning technique that involves reviewing material at increasing intervals.' },
+          {
+            quote: 'Spaced repetition is a learning technique that involves reviewing material at increasing intervals.',
+            location: null,
+          },
         ],
       },
       {
@@ -110,7 +113,10 @@ export const MOCK_LLM_RESPONSES = {
         type: 'principle' as const,
         summary: 'The finding that actively recalling information improves memory more than passive review.',
         evidence: [
-          { quote: 'Studies show retrieval practice dramatically improves learning compared to passive review.' },
+          {
+            quote: 'Studies show retrieval practice dramatically improves learning compared to passive review.',
+            location: null,
+          },
         ],
       },
     ],

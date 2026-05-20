@@ -20,7 +20,7 @@ export function IngestActionFooter({
         type={onClick ? 'button' : 'submit'}
         onClick={onClick}
         disabled={disabled || loading}
-        className={`inline-flex min-w-[172px] items-center justify-center rounded-full px-6 py-3 text-[0.8rem] font-bold uppercase tracking-[0.22em] transition ${
+        className={`inline-flex min-h-11 w-full min-w-0 items-center justify-center rounded-full px-5 py-3 text-center text-[0.76rem] font-bold uppercase tracking-[0.16em] transition sm:w-auto sm:min-w-[172px] sm:px-6 sm:text-[0.8rem] sm:tracking-[0.22em] ${
           disabled || loading
             ? 'cursor-not-allowed bg-[#252525] text-[#6f6a6a]'
             : 'bg-[#f3f0f0] text-[#171717] hover:scale-[1.015] hover:bg-white'

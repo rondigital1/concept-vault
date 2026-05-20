@@ -102,7 +102,7 @@ export function TopicWorkspaceSwitcher({
         <div className="min-w-0 flex-1">
           <p className={sectionLabelClass}>Current workspace</p>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-            <h2 className="truncate text-base font-semibold tracking-[-0.03em] text-[color:var(--today-text)] sm:text-lg">
+            <h2 className="truncate text-base font-semibold tracking-normal text-[color:var(--today-text)] sm:text-lg">
               {selectedTopic?.name ?? 'Choose a topic'}
             </h2>
             {!selectedTopic ? <StatusChip label="Topic required" /> : null}
@@ -156,7 +156,7 @@ export function TopicWorkspaceSwitcher({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className={sectionLabelClass}>{showCreateForm ? 'Create workspace' : 'Switch workspace'}</p>
-                  <h3 className="mt-2 text-[1.65rem] font-semibold tracking-[-0.04em] text-[color:var(--today-text)]">
+                  <h3 className="mt-2 text-[1.65rem] font-semibold tracking-normal text-[color:var(--today-text)]">
                     {showCreateForm ? 'Create topic' : 'Topic index'}
                   </h3>
                   <p className="mt-2 max-w-md text-sm leading-6 text-[color:var(--today-muted)]">

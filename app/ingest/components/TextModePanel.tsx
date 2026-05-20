@@ -36,7 +36,7 @@ export function TextModePanel({
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#2a2a2a] text-[#d6d1d1]">
             <IngestIcon name="article" />
           </div>
-          <h2 className="text-[2.1rem] font-bold tracking-[-0.06em] text-white">{MODE_CONFIG.text.title}</h2>
+          <h2 className="text-[2.1rem] font-bold tracking-normal text-white">{MODE_CONFIG.text.title}</h2>
           <p className="mt-3 max-w-xl text-[1.02rem] leading-8 text-[#c4bebe]">{MODE_CONFIG.text.description}</p>
 
           <div className="mt-8 grid gap-5 lg:grid-cols-2">

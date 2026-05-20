@@ -74,8 +74,8 @@ export function EvidenceWorkspaceHero({
       <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[color:var(--today-muted-strong)]">
         CONCEPT VAULT RESEARCH CORE
       </p>
-      <h1 className="mt-6 text-[clamp(2.9rem,6vw,6rem)] font-black tracking-[-0.08em] text-[color:var(--today-accent-strong)]">
-        EVIDENCE_REVIEW
+      <h1 className="mt-6 text-[clamp(2.9rem,6vw,6rem)] font-black tracking-normal text-[color:var(--today-accent-strong)]">
+        Evidence review
       </h1>
 
       <div className="today-panel today-panel-lowest mt-10 w-full max-w-[980px] rounded-[36px] p-2 sm:p-3">

@@ -95,7 +95,7 @@ export function ChatHistorySessionList({
               <div className="min-w-0 flex-1">
                 <div
                   className={cx(
-                    'truncate text-[0.98rem] font-medium tracking-[-0.03em]',
+                    'truncate text-[0.98rem] font-medium tracking-normal',
                     isActive ? 'text-white' : 'text-[#ddd8d8]',
                   )}
                 >

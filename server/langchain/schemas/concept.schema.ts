@@ -7,10 +7,10 @@ export const EvidenceSchema = z.object({
   quote: z.string().describe('Exact quote from the document'),
   location: z
     .object({
-      startChar: z.number().optional(),
-      endChar: z.number().optional(),
+      startChar: z.number().nullable(),
+      endChar: z.number().nullable(),
     })
-    .optional()
+    .nullable()
     .describe('Character location in original document'),
 });
 

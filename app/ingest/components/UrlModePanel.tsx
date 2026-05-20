@@ -28,7 +28,7 @@ export function UrlModePanel({
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#2a2a2a] text-[#d6d1d1]">
             <IngestIcon name="link" />
           </div>
-          <h2 className="text-[2.1rem] font-bold tracking-[-0.06em] text-white">{MODE_CONFIG.url.title}</h2>
+          <h2 className="text-[2.1rem] font-bold tracking-normal text-white">{MODE_CONFIG.url.title}</h2>
           <p className="mt-3 max-w-xl text-[1.02rem] leading-8 text-[#c4bebe]">{MODE_CONFIG.url.description}</p>
 
           <div className="mt-8 space-y-5">
@@ -54,7 +54,7 @@ export function UrlModePanel({
             </IngestField>
 
             <div className="rounded-[1.35rem] bg-[#1b1b1b] px-5 py-4">
-              <p className={monoLabelClass}>CAPTURE_POLICY</p>
+              <p className={monoLabelClass}>Capture policy</p>
               <p className="mt-3 text-sm leading-7 text-[#cdc7c7]">
                 Public articles and docs pages are fetched inline. Explicit approval is still required before any WebScout proposal becomes active.
               </p>

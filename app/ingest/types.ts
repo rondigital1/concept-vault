@@ -1,6 +1,6 @@
 export type IngestMode = 'file' | 'url' | 'text';
 
-export type FeedbackTone = 'default' | 'loading' | 'success' | 'error';
+type FeedbackTone = 'default' | 'loading' | 'success' | 'error';
 
 export type FeedbackState = {
   tone: FeedbackTone;

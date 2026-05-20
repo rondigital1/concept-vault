@@ -1,4 +1,4 @@
-import type { ChangeEvent, DragEvent, KeyboardEvent, RefObject } from 'react';
+import type { ChangeEvent, DragEvent, RefObject } from 'react';
 import {
   ALLOWED_EXTENSIONS,
   MAX_FILE_SIZE_MB,
@@ -41,25 +41,14 @@ export function FileModePanel({
   onUpload: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
 }) {
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      onOpenFilePicker();
-    }
-  };
-
   return (
     <>
       <div
-        role="button"
-        tabIndex={0}
         onDragEnter={onDrag}
         onDragLeave={onDrag}
         onDragOver={onDrag}
         onDrop={onDrop}
-        onClick={onOpenFilePicker}
-        onKeyDown={handleKeyDown}
-        className={`group relative overflow-hidden rounded-[2rem] bg-[#111111] px-6 py-12 text-center outline-none transition duration-300 sm:px-10 sm:py-16 ${
+        className={`group relative overflow-hidden rounded-[2rem] bg-[#111111] px-4 py-10 text-center outline-none transition duration-300 sm:px-10 sm:py-16 ${
           dragActive ? 'shadow-[0_0_0_1px_rgba(193,193,193,0.24),0_0_0_20px_rgba(193,193,193,0.08)]' : ''
         }`}
       >
@@ -75,23 +64,27 @@ export function FileModePanel({
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#2a2a2a] text-[#d6d1d1] transition duration-300 group-hover:scale-105">
             <IngestIcon name="upload" />
           </div>
-          <h2 className="text-[2.2rem] font-bold tracking-[-0.06em] text-white">{MODE_CONFIG.file.title}</h2>
+          <h2 className="text-[clamp(1.8rem,10vw,2.2rem)] font-bold tracking-normal text-white">{MODE_CONFIG.file.title}</h2>
           <p className="mx-auto mt-4 max-w-md text-[1.05rem] leading-8 text-[#c4bebe]">{MODE_CONFIG.file.description}</p>
 
           {selectedFile ? (
             <div className="mx-auto mt-8 max-w-md rounded-[1.4rem] bg-[#1b1b1b] px-5 py-5 text-left">
-              <p className={monoLabelClass}>SELECTED_FILE</p>
+              <p className={monoLabelClass}>Selected file</p>
               <p className="mt-3 truncate text-lg font-semibold text-white">{selectedFile.name}</p>
               <p className="mt-1 text-sm text-[#8f8787]">
                 {(selectedFile.size / 1024).toFixed(1)} KB • Ready for inline extraction
               </p>
               <button
                 type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onClearFile();
-                }}
-                className="mt-4 text-[0.72rem] font-bold uppercase tracking-[0.22em] text-[#bcb4b4] transition hover:text-white"
+                onClick={onOpenFilePicker}
+                className="mt-4 inline-flex items-center justify-center rounded-full bg-[#f3f0f0] px-5 py-3 text-[0.72rem] font-bold uppercase tracking-[0.22em] text-[#171717] transition hover:scale-[1.015] hover:bg-white"
+              >
+                Replace file
+              </button>
+              <button
+                type="button"
+                onClick={onClearFile}
+                className="ml-3 mt-4 inline-flex items-center justify-center rounded-full border border-white/[0.1] px-5 py-3 text-[0.72rem] font-bold uppercase tracking-[0.22em] text-[#bcb4b4] transition hover:border-white/[0.24] hover:text-white"
               >
                 Remove file
               </button>

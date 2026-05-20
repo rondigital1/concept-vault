@@ -63,7 +63,7 @@ export function EvidenceDetailPane({ queueFilter, selectedArtifact, summarizeArt
           {selectedArtifact ? (
             <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="text-[1.85rem] font-semibold tracking-[-0.03em] text-[color:var(--today-text)]">
+                <h2 className="text-[1.85rem] font-semibold tracking-normal text-[color:var(--today-text)]">
                   {selectedArtifact.title}
                 </h2>
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-[color:var(--today-muted)]">
@@ -81,7 +81,7 @@ export function EvidenceDetailPane({ queueFilter, selectedArtifact, summarizeArt
               </span>
             </div>
           ) : (
-            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[color:var(--today-text)]">Choose evidence to review</h2>
+            <h2 className="mt-2 text-2xl font-semibold tracking-normal text-[color:var(--today-text)]">Choose evidence to review</h2>
           )}
         </div>
 
@@ -151,7 +151,7 @@ export function EvidenceDetailPane({ queueFilter, selectedArtifact, summarizeArt
           ) : (
             <div className="max-w-xl py-8">
               <p className={sectionLabelClass}>Selected evidence</p>
-              <h3 className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-[color:var(--today-text)]">
+              <h3 className="mt-3 text-2xl font-semibold tracking-normal text-[color:var(--today-text)]">
                 {queueFilter === 'pending' ? 'Nothing is waiting in this queue' : 'Nothing has been saved yet'}
               </h3>
               <p className="mt-3 text-sm leading-7 text-[color:var(--today-muted)]">

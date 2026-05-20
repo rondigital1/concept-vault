@@ -19,9 +19,12 @@ export function formatElapsedTime(startedAt?: string, endedAt?: string): string 
   if (!startedAt) {
     return '—';
   }
+  if (!endedAt) {
+    return 'In progress';
+  }
 
   const start = new Date(startedAt).getTime();
-  const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+  const end = new Date(endedAt).getTime();
   const ms = Math.max(end - start, 0);
 
   if (ms < 1000) {

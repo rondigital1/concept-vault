@@ -18,7 +18,7 @@ export function RecentImportsSection({
     <section className="mt-16">
       <div className="mb-8 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-[2.2rem] font-black tracking-[-0.06em] text-white sm:text-[2.8rem]">
+          <h2 className="text-[2.2rem] font-black tracking-normal text-white sm:text-[2.8rem]">
             Recent imports
           </h2>
           <p className="mt-2 text-sm leading-7 text-[#a79f9f]">
@@ -42,7 +42,7 @@ export function RecentImportsSection({
       ) : (
         <div className="rounded-[1.5rem] bg-[#101010] px-6 py-10 text-center">
           <p className={monoLabelClass}>Recent imports</p>
-          <h3 className="mt-4 text-2xl font-bold tracking-[-0.04em] text-white">No content has been added yet.</h3>
+          <h3 className="mt-4 text-2xl font-bold tracking-normal text-white">No content has been added yet.</h3>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[#a79f9f]">
             Use one of the intake modes above to add your first source. Imported content will appear here as soon as extraction completes.
           </p>
@@ -90,7 +90,7 @@ function RecentDocumentRow({
           <IngestIcon name={getDocumentIconName(document.source)} />
         </div>
         <div className="min-w-0">
-          <h3 className="truncate text-[1.05rem] font-bold tracking-[-0.03em] text-white transition-colors group-hover:text-[#d4d0d0]">
+          <h3 className="truncate text-[1.05rem] font-bold tracking-normal text-white transition-colors group-hover:text-[#d4d0d0]">
             {document.title}
           </h3>
           <p className="mt-1 truncate text-[0.72rem] uppercase tracking-[0.22em] text-[#8f8787]">

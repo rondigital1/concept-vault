@@ -53,7 +53,7 @@ export function DocumentListItem({ document, isSelected, onNavigate }: Props) {
                 title={titleIssue.label}
               />
             ) : null}
-            <span className="truncate font-medium tracking-[-0.02em]">{document.title}</span>
+            <span className="truncate font-medium tracking-normal">{document.title}</span>
           </div>
           <div className={`${isSelected ? 'text-[#4d4949]' : 'text-[#726b6b]'} mt-1 text-[0.58rem] font-semibold uppercase tracking-[0.22em]`}>
             {document.tags.length > 0 ? document.tags.slice(0, 2).join(' · ') : 'Vault record'}

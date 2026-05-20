@@ -22,10 +22,7 @@ export function LibraryShell({ documents, collections, children }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const navItems = getTopNavItemsWithState(pathname, PRIMARY_TOP_NAV_KEYS).map((item) => ({
-    ...item,
-    label: item.key === 'library' ? 'Documents' : item.key === 'reports' ? 'Results' : item.label,
-  }));
+  const navItems = getTopNavItemsWithState(pathname, PRIMARY_TOP_NAV_KEYS);
 
   const selectedId = pathname.match(/^\/library\/([0-9a-f-]+)$/)?.[1] ?? null;
   const filteredDocs = useMemo(
@@ -68,8 +65,8 @@ export function LibraryShell({ documents, collections, children }: Props) {
             </button>
 
             <Link href="/library" className="leading-none transition-opacity hover:opacity-85">
-              <div className="text-[1.18rem] font-black tracking-[-0.07em] text-white sm:text-[1.3rem]">
-                CONCEPT_VAULT
+              <div className="text-[1.18rem] font-black tracking-normal text-white sm:text-[1.3rem]">
+                Concept Vault
               </div>
               <div className="mt-1 hidden text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-[#8f8a8a] sm:block">
                 Research Intelligence
@@ -83,7 +80,7 @@ export function LibraryShell({ documents, collections, children }: Props) {
                 key={item.href}
                 href={item.href}
                 aria-current={item.active ? 'page' : undefined}
-                className={`relative text-[1rem] font-medium tracking-[-0.035em] transition-colors lg:text-[1.08rem] ${
+                className={`relative text-[1rem] font-medium tracking-normal transition-colors lg:text-[1.08rem] ${
                   item.active ? 'text-white' : 'text-[#8f8a8a] hover:text-white'
                 }`}
               >
@@ -111,6 +108,26 @@ export function LibraryShell({ documents, collections, children }: Props) {
           </div>
         </div>
       </header>
+
+      <nav
+        aria-label="Primary destinations"
+        className="fixed inset-x-0 top-16 z-40 border-y border-white/[0.06] bg-[#141414]/92 px-4 py-3 backdrop-blur-2xl md:hidden"
+      >
+        <div className="flex flex-wrap gap-2">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={item.active ? 'page' : undefined}
+              className={`inline-flex min-h-10 items-center whitespace-nowrap rounded-full px-3.5 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] ${
+                item.active ? 'bg-[#f3f0f0] text-[#141414]' : 'bg-[#1f1f1f] text-[#b3adad]'
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      </nav>
 
       {desktopSidebarOpen ? (
         <aside className="fixed left-0 top-16 z-40 hidden h-[calc(100vh-4rem)] w-[18rem] lg:flex">
@@ -162,7 +179,7 @@ export function LibraryShell({ documents, collections, children }: Props) {
         </button>
       ) : null}
 
-      <div className={`relative pt-16 transition-[padding] duration-300 ${desktopSidebarOpen ? 'lg:pl-[18rem]' : ''}`}>
+      <div className={`relative pt-32 transition-[padding] duration-300 md:pt-16 ${desktopSidebarOpen ? 'lg:pl-[18rem]' : ''}`}>
         <div className="min-h-[calc(100vh-4rem)]">{children}</div>
       </div>
     </div>

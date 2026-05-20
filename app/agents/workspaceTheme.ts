@@ -1,23 +1,23 @@
 export const workspaceShellPanelClassName =
-  'rounded-[28px] border border-white/[0.08] bg-[rgba(20,22,24,0.78)] shadow-[0_24px_80px_rgba(0,0,0,0.28)] backdrop-blur-xl';
+  'rounded-[28px] border border-white/[0.1] bg-[rgba(20,22,24,0.86)] shadow-[0_24px_80px_rgba(0,0,0,0.3)] backdrop-blur-xl';
 
 export const workspaceSurfaceClassName =
-  'rounded-[24px] border border-white/[0.06] bg-[rgba(255,255,255,0.03)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]';
+  'rounded-[24px] border border-white/[0.08] bg-[rgba(255,255,255,0.045)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]';
 
 export const workspaceInsetSurfaceClassName =
-  'rounded-[22px] border border-white/[0.06] bg-[rgba(10,12,14,0.52)] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]';
+  'rounded-[22px] border border-white/[0.08] bg-[rgba(10,12,14,0.64)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]';
 
 export const workspaceEyebrowClassName =
-  'text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--surface-text-muted)]';
+  'text-[11px] font-semibold uppercase tracking-[0.24em] text-white/60';
 
 export const workspaceLabelClassName =
-  'text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--surface-text-muted)]';
+  'text-[11px] font-semibold uppercase tracking-[0.2em] text-white/60';
 
 export const workspaceMutedCopyClassName =
-  'text-sm leading-6 text-[color:var(--surface-text-muted)]';
+  'text-sm leading-6 text-white/68';
 
 export const workspacePillClassName =
-  'inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-[11px] font-semibold text-[color:var(--shell-immersive-text)]';
+  'inline-flex items-center rounded-full border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold text-white/86';
 
 export const workspacePrimaryButtonClassName =
   'inline-flex h-11 items-center justify-center rounded-full bg-[color:var(--surface-accent-ink)] px-5 text-sm font-semibold text-white transition-[background-color,box-shadow] shadow-[0_16px_32px_rgba(0,0,0,0.24)] hover:bg-[color:var(--surface-accent-ink-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--surface-accent-strong)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#101214] disabled:cursor-not-allowed disabled:opacity-60';
@@ -36,7 +36,7 @@ export function workspacePrimaryNavClassName(active: boolean) {
     'flex h-10 items-center justify-center rounded-full px-4 text-sm font-semibold transition-[background-color,color,box-shadow]',
     active
       ? 'bg-[color:var(--surface-accent-ink)] text-white shadow-[0_10px_24px_rgba(0,0,0,0.22)]'
-      : 'text-[color:var(--surface-text-muted)] hover:bg-white/[0.05] hover:text-[color:var(--shell-immersive-text)]',
+      : 'text-white/66 hover:bg-white/[0.05] hover:text-white',
   ].join(' ');
 }
 
@@ -45,7 +45,7 @@ export function workspaceUtilityNavClassName(active: boolean) {
     'inline-flex h-10 items-center justify-center rounded-full border px-4 text-sm font-medium transition-[background-color,border-color,color]',
     active
       ? 'border-[color:var(--surface-accent-strong)] bg-[rgba(132,174,186,0.14)] text-[color:var(--shell-immersive-text)]'
-      : 'border-white/[0.1] bg-white/[0.03] text-[color:var(--surface-text-muted)] hover:border-white/[0.18] hover:text-[color:var(--shell-immersive-text)]',
+      : 'border-white/[0.1] bg-white/[0.03] text-white/66 hover:border-white/[0.18] hover:text-white',
   ].join(' ');
 }
 

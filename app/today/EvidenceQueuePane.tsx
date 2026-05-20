@@ -197,7 +197,7 @@ export function EvidenceQueuePane({
       <div className="flex flex-col">
         <div className="px-5 py-5 sm:px-6">
           <p className={sectionLabelClass}>Queue</p>
-          <h2 className="mt-2 text-[1.35rem] font-semibold tracking-[-0.03em] text-[color:var(--today-text)]">{queueHeading}</h2>
+          <h2 className="mt-2 text-[1.35rem] font-semibold tracking-normal text-[color:var(--today-text)]">{queueHeading}</h2>
           <p className="mt-2 text-sm leading-7 text-[color:var(--today-muted)]">{queueDescription}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <QueueFilterButton

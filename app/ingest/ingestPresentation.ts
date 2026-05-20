@@ -90,7 +90,7 @@ export function getReadyStateLabel(
   return content.trim().length >= 50 ? 'Ready to import' : 'Paste enough text';
 }
 
-export function formatSourceType(source: string, isWebScoutDiscovered: boolean): string {
+function formatSourceType(source: string, isWebScoutDiscovered: boolean): string {
   if (isWebScoutDiscovered) {
     return 'RESEARCH SOURCE';
   }

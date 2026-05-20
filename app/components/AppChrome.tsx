@@ -35,7 +35,7 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
               {APP_BRAND.monogram}
             </div>
             <div className="leading-tight">
-              <span className="font-editorial block text-xl tracking-[-0.04em] text-[color:var(--surface-text)]">
+              <span className="font-editorial block text-xl tracking-normal text-[color:var(--surface-text)]">
                 {APP_BRAND.name}
               </span>
               <span className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--surface-text-muted)]">

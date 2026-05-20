@@ -19,7 +19,7 @@ export const GeneratedFlashcardSchema = z.object({
     .describe('Answer or complete statement'),
   conceptLabel: z
     .string()
-    .optional()
+    .nullable()
     .describe('Label of the concept this flashcard tests'),
 });
 

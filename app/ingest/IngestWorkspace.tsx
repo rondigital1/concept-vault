@@ -29,12 +29,12 @@ export function IngestWorkspace({
     <>
       <ToastContainer />
       <IngestChrome userName={userName} pathname={pathname}>
-        <main className="relative min-h-screen pt-24 pb-14 lg:pl-64">
-          <div className="mx-auto max-w-6xl px-6 lg:px-12">
+        <main className="relative min-h-screen pb-14 pt-64 sm:pt-48 lg:pl-64 lg:pt-24">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-12">
             <header className="mb-12 flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
               <div className="max-w-3xl">
                 <p className={monoLabelClass}>Add Content</p>
-                <h1 className="mt-4 text-[clamp(3.1rem,7vw,5rem)] font-black tracking-[-0.08em] text-white">
+                <h1 className="mt-4 text-[clamp(3.1rem,7vw,5rem)] font-black tracking-normal text-white">
                   Bring new material into the vault.
                 </h1>
                 <p className="mt-4 max-w-2xl text-[1.05rem] leading-8 text-[#c8c1c1]">
@@ -45,13 +45,13 @@ export function IngestWorkspace({
               <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[24rem]">
                 <div className="rounded-[1.4rem] border border-white/[0.08] bg-[rgba(255,255,255,0.04)] px-5 py-4">
                   <p className={monoLabelClass}>Library documents</p>
-                  <p className="mt-3 text-[2.7rem] font-black tracking-[-0.08em] text-white">
+                  <p className="mt-3 text-[2.7rem] font-black tracking-normal text-white">
                     {stats.totalRecords.toLocaleString()}
                   </p>
                 </div>
                 <div className="rounded-[1.4rem] border border-white/[0.08] bg-[rgba(255,255,255,0.04)] px-5 py-4">
                   <p className={monoLabelClass}>Needs cleanup</p>
-                  <p className="mt-3 text-[2.7rem] font-black tracking-[-0.08em] text-white">
+                  <p className="mt-3 text-[2.7rem] font-black tracking-normal text-white">
                     {stats.cleanupCandidates.toLocaleString()}
                   </p>
                 </div>
@@ -60,8 +60,8 @@ export function IngestWorkspace({
 
             <div className="animate-workbench-enter">
               <form onSubmit={ingest.mode === 'file' ? (event) => event.preventDefault() : ingest.handleSubmit}>
-                <div className="grid grid-cols-12 gap-8">
-                  <div className="col-span-12 lg:col-span-7">
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+                  <div className="col-span-1 min-w-0 lg:col-span-7">
                     <IngestModeTabs mode={ingest.mode} onSelect={ingest.switchMode} />
 
                     {ingest.mode === 'file' && (
@@ -110,7 +110,7 @@ export function IngestWorkspace({
                     )}
                   </div>
 
-                  <div className="col-span-12 lg:col-span-5">
+                  <div className="col-span-1 min-w-0 lg:col-span-5">
                     <IngestStatusCard
                       mode={ingest.mode}
                       readyState={ingest.readyState}

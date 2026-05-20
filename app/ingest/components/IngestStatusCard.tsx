@@ -30,7 +30,7 @@ export function IngestStatusCard({
           {feedback.eyebrow}
         </span>
       </div>
-      <h2 className="text-[2rem] font-bold tracking-[-0.05em] text-white">Import status</h2>
+      <h2 className="text-[2rem] font-bold tracking-normal text-white">Import status</h2>
       <p className="mt-4 max-w-sm text-[1.05rem] leading-8 text-[#d1cbcb]">
         Keep intake fast. New content lands in the library immediately, while research activation still follows the normal review and approval flow.
       </p>
@@ -60,21 +60,21 @@ export function IngestStatusCard({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
             <p className={monoLabelClass}>Library documents</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.totalRecords}</p>
+            <p className="mt-2 text-2xl font-semibold tracking-normal text-white">{stats.totalRecords}</p>
           </div>
           <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
             <p className={monoLabelClass}>Direct imports</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.directImports}</p>
+            <p className="mt-2 text-2xl font-semibold tracking-normal text-white">{stats.directImports}</p>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
             <p className={monoLabelClass}>Research imports</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.researchImports}</p>
+            <p className="mt-2 text-2xl font-semibold tracking-normal text-white">{stats.researchImports}</p>
           </div>
           <div className="rounded-[1.1rem] bg-[#101010] px-5 py-4">
             <p className={monoLabelClass}>Needs cleanup</p>
-            <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{stats.cleanupCandidates}</p>
+            <p className="mt-2 text-2xl font-semibold tracking-normal text-white">{stats.cleanupCandidates}</p>
           </div>
         </div>
       </div>

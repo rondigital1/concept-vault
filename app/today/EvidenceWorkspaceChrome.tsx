@@ -82,8 +82,8 @@ export function EvidenceWorkspaceChrome({
     <div className="today-screen min-h-screen text-[color:var(--today-text)]">
       <header className="today-glass fixed inset-x-0 top-0 z-40">
         <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="text-xl font-black tracking-[-0.06em] text-[color:var(--today-accent-strong)]">
-            CONCEPT_VAULT
+          <div className="text-xl font-black tracking-normal text-[color:var(--today-accent-strong)]">
+            Concept Vault
           </div>
 
           <nav className="hidden items-center gap-8 md:flex">
@@ -91,7 +91,7 @@ export function EvidenceWorkspaceChrome({
               <Link
                 key={item.href}
                 href={item.href}
-                className={`pb-1 text-sm font-semibold tracking-[-0.02em] transition-default ${
+                className={`pb-1 text-sm font-semibold tracking-normal transition-default ${
                   item.active
                     ? 'border-b-2 border-[color:var(--today-accent-strong)] text-[color:var(--today-accent-strong)]'
                     : 'text-[color:var(--today-muted)] hover:text-[color:var(--today-accent-strong)]'
@@ -113,12 +113,34 @@ export function EvidenceWorkspaceChrome({
         </div>
       </header>
 
+      <nav
+        aria-label="Mobile workspace navigation"
+        className="today-glass fixed inset-x-0 top-16 z-30 px-3 py-3 lg:hidden"
+      >
+        <div className="flex flex-wrap gap-2">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`inline-flex min-h-8 items-center rounded-full px-3 py-2 text-[9px] font-bold uppercase tracking-[0.12em] transition-default sm:text-[10px] sm:tracking-[0.16em] ${
+                item.active
+                  ? 'bg-[color:var(--today-accent)] text-[color:var(--today-accent-ink)]'
+                  : 'bg-[rgba(255,255,255,0.05)] text-[color:var(--today-muted)]'
+              }`}
+              aria-current={item.active ? 'page' : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      </nav>
+
       <aside className="today-glass fixed left-0 top-16 hidden h-[calc(100vh-4rem)] w-64 flex-col px-4 py-6 lg:flex">
         <div className="mb-10">
           <div className="flex items-center gap-3">
             <span className="h-2 w-2 rounded-full bg-[color:var(--today-accent-strong)] animate-pulse" />
             <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[color:var(--today-text-soft)]">
-              RESEARCH_CORE
+              Research core
             </span>
           </div>
           <div className="pl-5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--today-muted)]">
@@ -154,7 +176,7 @@ export function EvidenceWorkspaceChrome({
         </div>
       </aside>
 
-      <div className="relative z-10 pt-16 lg:pl-64">{children}</div>
+      <div className="relative z-10 pt-32 lg:pl-64 lg:pt-16">{children}</div>
 
       <Link
         href="/ingest"

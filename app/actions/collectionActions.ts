@@ -2,7 +2,6 @@
 
 import {
   createCollection,
-  updateCollection,
   deleteCollection,
   addDocumentToCollection,
   removeDocumentFromCollection,
@@ -22,21 +21,6 @@ export async function createCollectionAction(name: string, description?: string)
     return {
       success: false,
       error: publicErrorMessage(error, 'Failed to create collection'),
-    };
-  }
-}
-
-export async function renameCollectionAction(collectionId: string, name: string) {
-  try {
-    const scope = await requireSessionWorkspace();
-    await updateCollection(scope, collectionId, { name });
-    revalidatePath('/library');
-    return { success: true };
-  } catch (error) {
-    console.error('Failed to rename collection:', error);
-    return {
-      success: false,
-      error: publicErrorMessage(error, 'Failed to rename collection'),
     };
   }
 }
