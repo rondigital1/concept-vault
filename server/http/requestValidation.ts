@@ -18,7 +18,7 @@ function metricKey(metric: ValidationFailureMetric): string {
   return `${metric.method}:${metric.route}`;
 }
 
-function formatIssuePath(path: Array<string | number>): string {
+function formatIssuePath(path: Array<PropertyKey>): string {
   if (path.length === 0) {
     return '$';
   }
